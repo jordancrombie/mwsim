@@ -31,7 +31,8 @@ type Screen =
   | 'verifyCode'
   | 'biometricSetup'
   | 'bankSelection'
-  | 'home';
+  | 'home'
+  | 'cardDetails';
 
 export default function App() {
   // Navigation state
@@ -59,6 +60,9 @@ export default function App() {
 
   // Enrollment state
   const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
+
+  // Card details state
+  const [selectedCard, setSelectedCard] = useState<Card | null>(null);
 
   // Initialize app
   useEffect(() => {
@@ -349,6 +353,65 @@ export default function App() {
     } finally {
       setIsRefreshing(false);
     }
+  };
+
+  const handleSetDefaultCard = async (card: Card) => {
+    if (card.isDefault) return;
+
+    setIsLoading(true);
+    try {
+      await api.setDefaultCard(card.id);
+      // Update local state
+      setCards(prevCards =>
+        prevCards.map(c => ({
+          ...c,
+          isDefault: c.id === card.id,
+        }))
+      );
+      // Update selected card if viewing details
+      if (selectedCard?.id === card.id) {
+        setSelectedCard({ ...card, isDefault: true });
+      }
+      Alert.alert('Success', 'Card set as default');
+    } catch (e: any) {
+      const message = e.response?.data?.message || e.message || 'Failed to set default card';
+      Alert.alert('Error', message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRemoveCard = async (card: Card) => {
+    Alert.alert(
+      'Remove Card',
+      `Are you sure you want to remove this ${card.cardType} card ending in ${card.lastFour}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              await api.removeCard(card.id);
+              // Update local state
+              setCards(prevCards => prevCards.filter(c => c.id !== card.id));
+              // Go back to home if viewing this card's details
+              if (selectedCard?.id === card.id) {
+                setSelectedCard(null);
+                setCurrentScreen('home');
+              }
+              Alert.alert('Success', 'Card removed from wallet');
+            } catch (e: any) {
+              const message = e.response?.data?.message || e.message || 'Failed to remove card';
+              Alert.alert('Error', message);
+            } finally {
+              setIsLoading(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleLogout = async () => {
@@ -771,10 +834,8 @@ export default function App() {
                       ]}
                       activeOpacity={0.9}
                       onPress={() => {
-                        Alert.alert(
-                          `${card.cardType} •••• ${card.lastFour}`,
-                          `${card.bankName}${card.isDefault ? '\n\nThis is your default card.' : ''}`
-                        );
+                        setSelectedCard(card);
+                        setCurrentScreen('cardDetails');
                       }}
                     >
                       <View style={styles.cardTop}>
@@ -805,6 +866,101 @@ export default function App() {
             </ScrollView>
           </View>
         </View>
+    );
+  }
+
+  // Card Details Screen
+  if (currentScreen === 'cardDetails' && selectedCard) {
+    const cardColor = selectedCard.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
+
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.cardDetailsContent}>
+          {/* Header */}
+          <View style={styles.cardDetailsHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedCard(null);
+                setCurrentScreen('home');
+              }}
+            >
+              <Text style={styles.backButton}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.cardDetailsTitle}>Card Details</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          {/* Card Preview */}
+          <View style={[styles.cardDetailsPreview, { backgroundColor: cardColor }]}>
+            <View style={styles.cardTop}>
+              <Text style={styles.cardBank}>{selectedCard.bankName}</Text>
+              {selectedCard.isDefault && (
+                <View style={styles.defaultBadge}>
+                  <Text style={styles.defaultBadgeText}>Default</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.cardNumber}>•••• •••• •••• {selectedCard.lastFour}</Text>
+            <Text style={styles.cardType}>{selectedCard.cardType}</Text>
+          </View>
+
+          {/* Card Info */}
+          <View style={styles.cardInfoSection}>
+            <View style={styles.cardInfoRow}>
+              <Text style={styles.cardInfoLabel}>Card Type</Text>
+              <Text style={styles.cardInfoValue}>{selectedCard.cardType}</Text>
+            </View>
+            <View style={styles.cardInfoRow}>
+              <Text style={styles.cardInfoLabel}>Card Number</Text>
+              <Text style={styles.cardInfoValue}>•••• {selectedCard.lastFour}</Text>
+            </View>
+            <View style={styles.cardInfoRow}>
+              <Text style={styles.cardInfoLabel}>Bank</Text>
+              <Text style={styles.cardInfoValue}>{selectedCard.bankName}</Text>
+            </View>
+            <View style={styles.cardInfoRow}>
+              <Text style={styles.cardInfoLabel}>Added</Text>
+              <Text style={styles.cardInfoValue}>
+                {new Date(selectedCard.addedAt).toLocaleDateString()}
+              </Text>
+            </View>
+            <View style={styles.cardInfoRow}>
+              <Text style={styles.cardInfoLabel}>Status</Text>
+              <Text style={styles.cardInfoValue}>
+                {selectedCard.isDefault ? 'Default Card' : 'Active'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Actions */}
+          <View style={styles.cardActionsSection}>
+            {!selectedCard.isDefault && (
+              <TouchableOpacity
+                style={styles.primaryButton}
+                onPress={() => handleSetDefaultCard(selectedCard)}
+                disabled={isLoading}
+                activeOpacity={0.7}
+              >
+                {isLoading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Set as Default</Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.dangerButton}
+              onPress={() => handleRemoveCard(selectedCard)}
+              disabled={isLoading}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.dangerButtonText}>Remove Card</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     );
   }
 
@@ -1183,5 +1339,73 @@ const styles = StyleSheet.create({
   resetButtonText: {
     fontSize: 12,
     color: '#9ca3af',
+  },
+  // Card Details styles
+  cardDetailsContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  cardDetailsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  cardDetailsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  cardDetailsPreview: {
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 24,
+    marginTop: 24,
+    minHeight: 180,
+    justifyContent: 'space-between',
+  },
+  cardInfoSection: {
+    paddingHorizontal: 24,
+    paddingTop: 24,
+  },
+  cardInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  cardInfoLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  cardInfoValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  cardActionsSection: {
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    gap: 12,
+  },
+  dangerButton: {
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#ef4444',
+  },
+  dangerButtonText: {
+    color: '#ef4444',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });

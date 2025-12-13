@@ -5,9 +5,9 @@ Development roadmap and planned features for the mwsim mobile wallet application
 ## Phase 2: Wallet Management & Payments
 
 ### Card Management
-- [ ] Set card as default
-- [ ] Remove card from wallet
-- [ ] Card details view
+- [x] Set card as default
+- [x] Remove card from wallet
+- [x] Card details view
 - [ ] Card nickname/label editing
 
 ### Payment Authorization

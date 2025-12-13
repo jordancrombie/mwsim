@@ -26,7 +26,10 @@ mwsim enables users to:
 
 ### Wallet Management
 - **Card List** - View all enrolled cards with card type and bank info
-- **Default Card** - Visual indicator for default payment card
+- **Card Details** - Tap a card to view details with management options
+- **Set Default Card** - Choose which card is used for payments
+- **Remove Card** - Remove cards from wallet (with confirmation)
+- **Default Card Indicator** - Visual badge for default payment card
 - **Pull to Refresh** - Refresh wallet data from server
 - **Add More Banks** - Enroll additional banks at any time
 
@@ -123,6 +126,8 @@ The app integrates with the wsim backend via these endpoints:
 
 ### Wallet
 - `GET /mobile/wallet/summary` - Get wallet summary with cards
+- `POST /mobile/wallet/cards/:cardId/default` - Set card as default
+- `DELETE /mobile/wallet/cards/:cardId` - Remove card from wallet
 
 ### Enrollment
 - `GET /mobile/enrollment/banks` - List available banks
@@ -163,7 +168,7 @@ Configured in `app.json`:
 - [x] Device reset for testing
 
 ### Phase 2: Wallet Management & Payments
-- [ ] Card management (set default, remove)
+- [x] Card management (set default, remove)
 - [ ] Payment authorization flow
 - [ ] Transaction history
 - [ ] Push notifications

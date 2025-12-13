@@ -5,6 +5,27 @@ All notable changes to the mwsim project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2024-12-13
+
+### Added
+
+#### Card Management
+- Card Details screen - tap any card to view full details
+- Set Default Card - choose which card is used for payments
+- Remove Card - remove cards from wallet with confirmation dialog
+- Optimistic UI updates for instant feedback
+
+#### API Endpoints (wsim backend)
+- `POST /api/mobile/wallet/cards/:cardId/default` - Set card as default
+- `DELETE /api/mobile/wallet/cards/:cardId` - Remove card (soft delete)
+- Auto-promotion of next card to default when default card is removed
+
+### Changed
+- Card tap now navigates to details screen instead of showing alert
+- Updated API client with correct mobile endpoint paths
+
+---
+
 ## [0.1.0] - 2024-12-13
 
 ### Added
@@ -61,12 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Future Releases
 
-### [0.2.0] - Planned
-- Card management (set default, remove)
+### [0.3.0] - Planned
 - Payment authorization flow
 - Transaction history
 
-### [0.3.0] - Planned
+### [0.4.0] - Planned
 - Push notifications
 - React Navigation migration
 - Offline support

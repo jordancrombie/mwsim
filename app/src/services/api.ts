@@ -223,14 +223,14 @@ export const api = {
    * Set default card
    */
   async setDefaultCard(cardId: string): Promise<void> {
-    await apiClient.post(`/wallet/set-default/${cardId}`);
+    await apiClient.post(`/mobile/wallet/cards/${cardId}/default`);
   },
 
   /**
    * Remove a card from wallet
    */
   async removeCard(cardId: string): Promise<void> {
-    await apiClient.delete(`/wallet/cards/${cardId}`);
+    await apiClient.delete(`/mobile/wallet/cards/${cardId}`);
   },
 
   // ==================
