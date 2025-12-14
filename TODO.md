@@ -18,6 +18,7 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [x] SecureStore persistence for interrupted payments
 - [x] Return URL with mwsim_return context parameter
 - [x] End-to-end flow tested in dev (2025-12-14)
+- [x] Browser-aware return flow (sourceBrowser parameter, iOS browser URL schemes)
 - [ ] QR code scanning for payment (Phase 3)
 - [ ] Transaction receipt display
 

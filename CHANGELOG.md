@@ -5,6 +5,25 @@ All notable changes to the mwsim project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2025-12-14
+
+### Added
+- **Browser-aware return flow** - Users are returned to the same browser they came from
+  - New `sourceBrowser` parameter parsed from deep link
+  - Support for Chrome, Firefox, Edge, Opera, and Brave on iOS
+  - Automatic fallback to default browser if specified browser not installed
+- New `browserReturn.ts` service with browser URL scheme mappings
+- `LSApplicationQueriesSchemes` added to Info.plist for iOS URL scheme queries
+
+### Changed
+- "Return to Store" now uses browser-specific URL schemes when `sourceBrowser` is provided
+- Cold-start payment flow now preserves `sourceBrowser` across login
+
+### Technical
+- Implements SSIM team's browser-return proposal (`ssim/docs/proposals/mwsim-browser-return-proposal.md`)
+
+---
+
 ## [0.3.1] - 2025-12-14
 
 ### Changed

@@ -15,7 +15,16 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.banksim.wsim"
+      "bundleIdentifier": "com.banksim.wsim",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": [
+          "googlechromes",
+          "firefox",
+          "microsoft-edge",
+          "opera",
+          "brave"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {

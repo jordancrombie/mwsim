@@ -23,6 +23,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { api } from './src/services/api';
 import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
+import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
 import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
 
 type Screen =
@@ -74,6 +75,7 @@ export default function App() {
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'loading' | 'ready' | 'approving' | 'success' | 'error'>('loading');
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [sourceBrowser, setSourceBrowser] = useState<string | null>(null);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -100,8 +102,16 @@ export default function App() {
       const requestId = paymentMatch[1];
       console.log('[DeepLink] Payment request ID:', requestId);
 
-      // Store the pending request ID (for cold start recovery)
+      // Parse sourceBrowser parameter for browser-aware return
+      const browser = parseSourceBrowser(url);
+      console.log('[DeepLink] Source browser:', browser);
+      setSourceBrowser(browser);
+
+      // Store both for cold start recovery
       await secureStorage.set('pendingPaymentRequestId', requestId);
+      if (browser) {
+        await secureStorage.set('pendingPaymentSourceBrowser', browser);
+      }
       setPendingRequestId(requestId);
 
       // Check if we're authenticated
@@ -152,6 +162,14 @@ export default function App() {
     const checkPendingPayment = async () => {
       if (currentScreen === 'home' && pendingRequestId) {
         console.log('[Payment] Found pending request after login:', pendingRequestId);
+        // Restore sourceBrowser if not already set
+        if (!sourceBrowser) {
+          const storedBrowser = await secureStorage.get('pendingPaymentSourceBrowser');
+          if (storedBrowser) {
+            console.log('[Payment] Restored sourceBrowser:', storedBrowser);
+            setSourceBrowser(storedBrowser);
+          }
+        }
         await loadPaymentRequest(pendingRequestId);
       }
     };
@@ -226,7 +244,7 @@ export default function App() {
         [
           {
             text: 'Return to Store',
-            onPress: () => {
+            onPress: async () => {
               if (result.returnUrl) {
                 // Append mwsim_return param so SSIM checkout knows the payment context
                 const separator = result.returnUrl.includes('?') ? '&' : '?';
@@ -234,7 +252,9 @@ export default function App() {
                 console.log('[Payment] Opening returnUrl:', returnUrlWithContext);
                 console.log('[Payment] Original returnUrl:', result.returnUrl);
                 console.log('[Payment] requestId:', paymentRequest.requestId);
-                Linking.openURL(returnUrlWithContext);
+                console.log('[Payment] sourceBrowser:', sourceBrowser);
+                // Use browser-aware return to open in the same browser user came from
+                await openReturnUrl(returnUrlWithContext, sourceBrowser);
               } else {
                 console.log('[Payment] No returnUrl in result:', result);
               }
@@ -288,7 +308,9 @@ export default function App() {
   // Close payment screen and return to home
   const handleClosePayment = async () => {
     await secureStorage.remove('pendingPaymentRequestId');
+    await secureStorage.remove('pendingPaymentSourceBrowser');
     setPendingRequestId(null);
+    setSourceBrowser(null);
     setPaymentRequest(null);
     setSelectedPaymentCard(null);
     setPaymentStatus('loading');
@@ -1273,11 +1295,12 @@ export default function App() {
               {paymentRequest?.returnUrl && (
                 <TouchableOpacity
                   style={styles.primaryButton}
-                  onPress={() => {
+                  onPress={async () => {
                     // Append mwsim_return param so SSIM checkout knows the payment context
                     const separator = paymentRequest.returnUrl.includes('?') ? '&' : '?';
                     const returnUrlWithContext = `${paymentRequest.returnUrl}${separator}mwsim_return=${paymentRequest.requestId}`;
-                    Linking.openURL(returnUrlWithContext);
+                    // Use browser-aware return to open in the same browser user came from
+                    await openReturnUrl(returnUrlWithContext, sourceBrowser);
                     handleClosePayment();
                   }}
                   activeOpacity={0.7}
