@@ -49,6 +49,7 @@ export default function App() {
 
   // Form state
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -227,7 +228,10 @@ export default function App() {
             text: 'Return to Store',
             onPress: () => {
               if (result.returnUrl) {
-                Linking.openURL(result.returnUrl);
+                // Append mwsim_return param so SSIM checkout knows the payment context
+                const separator = result.returnUrl.includes('?') ? '&' : '?';
+                const returnUrlWithContext = `${result.returnUrl}${separator}mwsim_return=${paymentRequest.requestId}`;
+                Linking.openURL(returnUrlWithContext);
               }
               handleClosePayment();
             },
@@ -381,6 +385,10 @@ export default function App() {
       setError('Please enter your email');
       return;
     }
+    if (!password.trim()) {
+      setError('Please enter your password');
+      return;
+    }
     if (!deviceId) {
       setError('Device not initialized');
       return;
@@ -390,10 +398,33 @@ export default function App() {
     setError(null);
 
     try {
-      await api.login(email.trim(), deviceId);
-      setCurrentScreen('verifyCode');
+      const result = await api.loginWithPassword(
+        email.trim(),
+        password,
+        deviceId,
+        deviceName,
+        Platform.OS as 'ios' | 'android'
+      );
+
+      // Store tokens
+      await secureStorage.setAccessToken(result.tokens.accessToken);
+      await secureStorage.setRefreshToken(result.tokens.refreshToken);
+
+      setUser(result.user);
+      setPassword(''); // Clear password from memory
+
+      // Load wallet data
+      try {
+        const walletData = await api.getWalletSummary();
+        setCards(walletData.cards || []);
+      } catch (e) {
+        console.log('[Login] Failed to load wallet, continuing anyway');
+      }
+
+      // Go to home or handle pending payment
+      setCurrentScreen('home');
     } catch (e: any) {
-      const message = e.response?.data?.message || e.message || 'Failed to send verification code';
+      const message = e.response?.data?.message || e.message || 'Failed to login';
       setError(message);
     } finally {
       setIsLoading(false);
@@ -772,7 +803,7 @@ export default function App() {
           <View style={styles.formSection}>
             <Text style={styles.formTitle}>Sign In</Text>
             <Text style={styles.formSubtitle}>
-              Enter your email to receive a verification code.
+              Enter your email and password to sign in.
             </Text>
 
             {error && <Text style={styles.errorText}>{error}</Text>}
@@ -790,6 +821,19 @@ export default function App() {
               />
             </View>
 
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Password</Text>
+              <TextInput
+                style={styles.input}
+                value={password}
+                onChangeText={setPassword}
+                placeholder="Enter your password"
+                secureTextEntry
+                autoCapitalize="none"
+                autoComplete="password"
+              />
+            </View>
+
             <TouchableOpacity
               style={[styles.primaryButton, { marginTop: 24 }]}
               onPress={handleLogin}
@@ -799,7 +843,7 @@ export default function App() {
               {isLoading ? (
                 <ActivityIndicator color="#ffffff" />
               ) : (
-                <Text style={styles.primaryButtonText}>Continue</Text>
+                <Text style={styles.primaryButtonText}>Sign In</Text>
               )}
             </TouchableOpacity>
 
@@ -1225,7 +1269,10 @@ export default function App() {
                 <TouchableOpacity
                   style={styles.primaryButton}
                   onPress={() => {
-                    Linking.openURL(paymentRequest.returnUrl);
+                    // Append mwsim_return param so SSIM checkout knows the payment context
+                    const separator = paymentRequest.returnUrl.includes('?') ? '&' : '?';
+                    const returnUrlWithContext = `${paymentRequest.returnUrl}${separator}mwsim_return=${paymentRequest.requestId}`;
+                    Linking.openURL(returnUrlWithContext);
                     handleClosePayment();
                   }}
                   activeOpacity={0.7}

@@ -168,6 +168,26 @@ export const api = {
   },
 
   /**
+   * Login with email and password (for development/testing)
+   */
+  async loginWithPassword(
+    email: string,
+    password: string,
+    deviceId: string,
+    deviceName: string,
+    platform: 'ios' | 'android'
+  ): Promise<{ user: User; tokens: AuthTokens }> {
+    const { data } = await apiClient.post('/mobile/auth/login/password', {
+      email,
+      password,
+      deviceId,
+      deviceName,
+      platform,
+    });
+    return data;
+  },
+
+  /**
    * Refresh access token
    */
   async refreshToken(refreshToken: string): Promise<AuthTokens> {

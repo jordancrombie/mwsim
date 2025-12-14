@@ -5,6 +5,15 @@ All notable changes to the mwsim project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2025-12-14
+
+### Changed
+- "Return to Store" button now appends `?mwsim_return=<requestId>` query parameter to returnUrl
+- This allows SSIM checkout page to have context about the completed payment
+- Applied to both success and error state return buttons
+
+---
+
 ## [0.3.0] - 2025-12-13
 
 ### Added
