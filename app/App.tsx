@@ -231,7 +231,12 @@ export default function App() {
                 // Append mwsim_return param so SSIM checkout knows the payment context
                 const separator = result.returnUrl.includes('?') ? '&' : '?';
                 const returnUrlWithContext = `${result.returnUrl}${separator}mwsim_return=${paymentRequest.requestId}`;
+                console.log('[Payment] Opening returnUrl:', returnUrlWithContext);
+                console.log('[Payment] Original returnUrl:', result.returnUrl);
+                console.log('[Payment] requestId:', paymentRequest.requestId);
                 Linking.openURL(returnUrlWithContext);
+              } else {
+                console.log('[Payment] No returnUrl in result:', result);
               }
               handleClosePayment();
             },

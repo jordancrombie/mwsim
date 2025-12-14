@@ -8,6 +8,7 @@ mwsim enables users to:
 - Create wallet accounts with email verification
 - Enroll payment cards from banking simulators (BSIMs) via OAuth
 - Manage their digital wallet
+- Authorize payments from merchant checkouts via deep links
 - Use biometric authentication (Face ID / Touch ID)
 
 ## Features
@@ -32,6 +33,12 @@ mwsim enables users to:
 - **Default Card Indicator** - Visual badge for default payment card
 - **Pull to Refresh** - Refresh wallet data from server
 - **Add More Banks** - Enroll additional banks at any time
+
+### Payment Authorization
+- **Deep Link Payments** - Receive payment requests via `mwsim://payment/:requestId`
+- **Payment Approval Screen** - Review merchant, amount, and select card
+- **Biometric Confirmation** - Face ID / Touch ID required to approve payments
+- **Return to Store** - Seamless return to merchant checkout after approval
 
 ### Developer Tools
 - **Reset Device** - Generate new device ID for testing (dev mode)
@@ -180,9 +187,11 @@ Configured in `app.json`:
 - [x] Wallet home screen with cards
 - [x] Device reset for testing
 
-### Phase 2: Wallet Management & Payments
+### Phase 2: Wallet Management & Payments (Complete)
 - [x] Card management (set default, remove)
 - [x] Payment authorization flow (deep link, approval screen, biometric)
+- [x] Return URL context parameter for SSIM integration
+- [x] End-to-end flow tested in dev environment (2025-12-14)
 - [ ] Transaction history
 - [ ] Push notifications
 

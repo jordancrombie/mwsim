@@ -16,7 +16,9 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [x] Biometric authorization for payments
 - [x] Cold-start auth flow (preserve requestId across login)
 - [x] SecureStore persistence for interrupted payments
-- [ ] QR code scanning for payment (Phase 2)
+- [x] Return URL with mwsim_return context parameter
+- [x] End-to-end flow tested in dev (2025-12-14)
+- [ ] QR code scanning for payment (Phase 3)
 - [ ] Transaction receipt display
 
 ### Transaction History

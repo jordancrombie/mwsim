@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "Return to Store" button now appends `?mwsim_return=<requestId>` query parameter to returnUrl
 - This allows SSIM checkout page to have context about the completed payment
 - Applied to both success and error state return buttons
+- Added debug logging for returnUrl handling
+
+### Tested
+- Successfully tested full mobile payment flow in dev environment
+- End-to-end integration with WSIM, BSIM, and SSIM verified
 
 ---
 
