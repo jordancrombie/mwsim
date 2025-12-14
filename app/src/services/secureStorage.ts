@@ -97,4 +97,17 @@ export const secureStorage = {
       // Note: We keep DEVICE_ID as it's permanent
     ]);
   },
+
+  // Generic set/get/remove for dynamic keys
+  async set(key: string, value: string): Promise<void> {
+    await SecureStore.setItemAsync(`mwsim_${key}`, value);
+  },
+
+  async get(key: string): Promise<string | null> {
+    return SecureStore.getItemAsync(`mwsim_${key}`);
+  },
+
+  async remove(key: string): Promise<void> {
+    await SecureStore.deleteItemAsync(`mwsim_${key}`);
+  },
 };

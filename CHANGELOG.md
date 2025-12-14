@@ -5,7 +5,33 @@ All notable changes to the mwsim project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2024-12-13
+## [0.3.0] - 2025-12-13
+
+### Added
+
+#### Payment Authorization Flow
+- Deep link handler for `mwsim://payment/:requestId` - opens payment approval screen
+- Payment Approval screen with merchant info, amount, and card selection
+- Biometric authentication required before payment approval
+- Cold-start auth flow - preserves requestId across login if user not authenticated
+- SecureStore persistence for interrupted payments (recovers on app restart)
+- Error handling for expired, cancelled, and already-processed payments
+- "Return to Store" and "Go to Wallet" options after payment completion
+
+#### API Endpoints
+- `GET /api/mobile/payment/:requestId` - Get payment request details
+- `POST /api/mobile/payment/:requestId/approve` - Approve payment with card
+- `POST /api/mobile/payment/:requestId/cancel` - Cancel payment request
+- `GET /api/mobile/payment/pending` - List pending payments (for future home screen section)
+
+### Changed
+- Bundle ID changed from `com.mwsim.wallet` to `com.banksim.wsim`
+- Added Android package name `com.banksim.wsim`
+- Updated `react-native-safe-area-context` from 4.14.0 to 5.6.2 (fixes iOS build issue)
+
+---
+
+## [0.2.0] - 2025-12-13
 
 ### Added
 
@@ -68,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical Notes
 
-- Using state-based navigation instead of React Navigation due to react-native-safe-area-context iOS 26.1 compatibility issue
+- Using state-based navigation instead of React Navigation for simplicity
 - OAuth flow uses system browser (Safari) instead of WebView to avoid keyboard interaction issues
 - All screens implemented in single App.tsx file for simplicity
 
@@ -82,13 +108,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Future Releases
 
-### [0.3.0] - Planned
-- Payment authorization flow
-- Transaction history
-
 ### [0.4.0] - Planned
+- Transaction history
 - Push notifications
-- React Navigation migration
 - Offline support
 
 ### [1.0.0] - Planned

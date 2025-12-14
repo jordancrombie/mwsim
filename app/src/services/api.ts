@@ -9,6 +9,8 @@ import type {
   AuthTokens,
   DeviceRegistration,
   BiometricSetup,
+  PaymentRequest,
+  PendingPayment,
 } from '../types';
 
 // Create axios instance
@@ -285,5 +287,44 @@ export const api = {
    */
   async getCachedUser(): Promise<User | null> {
     return secureStorage.getUserData<User>();
+  },
+
+  // ==================
+  // Payment Endpoints (Mobile Payment Flow)
+  // ==================
+
+  /**
+   * Get payment request details for approval screen.
+   * Called when user opens a payment deep link.
+   */
+  async getPaymentDetails(requestId: string): Promise<PaymentRequest> {
+    const { data } = await apiClient.get(`/mobile/payment/${requestId}`);
+    return data;
+  },
+
+  /**
+   * Approve a payment request with selected card.
+   * Called after user confirms and biometric succeeds.
+   */
+  async approvePayment(requestId: string, cardId: string): Promise<{ success: boolean; status: string; returnUrl: string }> {
+    const { data } = await apiClient.post(`/mobile/payment/${requestId}/approve`, { cardId });
+    return data;
+  },
+
+  /**
+   * Cancel a payment request from the app.
+   */
+  async cancelPayment(requestId: string): Promise<{ success: boolean; status: string }> {
+    const { data } = await apiClient.post(`/mobile/payment/${requestId}/cancel`);
+    return data;
+  },
+
+  /**
+   * Get list of pending payment requests for the user.
+   * Used for "Pending Payments" section on home screen.
+   */
+  async getPendingPayments(): Promise<{ requests: PendingPayment[] }> {
+    const { data } = await apiClient.get('/mobile/payment/pending');
+    return data;
   },
 };

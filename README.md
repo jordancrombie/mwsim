@@ -134,12 +134,22 @@ The app integrates with the wsim backend via these endpoints:
 - `POST /mobile/enrollment/start/:bsimId` - Start OAuth enrollment (returns authUrl)
 - OAuth callback redirects to `mwsim://enrollment/callback?success=true|false`
 
+### Payment
+- `GET /mobile/payment/:requestId` - Get payment request details
+- `POST /mobile/payment/:requestId/approve` - Approve payment with selected card
+- `POST /mobile/payment/:requestId/cancel` - Cancel payment request
+- `GET /mobile/payment/pending` - List pending payment requests
+
 ## Deep Linking
 
-The app uses the `mwsim://` URL scheme for OAuth callbacks:
+The app uses the `mwsim://` URL scheme:
 
+**Enrollment Callbacks:**
 - **Success**: `mwsim://enrollment/callback?success=true`
 - **Error**: `mwsim://enrollment/callback?success=false&error=<message>`
+
+**Payment Approval:**
+- **Payment Request**: `mwsim://payment/:requestId` - Opens payment approval screen
 
 Configured in `app.json`:
 ```json
@@ -147,7 +157,10 @@ Configured in `app.json`:
   "expo": {
     "scheme": "mwsim",
     "ios": {
-      "bundleIdentifier": "com.mwsim.wallet"
+      "bundleIdentifier": "com.banksim.wsim"
+    },
+    "android": {
+      "package": "com.banksim.wsim"
     }
   }
 }
@@ -169,7 +182,7 @@ Configured in `app.json`:
 
 ### Phase 2: Wallet Management & Payments
 - [x] Card management (set default, remove)
-- [ ] Payment authorization flow
+- [x] Payment authorization flow (deep link, approval screen, biometric)
 - [ ] Transaction history
 - [ ] Push notifications
 
@@ -180,7 +193,7 @@ Configured in `app.json`:
 
 ## Known Limitations
 
-- Navigation uses simple state-based routing (workaround for react-native-safe-area-context iOS 26.1 compatibility)
+- Navigation uses simple state-based routing for simplicity
 - Biometric setup endpoint may return 404 if not yet deployed on backend
 - Device ID conflicts can occur on simulators (use Reset Device button)
 

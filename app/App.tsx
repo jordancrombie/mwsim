@@ -1,5 +1,5 @@
 import 'react-native-get-random-values';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,8 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  Linking,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
@@ -21,7 +23,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { api } from './src/services/api';
 import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
-import type { User, Card, Bank } from './src/types';
+import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
 
 type Screen =
   | 'loading'
@@ -32,7 +34,8 @@ type Screen =
   | 'biometricSetup'
   | 'bankSelection'
   | 'home'
-  | 'cardDetails';
+  | 'cardDetails'
+  | 'paymentApproval';
 
 export default function App() {
   // Navigation state
@@ -64,6 +67,16 @@ export default function App() {
   // Card details state
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
 
+  // Payment approval state
+  const [paymentRequest, setPaymentRequest] = useState<PaymentRequest | null>(null);
+  const [selectedPaymentCard, setSelectedPaymentCard] = useState<PaymentCard | null>(null);
+  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'loading' | 'ready' | 'approving' | 'success' | 'error'>('loading');
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  // Track if we've handled the initial URL
+  const initialUrlHandled = useRef(false);
+
   // Initialize app
   useEffect(() => {
     initializeApp();
@@ -75,6 +88,204 @@ export default function App() {
       handleLoadBanks();
     }
   }, [currentScreen]);
+
+  // Handle deep link for payment requests
+  const handleDeepLink = useCallback(async (url: string) => {
+    console.log('[DeepLink] Received URL:', url);
+
+    // Check for payment deep link: mwsim://payment/:requestId
+    const paymentMatch = url.match(/mwsim:\/\/payment\/([^?]+)/);
+    if (paymentMatch) {
+      const requestId = paymentMatch[1];
+      console.log('[DeepLink] Payment request ID:', requestId);
+
+      // Store the pending request ID (for cold start recovery)
+      await secureStorage.set('pendingPaymentRequestId', requestId);
+      setPendingRequestId(requestId);
+
+      // Check if we're authenticated
+      const accessToken = await secureStorage.getAccessToken();
+      if (!accessToken) {
+        // Store request ID and go to login
+        console.log('[DeepLink] Not authenticated, redirecting to login');
+        setCurrentScreen('login');
+        return;
+      }
+
+      // Navigate to payment approval
+      await loadPaymentRequest(requestId);
+    }
+  }, []);
+
+  // Listen for deep links
+  useEffect(() => {
+    // Handle initial URL (cold start)
+    const handleInitialUrl = async () => {
+      if (initialUrlHandled.current) return;
+      initialUrlHandled.current = true;
+
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) {
+        console.log('[DeepLink] Initial URL:', initialUrl);
+        await handleDeepLink(initialUrl);
+      }
+    };
+
+    // Only check initial URL once initialization is complete
+    if (currentScreen !== 'loading') {
+      handleInitialUrl();
+    }
+
+    // Listen for incoming links while app is open
+    const subscription = Linking.addEventListener('url', async (event) => {
+      await handleDeepLink(event.url);
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [currentScreen, handleDeepLink]);
+
+  // Check for pending payment request on login success
+  useEffect(() => {
+    const checkPendingPayment = async () => {
+      if (currentScreen === 'home' && pendingRequestId) {
+        console.log('[Payment] Found pending request after login:', pendingRequestId);
+        await loadPaymentRequest(pendingRequestId);
+      }
+    };
+    checkPendingPayment();
+  }, [currentScreen, pendingRequestId]);
+
+  // Load payment request details
+  const loadPaymentRequest = async (requestId: string) => {
+    setPaymentStatus('loading');
+    setPaymentError(null);
+    setCurrentScreen('paymentApproval');
+
+    try {
+      const request = await api.getPaymentDetails(requestId);
+      setPaymentRequest(request);
+
+      // Pre-select the default card
+      const defaultCard = request.cards.find(c => c.isDefault);
+      setSelectedPaymentCard(defaultCard || request.cards[0] || null);
+
+      setPaymentStatus('ready');
+    } catch (e: any) {
+      console.error('[Payment] Failed to load request:', e);
+      const errorCode = e.response?.data?.error;
+      const errorMessage = e.response?.data?.message || e.message || 'Failed to load payment request';
+
+      if (errorCode === 'PAYMENT_EXPIRED') {
+        setPaymentError('This payment request has expired. Please return to the store to try again.');
+      } else if (errorCode === 'PAYMENT_ALREADY_PROCESSED') {
+        setPaymentError('This payment has already been processed.');
+      } else if (errorCode === 'PAYMENT_NOT_FOUND') {
+        setPaymentError('Payment request not found.');
+      } else {
+        setPaymentError(errorMessage);
+      }
+      setPaymentStatus('error');
+    }
+  };
+
+  // Approve payment with biometric
+  const handleApprovePayment = async () => {
+    if (!paymentRequest || !selectedPaymentCard) return;
+
+    // Trigger biometric authentication
+    try {
+      const authResult = await biometricService.authenticate('Approve payment');
+      if (!authResult.success) {
+        Alert.alert('Authentication Failed', 'Biometric authentication is required to approve payments.');
+        return;
+      }
+    } catch (e: any) {
+      Alert.alert('Authentication Error', e.message || 'Could not authenticate');
+      return;
+    }
+
+    setPaymentStatus('approving');
+    setPaymentError(null);
+
+    try {
+      const result = await api.approvePayment(paymentRequest.requestId, selectedPaymentCard.id);
+
+      // Clear pending request ID
+      await secureStorage.remove('pendingPaymentRequestId');
+      setPendingRequestId(null);
+
+      setPaymentStatus('success');
+
+      // Show success with option to return to store
+      Alert.alert(
+        'Payment Approved',
+        'Your payment has been approved successfully.',
+        [
+          {
+            text: 'Return to Store',
+            onPress: () => {
+              if (result.returnUrl) {
+                Linking.openURL(result.returnUrl);
+              }
+              handleClosePayment();
+            },
+          },
+          {
+            text: 'Stay in Wallet',
+            onPress: handleClosePayment,
+            style: 'cancel',
+          },
+        ]
+      );
+    } catch (e: any) {
+      console.error('[Payment] Approval failed:', e);
+      const errorMessage = e.response?.data?.message || e.message || 'Failed to approve payment';
+      setPaymentError(errorMessage);
+      setPaymentStatus('error');
+    }
+  };
+
+  // Cancel payment
+  const handleCancelPayment = async () => {
+    if (!paymentRequest) {
+      handleClosePayment();
+      return;
+    }
+
+    Alert.alert(
+      'Cancel Payment',
+      'Are you sure you want to cancel this payment?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Cancel',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.cancelPayment(paymentRequest.requestId);
+            } catch (e) {
+              // Ignore errors on cancel
+              console.log('[Payment] Cancel error (ignored):', e);
+            }
+            handleClosePayment();
+          },
+        },
+      ]
+    );
+  };
+
+  // Close payment screen and return to home
+  const handleClosePayment = async () => {
+    await secureStorage.remove('pendingPaymentRequestId');
+    setPendingRequestId(null);
+    setPaymentRequest(null);
+    setSelectedPaymentCard(null);
+    setPaymentStatus('loading');
+    setPaymentError(null);
+    setCurrentScreen('home');
+  };
 
   const initializeApp = async () => {
     try {
@@ -964,6 +1175,187 @@ export default function App() {
     );
   }
 
+  // Payment Approval Screen
+  if (currentScreen === 'paymentApproval') {
+    // Format currency
+    const formatAmount = (amount: number, currency: string) => {
+      return new Intl.NumberFormat('en-CA', {
+        style: 'currency',
+        currency: currency,
+      }).format(amount);
+    };
+
+    // Calculate time remaining
+    const getTimeRemaining = () => {
+      if (!paymentRequest) return '';
+      const expiresAt = new Date(paymentRequest.expiresAt);
+      const now = new Date();
+      const diff = expiresAt.getTime() - now.getTime();
+      if (diff <= 0) return 'Expired';
+      const minutes = Math.floor(diff / 60000);
+      const seconds = Math.floor((diff % 60000) / 1000);
+      return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    };
+
+    // Loading state
+    if (paymentStatus === 'loading') {
+      return (
+        <View style={[styles.container, styles.centered]}>
+          <StatusBar style="dark" />
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={styles.loadingText}>Loading payment details...</Text>
+        </View>
+      );
+    }
+
+    // Error state
+    if (paymentStatus === 'error') {
+      return (
+        <View style={styles.container}>
+          <StatusBar style="dark" />
+          <View style={styles.paymentContent}>
+            <View style={styles.paymentErrorContainer}>
+              <Text style={styles.paymentErrorIcon}>!</Text>
+              <Text style={styles.paymentErrorTitle}>Payment Error</Text>
+              <Text style={styles.paymentErrorMessage}>{paymentError}</Text>
+            </View>
+
+            <View style={styles.paymentActions}>
+              {paymentRequest?.returnUrl && (
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={() => {
+                    Linking.openURL(paymentRequest.returnUrl);
+                    handleClosePayment();
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.primaryButtonText}>Return to Store</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.outlineButton}
+                onPress={handleClosePayment}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.outlineButtonText}>Go to Wallet</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Ready / Approving state
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.paymentContent}>
+          {/* Header */}
+          <View style={styles.paymentHeader}>
+            <TouchableOpacity onPress={handleCancelPayment}>
+              <Text style={styles.paymentCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.paymentHeaderTitle}>Approve Payment</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <ScrollView style={styles.paymentScrollContent}>
+            {/* Merchant Info */}
+            <View style={styles.merchantSection}>
+              {paymentRequest?.merchantLogoUrl ? (
+                <Image
+                  source={{ uri: paymentRequest.merchantLogoUrl }}
+                  style={styles.merchantLogo}
+                />
+              ) : (
+                <View style={styles.merchantLogoPlaceholder}>
+                  <Text style={styles.merchantLogoText}>
+                    {paymentRequest?.merchantName?.charAt(0) || 'M'}
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.merchantName}>{paymentRequest?.merchantName}</Text>
+              {paymentRequest?.orderDescription && (
+                <Text style={styles.orderDescription}>{paymentRequest.orderDescription}</Text>
+              )}
+            </View>
+
+            {/* Amount */}
+            <View style={styles.amountSection}>
+              <Text style={styles.amountLabel}>Amount</Text>
+              <Text style={styles.amountValue}>
+                {paymentRequest ? formatAmount(paymentRequest.amount, paymentRequest.currency) : ''}
+              </Text>
+            </View>
+
+            {/* Time remaining */}
+            <View style={styles.timerSection}>
+              <Text style={styles.timerLabel}>Time remaining: {getTimeRemaining()}</Text>
+            </View>
+
+            {/* Card Selection */}
+            <View style={styles.cardSelectionSection}>
+              <Text style={styles.cardSelectionTitle}>Pay with</Text>
+              {paymentRequest?.cards.map((card) => {
+                const isSelected = selectedPaymentCard?.id === card.id;
+                const cardColor = card.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
+
+                return (
+                  <TouchableOpacity
+                    key={card.id}
+                    style={[
+                      styles.paymentCardOption,
+                      isSelected && styles.paymentCardOptionSelected,
+                    ]}
+                    onPress={() => setSelectedPaymentCard(card)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.paymentCardBadge, { backgroundColor: cardColor }]}>
+                      <Text style={styles.paymentCardBadgeText}>{card.cardType}</Text>
+                    </View>
+                    <View style={styles.paymentCardInfo}>
+                      <Text style={styles.paymentCardNumber}>•••• {card.lastFour}</Text>
+                      <Text style={styles.paymentCardBank}>{card.bankName}</Text>
+                    </View>
+                    <View style={styles.paymentCardCheck}>
+                      {isSelected && <Text style={styles.paymentCardCheckMark}>✓</Text>}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </ScrollView>
+
+          {/* Approve Button */}
+          <View style={styles.paymentActions}>
+            <TouchableOpacity
+              style={[
+                styles.approveButton,
+                (paymentStatus === 'approving' || !selectedPaymentCard) && styles.approveButtonDisabled,
+              ]}
+              onPress={handleApprovePayment}
+              disabled={paymentStatus === 'approving' || !selectedPaymentCard}
+              activeOpacity={0.7}
+            >
+              {paymentStatus === 'approving' ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.approveButtonText}>
+                  Approve Payment
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <Text style={styles.paymentSecurityNote}>
+              You'll be asked to authenticate with {biometricType}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   // Welcome Screen (default)
   return (
     <View style={styles.container}>
@@ -1407,5 +1799,210 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  // Payment Approval styles
+  paymentContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  paymentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  paymentHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  paymentCancelText: {
+    fontSize: 16,
+    color: '#ef4444',
+  },
+  paymentScrollContent: {
+    flex: 1,
+    paddingHorizontal: 24,
+  },
+  merchantSection: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  merchantLogo: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  merchantLogoPlaceholder: {
+    width: 80,
+    height: 80,
+    borderRadius: 16,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  merchantLogoText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#3b82f6',
+  },
+  merchantName: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  orderDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  amountSection: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  amountLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  amountValue: {
+    fontSize: 40,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  timerSection: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  timerLabel: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  cardSelectionSection: {
+    paddingVertical: 16,
+  },
+  cardSelectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 12,
+  },
+  paymentCardOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  paymentCardOptionSelected: {
+    borderColor: '#3b82f6',
+    backgroundColor: '#eff6ff',
+  },
+  paymentCardBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginRight: 12,
+  },
+  paymentCardBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  paymentCardInfo: {
+    flex: 1,
+  },
+  paymentCardNumber: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  paymentCardBank: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  paymentCardCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#3b82f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentCardCheckMark: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  paymentActions: {
+    padding: 24,
+    paddingBottom: 40,
+  },
+  approveButton: {
+    backgroundColor: '#22c55e',
+    borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  approveButtonDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  approveButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  paymentSecurityNote: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  paymentErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  paymentErrorIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#fef2f2',
+    color: '#ef4444',
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 64,
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  paymentErrorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  paymentErrorMessage: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 24,
   },
 });

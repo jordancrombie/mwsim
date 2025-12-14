@@ -11,10 +11,12 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [ ] Card nickname/label editing
 
 ### Payment Authorization
-- [ ] SSIM (Store Simulator) integration
-- [ ] QR code scanning for payment
-- [ ] Payment confirmation screen
-- [ ] Biometric authorization for payments
+- [x] Deep link handler for payment requests (`mwsim://payment/:requestId`)
+- [x] Payment approval screen with merchant info and card selection
+- [x] Biometric authorization for payments
+- [x] Cold-start auth flow (preserve requestId across login)
+- [x] SecureStore persistence for interrupted payments
+- [ ] QR code scanning for payment (Phase 2)
 - [ ] Transaction receipt display
 
 ### Transaction History
@@ -51,9 +53,9 @@ Development roadmap and planned features for the mwsim mobile wallet application
 ## Technical Improvements
 
 ### Navigation
-- [ ] Migrate to React Navigation when safe-area-context iOS 26.1 issue is resolved
+- [ ] Migrate to React Navigation (safe-area-context v5.6.2 now works)
 - [ ] Add navigation state persistence
-- [ ] Deep link routing for all screens
+- [x] Deep link routing for payment requests
 
 ### State Management
 - [ ] Migrate from useState to Zustand stores

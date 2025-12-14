@@ -68,6 +68,44 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+// Payment types
+export interface PaymentRequest {
+  requestId: string;
+  status: 'pending' | 'approved' | 'cancelled' | 'expired' | 'completed';
+  merchantName: string;
+  merchantLogoUrl?: string;
+  amount: number;
+  currency: string;
+  orderId: string;
+  orderDescription?: string;
+  returnUrl: string;
+  createdAt: string;
+  expiresAt: string;
+  cards: PaymentCard[];
+}
+
+export interface PaymentCard {
+  id: string;
+  cardType: string;
+  lastFour: string;
+  cardholderName?: string;
+  expiryMonth?: number;
+  expiryYear?: number;
+  bankName: string;
+  isDefault: boolean;
+}
+
+export interface PendingPayment {
+  requestId: string;
+  merchantName: string;
+  merchantLogoUrl?: string;
+  amount: number;
+  currency: string;
+  orderId: string;
+  createdAt: string;
+  expiresAt: string;
+}
+
 // Navigation types
 export type RootStackParamList = {
   Welcome: undefined;
@@ -79,4 +117,5 @@ export type RootStackParamList = {
   WalletHome: undefined;
   Login: undefined;
   Settings: undefined;
+  PaymentApproval: { requestId: string };
 };
