@@ -18,6 +18,7 @@
       "bundleIdentifier": "com.banksim.wsim",
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
+          "googlechrome",
           "googlechromes",
           "firefox",
           "microsoft-edge",

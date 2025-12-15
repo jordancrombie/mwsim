@@ -156,8 +156,16 @@ export async function openReturnUrl(
 
   // Try to open in the specific browser
   if (browserUrl) {
+    console.log(`[browserReturn] Constructed browser URL for ${sourceBrowser}:`, browserUrl);
+
+    // For canOpenURL check, use just the scheme (e.g., "googlechrome://")
+    // iOS requires this for URL scheme checks
+    const schemeCheckUrl = getSchemeCheckUrl(browserKey);
+    console.log(`[browserReturn] Checking if scheme is available:`, schemeCheckUrl);
+
     try {
-      const canOpen = await Linking.canOpenURL(browserUrl);
+      const canOpen = await Linking.canOpenURL(schemeCheckUrl);
+      console.log(`[browserReturn] canOpenURL(${schemeCheckUrl}):`, canOpen);
       if (canOpen) {
         console.log(`[browserReturn] Opening in ${sourceBrowser}:`, browserUrl);
         await Linking.openURL(browserUrl);
@@ -167,11 +175,34 @@ export async function openReturnUrl(
     } catch (error) {
       console.log(`[browserReturn] Error checking ${sourceBrowser}:`, error);
     }
+  } else {
+    console.log(`[browserReturn] No browser URL constructed for ${sourceBrowser} on platform ${Platform.OS}`);
   }
 
   // Fallback to default browser
   console.log('[browserReturn] Falling back to default browser:', returnUrl);
   await Linking.openURL(returnUrl);
+}
+
+/**
+ * Gets the URL to use for canOpenURL check.
+ * iOS requires checking with just the scheme, not a full URL.
+ */
+function getSchemeCheckUrl(browser: string): string {
+  switch (browser) {
+    case 'chrome':
+      return 'googlechrome://';
+    case 'firefox':
+      return 'firefox://';
+    case 'edge':
+      return 'microsoft-edge://';
+    case 'opera':
+      return 'opera://';
+    case 'brave':
+      return 'brave://';
+    default:
+      return 'https://';
+  }
 }
 
 /**
