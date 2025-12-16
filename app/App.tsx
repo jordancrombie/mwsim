@@ -18,6 +18,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import * as WebBrowser from 'expo-web-browser';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import { v4 as uuidv4 } from 'uuid';
 
 import { api } from './src/services/api';
@@ -25,7 +26,11 @@ import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
 import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
 import { getEnvironmentName, isDevelopment } from './src/config/env';
+import { SplashScreen } from './src/components/SplashScreen';
 import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
+
+// Keep the splash screen visible while we fetch resources
+ExpoSplashScreen.preventAutoHideAsync();
 
 type Screen =
   | 'loading'
@@ -77,6 +82,10 @@ export default function App() {
   const [paymentStatus, setPaymentStatus] = useState<'loading' | 'ready' | 'approving' | 'success' | 'error'>('loading');
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [sourceBrowser, setSourceBrowser] = useState<string | null>(null);
+
+  // Splash screen state
+  const [showCustomSplash, setShowCustomSplash] = useState(true);
+  const [appIsReady, setAppIsReady] = useState(false);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -341,31 +350,34 @@ export default function App() {
           setUser(summary.user);
           setCards(summary.cards || []);
           setCurrentScreen('home');
-          return;
         } catch (e) {
           // Token invalid, clear and show welcome
           await secureStorage.clearAll();
+          setCurrentScreen('welcome');
         }
+      } else {
+        // Register device if needed
+        try {
+          const resolvedDeviceName = Device.deviceName || `${Platform.OS} device`;
+          setDeviceName(resolvedDeviceName);
+          await api.registerDevice({
+            deviceId: storedDeviceId,
+            platform: Platform.OS as 'ios' | 'android',
+            deviceName: resolvedDeviceName,
+          });
+        } catch (e) {
+          // Device might already be registered, that's ok
+          console.log('Device registration:', e);
+        }
+        setCurrentScreen('welcome');
       }
-
-      // Register device if needed
-      try {
-        const resolvedDeviceName = Device.deviceName || `${Platform.OS} device`;
-        setDeviceName(resolvedDeviceName);
-        await api.registerDevice({
-          deviceId: storedDeviceId,
-          platform: Platform.OS as 'ios' | 'android',
-          deviceName: resolvedDeviceName,
-        });
-      } catch (e) {
-        // Device might already be registered, that's ok
-        console.log('Device registration:', e);
-      }
-
-      setCurrentScreen('welcome');
     } catch (e) {
       console.error('Init error:', e);
       setCurrentScreen('welcome');
+    } finally {
+      // Mark app as ready and hide native splash
+      setAppIsReady(true);
+      await ExpoSplashScreen.hideAsync();
     }
   };
 
@@ -749,8 +761,18 @@ export default function App() {
   // SCREENS
   // =====================
 
-  // Loading Screen
-  if (currentScreen === 'loading') {
+  // Custom Splash Screen - shown after native splash hides
+  if (appIsReady && showCustomSplash) {
+    return (
+      <>
+        <StatusBar style="dark" />
+        <SplashScreen onFinish={() => setShowCustomSplash(false)} />
+      </>
+    );
+  }
+
+  // Loading Screen - shown before app is ready
+  if (!appIsReady || currentScreen === 'loading') {
     return (
       <View style={[styles.container, styles.centered]}>
         <StatusBar style="dark" />
