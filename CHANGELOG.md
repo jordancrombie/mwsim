@@ -4,7 +4,7 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [Unreleased]
 
-## [1.0.0] Build 1 - 2025-12-16
+## [1.0.1] - 2025-12-16
 
 ### Added
 - Custom splash screen with Joey kangaroo logo, "Mobile Wallet Simulator" branding, and SimToolBox link
