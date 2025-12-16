@@ -1,177 +1,65 @@
 # Changelog
 
-All notable changes to the mwsim project will be documented in this file.
+All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [0.3.3] - 2025-12-15
+## [Unreleased]
 
 ### Added
-- **Environment switching via iOS Settings** - Toggle between Development and Production servers
-  - iOS Settings > mwsim > Server picker (Development / Production)
-  - Settings.bundle created via Expo config plugin
-  - Changes take effect on next app launch
-- **Environment indicator badge** - Orange badge on home screen shows current environment (dev only)
-- New `environment.ts` service for reading iOS Settings values
-- `expo-settings` package for reading NSUserDefaults
+- Custom splash screen with Joey kangaroo logo, "Mobile Wallet Simulator" branding, and SimToolBox link
+- Automatic code signing team configuration via Expo config plugin (`withSigningTeam`)
+- Environment switching via iOS Settings bundle (Development/Production toggle)
+- Settings.bundle integration for native iOS Settings app
 
 ### Changed
-- API client now initializes with environment from iOS Settings
-- Logs show which environment is being used on app startup
+- Native splash screen now uses solid blue background (#E3F2FD) to avoid animation scaling artifacts
+- Replaced unmaintained `expo-settings` with React Native's built-in `NativeModules.SettingsManager`
+
+### Fixed
+- Splash screen animation no longer shows oversized Joey during iOS launch
+- Settings.bundle now correctly appears in iOS Settings app via post-prebuild script
+- Code signing team persists across `expo prebuild --clean` operations
+
+## [1.0.0] - 2025-12-15
+
+### Added
+- Complete customer onboarding flow
+  - Account creation with email and name
+  - Email verification login flow
+  - Biometric setup (Face ID / Touch ID) with graceful fallback
+  - Device registration with unique device IDs
+  - JWT token storage and automatic refresh
+
+- Bank enrollment via OAuth
+  - Bank selection screen with available banks from wsim API
+  - OAuth enrollment via expo-web-browser (system browser)
+  - Deep link handling for callbacks (mwsim:// scheme)
+  - Automatic wallet refresh after successful enrollment
+
+- Wallet management
+  - Home screen with user greeting and card list
+  - Card display with type, last four digits, and bank info
+  - Set card as default
+  - Remove card from wallet
+  - Card details view
+  - Add more banks functionality
+
+- Payment authorization
+  - Deep link handler for payment requests (`mwsim://payment/:requestId`)
+  - Payment approval screen with merchant info and card selection
+  - Biometric authorization for payments
+  - Cold-start auth flow (preserve requestId across login)
+  - SecureStore persistence for interrupted payments
+  - Return URL with mwsim_return context parameter
+  - Browser-aware return flow (Safari and Chrome verified on iOS)
+
+- Developer tools
+  - Reset Device button for testing (generates new device ID)
+  - Debug console logging for enrollment flow
 
 ### Technical
-- Custom Expo config plugin (`withSettingsBundle.js`) generates Settings.bundle
-- Environment URLs: Dev (`wsim-dev.banksim.ca`) / Prod (`wsim.banksim.ca`)
-
----
-
-## [0.3.2] - 2025-12-15
-
-### Added
-- **Browser-aware return flow** - Users are returned to the same browser they came from
-  - New `sourceBrowser` parameter parsed from deep link
-  - Support for Chrome, Firefox, Edge, Opera, and Brave on iOS
-  - Automatic fallback to default browser if specified browser not installed
-- New `browserReturn.ts` service with browser URL scheme mappings
-- `LSApplicationQueriesSchemes` added to Info.plist for iOS URL scheme queries
-
-### Changed
-- "Return to Store" now uses browser-specific URL schemes when `sourceBrowser` is provided
-- Cold-start payment flow now preserves `sourceBrowser` across login
-
-### Technical
-- Implements SSIM team's browser-return proposal (`ssim/docs/proposals/mwsim-browser-return-proposal.md`)
-
-### Tested
-- Successfully verified browser-aware return with Safari and Chrome on iOS (2025-12-15)
-- End-to-end checkout flow working with SSIM integration
-
----
-
-## [0.3.1] - 2025-12-14
-
-### Changed
-- "Return to Store" button now appends `?mwsim_return=<requestId>` query parameter to returnUrl
-- This allows SSIM checkout page to have context about the completed payment
-- Applied to both success and error state return buttons
-- Added debug logging for returnUrl handling
-
-### Tested
-- Successfully tested full mobile payment flow in dev environment
-- End-to-end integration with WSIM, BSIM, and SSIM verified
-
----
-
-## [0.3.0] - 2025-12-13
-
-### Added
-
-#### Payment Authorization Flow
-- Deep link handler for `mwsim://payment/:requestId` - opens payment approval screen
-- Payment Approval screen with merchant info, amount, and card selection
-- Biometric authentication required before payment approval
-- Cold-start auth flow - preserves requestId across login if user not authenticated
-- SecureStore persistence for interrupted payments (recovers on app restart)
-- Error handling for expired, cancelled, and already-processed payments
-- "Return to Store" and "Go to Wallet" options after payment completion
-
-#### API Endpoints
-- `GET /api/mobile/payment/:requestId` - Get payment request details
-- `POST /api/mobile/payment/:requestId/approve` - Approve payment with card
-- `POST /api/mobile/payment/:requestId/cancel` - Cancel payment request
-- `GET /api/mobile/payment/pending` - List pending payments (for future home screen section)
-
-### Changed
-- Bundle ID changed from `com.mwsim.wallet` to `com.banksim.wsim`
-- Added Android package name `com.banksim.wsim`
-- Updated `react-native-safe-area-context` from 4.14.0 to 5.6.2 (fixes iOS build issue)
-
----
-
-## [0.2.0] - 2025-12-13
-
-### Added
-
-#### Card Management
-- Card Details screen - tap any card to view full details
-- Set Default Card - choose which card is used for payments
-- Remove Card - remove cards from wallet with confirmation dialog
-- Optimistic UI updates for instant feedback
-
-#### API Endpoints (wsim backend)
-- `POST /api/mobile/wallet/cards/:cardId/default` - Set card as default
-- `DELETE /api/mobile/wallet/cards/:cardId` - Remove card (soft delete)
-- Auto-promotion of next card to default when default card is removed
-
-### Changed
-- Card tap now navigates to details screen instead of showing alert
-- Updated API client with correct mobile endpoint paths
-
----
-
-## [0.1.0] - 2024-12-13
-
-### Added
-
-#### Authentication
-- Welcome screen with Create Account and Sign In options
-- Account creation flow with email and name input
-- Email verification login flow
-- Biometric setup screen (Face ID / Touch ID)
-- Graceful fallback when biometric endpoint returns 404
-- Device registration with unique device IDs
-- JWT token storage and automatic refresh
-
-#### Bank Enrollment
-- Bank selection screen with available banks from API
-- OAuth enrollment flow using expo-web-browser (system browser)
-- Deep link handling for OAuth callbacks (`mwsim://enrollment/callback`)
-- Success/error detection from callback URL parameters
-- Automatic wallet refresh after successful enrollment
-
-#### Wallet Management
-- Home screen with user greeting and card list
-- Card display with type (VISA/Mastercard), last four digits, and bank name
-- Default card indicator badge
-- Pull-to-refresh for wallet data
-- Empty state with "Add a Bank" call-to-action
-- "Add Another Bank" button for enrolled users
-
-#### Developer Tools
-- Reset Device button on welcome screen (generates new device ID)
-- Console logging for API calls and enrollment flow debugging
-
-#### Infrastructure
 - Expo SDK 54 with TypeScript
+- React Native New Architecture enabled
 - Axios API client with JWT interceptors
-- Secure storage using expo-secure-store
-- Biometric service using expo-local-authentication
-- Environment configuration in `src/config/env.ts`
-- Deep link URL scheme (`mwsim://`) configured in app.json
-
-### Technical Notes
-
-- Using state-based navigation instead of React Navigation for simplicity
-- OAuth flow uses system browser (Safari) instead of WebView to avoid keyboard interaction issues
-- All screens implemented in single App.tsx file for simplicity
-
-### Known Issues
-
-- Biometric setup may show "Coming Soon" if backend endpoint not deployed
-- Device ID conflicts on simulators require manual reset
-- WebView approach had keyboard issues (resolved by switching to expo-web-browser)
-
----
-
-## Future Releases
-
-### [0.4.0] - Planned
-- Transaction history
-- Push notifications
-- Offline support
-
-### [1.0.0] - Planned
-- OpenWallet Foundation support (OID4VCI, OID4VP)
-- Digital ID credentials
-- Production security hardening
+- expo-secure-store for credential storage
+- expo-local-authentication for biometrics
+- State-based navigation (iOS 26.1 compatible)
