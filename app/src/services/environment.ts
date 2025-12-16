@@ -71,8 +71,8 @@ export function getEnvironment(): Environment {
     return settings;
   }
 
-  // Default to development
-  cachedEnvironment = 'development';
+  // Default to production (dev URL doesn't exist yet)
+  cachedEnvironment = 'production';
   console.log('[Environment] Using default:', cachedEnvironment);
   return cachedEnvironment;
 }
