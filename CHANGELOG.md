@@ -5,7 +5,7 @@ All notable changes to the mwsim project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.2] - 2025-12-14
+## [0.3.2] - 2025-12-15
 
 ### Added
 - **Browser-aware return flow** - Users are returned to the same browser they came from
@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Technical
 - Implements SSIM team's browser-return proposal (`ssim/docs/proposals/mwsim-browser-return-proposal.md`)
+
+### Tested
+- Successfully verified browser-aware return with Safari and Chrome on iOS (2025-12-15)
+- End-to-end checkout flow working with SSIM integration
 
 ---
 

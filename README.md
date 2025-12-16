@@ -38,6 +38,7 @@ mwsim enables users to:
 - **Deep Link Payments** - Receive payment requests via `mwsim://payment/:requestId`
 - **Payment Approval Screen** - Review merchant, amount, and select card
 - **Biometric Confirmation** - Face ID / Touch ID required to approve payments
+- **Browser-Aware Return** - Returns user to the same browser they started from (Safari, Chrome, Firefox, Edge, etc.)
 - **Return to Store** - Seamless return to merchant checkout after approval
 
 ### Developer Tools
@@ -191,7 +192,8 @@ Configured in `app.json`:
 - [x] Card management (set default, remove)
 - [x] Payment authorization flow (deep link, approval screen, biometric)
 - [x] Return URL context parameter for SSIM integration
-- [x] End-to-end flow tested in dev environment (2025-12-14)
+- [x] Browser-aware return flow (Safari, Chrome, Firefox, Edge, Brave)
+- [x] End-to-end checkout flow tested with Safari and Chrome (2025-12-15)
 - [ ] Transaction history
 - [ ] Push notifications
 
