@@ -4,17 +4,22 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [Unreleased]
 
+## [1.0.0] Build 1 - 2025-12-16
+
 ### Added
 - Custom splash screen with Joey kangaroo logo, "Mobile Wallet Simulator" branding, and SimToolBox link
 - Automatic code signing team configuration via Expo config plugin (`withSigningTeam`)
 - Environment switching via iOS Settings bundle (Development/Production toggle)
 - Settings.bundle integration for native iOS Settings app
+- TestFlight build configuration with proper versioning
 
 ### Changed
+- Default environment changed from Development to Production
 - Native splash screen now uses solid blue background (#E3F2FD) to avoid animation scaling artifacts
 - Replaced unmaintained `expo-settings` with React Native's built-in `NativeModules.SettingsManager`
 
 ### Fixed
+- Network connectivity on physical devices (dev API URL doesn't exist)
 - Splash screen animation no longer shows oversized Joey during iOS launch
 - Settings.bundle now correctly appears in iOS Settings app via post-prebuild script
 - Code signing team persists across `expo prebuild --clean` operations

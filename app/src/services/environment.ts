@@ -57,7 +57,7 @@ function getSettingsValue(key: string): string | null {
 
 /**
  * Gets the current environment from iOS Settings.
- * Falls back to 'development' if not set or on non-iOS platforms.
+ * Falls back to 'production' if not set or on non-iOS platforms.
  */
 export function getEnvironment(): Environment {
   if (cachedEnvironment) {
