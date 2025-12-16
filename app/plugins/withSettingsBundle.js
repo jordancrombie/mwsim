@@ -4,7 +4,7 @@
  * This creates a Settings.bundle that appears in iOS Settings app,
  * allowing users to switch between Development and Production environments.
  */
-const { withXcodeProject, withInfoPlist } = require('@expo/config-plugins');
+const { withXcodeProject } = require('@expo/config-plugins');
 const fs = require('fs');
 const path = require('path');
 
@@ -117,90 +117,67 @@ function createSettingsBundle(iosPath) {
 }
 
 /**
- * Add Settings.bundle to Xcode project
- */
-function addSettingsBundleToProject(project, settingsBundlePath) {
-  const projectName = project.getFirstProject().firstProject.mainGroup;
-
-  // Find or create the Resources group
-  let resourcesGroup = project.pbxGroupByName('Resources');
-  if (!resourcesGroup) {
-    // Create Resources group if it doesn't exist
-    resourcesGroup = project.addPbxGroup([], 'Resources', 'Resources');
-    const mainGroup = project.getPBXGroupByKey(projectName);
-    if (mainGroup && mainGroup.children) {
-      mainGroup.children.push({
-        value: resourcesGroup.uuid,
-        comment: 'Resources'
-      });
-    }
-  }
-
-  // Add Settings.bundle as a folder reference
-  const settingsBundle = project.addFile(
-    'Settings.bundle',
-    resourcesGroup.uuid,
-    {
-      lastKnownFileType: 'wrapper.plug-in',
-      sourceTree: '"<group>"',
-    }
-  );
-
-  if (settingsBundle) {
-    // Add to Resources build phase
-    const buildPhases = project.pbxResourcesBuildPhaseObj();
-    if (buildPhases) {
-      project.addToPbxResourcesBuildPhase(settingsBundle);
-    }
-    console.log('[withSettingsBundle] Added Settings.bundle to Xcode project');
-  }
-
-  return project;
-}
-
-/**
  * Main plugin function
  */
 const withSettingsBundle = (config) => {
-  // Add Settings.bundle to Xcode project
   config = withXcodeProject(config, async (config) => {
-    const iosPath = path.join(config.modRequest.platformProjectRoot);
-
-    // Create Settings.bundle
-    createSettingsBundle(iosPath);
-
-    // Add to Xcode project
+    const iosPath = config.modRequest.platformProjectRoot;
     const project = config.modResults;
 
-    // Check if Settings.bundle is already added
-    const existingFile = project.getFirstProject().firstProject.mainGroup;
-    const pbxGroup = project.getPBXGroupByKey(existingFile);
+    // Create Settings.bundle files
+    createSettingsBundle(iosPath);
 
-    let alreadyAdded = false;
-    if (pbxGroup && pbxGroup.children) {
-      alreadyAdded = pbxGroup.children.some(
-        (child) => child.comment === 'Settings.bundle'
-      );
+    // Get the main group and target
+    const mainGroup = project.getFirstProject().firstProject.mainGroup;
+    const targetUuid = project.getFirstTarget().uuid;
+
+    // Generate a unique UUID for the file reference
+    const fileRefUuid = project.generateUuid();
+    const buildFileUuid = project.generateUuid();
+
+    // Check if Settings.bundle already exists in the project
+    const existingFile = project.pbxFileReferenceSection()['Settings.bundle'];
+    if (existingFile) {
+      console.log('[withSettingsBundle] Settings.bundle already exists in project');
+      return config;
     }
 
-    if (!alreadyAdded) {
-      // Add Settings.bundle reference
-      const file = project.addFile(
-        'Settings.bundle',
-        existingFile,
-        {
-          lastKnownFileType: 'wrapper.plug-in',
-          sourceTree: '"<group>"',
-        }
-      );
+    // Add file reference to PBXFileReference section
+    project.addToPbxFileReferenceSection({
+      uuid: fileRefUuid,
+      basename: 'Settings.bundle',
+      lastKnownFileType: 'wrapper.plug-in',
+      path: 'Settings.bundle',
+      sourceTree: '"<group>"',
+      fileEncoding: undefined,
+      explicitFileType: undefined,
+      includeInIndex: 0,
+    });
 
-      if (file) {
-        project.addToPbxResourcesBuildPhase(file);
-        console.log('[withSettingsBundle] Settings.bundle added to project');
-      }
+    // Add to main group
+    project.addToPbxGroup(fileRefUuid, 'Settings.bundle', mainGroup);
+
+    // Add to PBXBuildFile section
+    project.addToPbxBuildFileSection({
+      uuid: buildFileUuid,
+      fileRef: fileRefUuid,
+      basename: 'Settings.bundle',
+      group: 'Resources',
+    });
+
+    // Add to Resources build phase
+    const resourcesBuildPhase = project.pbxResourcesBuildPhaseObj(targetUuid);
+    if (resourcesBuildPhase && resourcesBuildPhase.files) {
+      resourcesBuildPhase.files.push({
+        value: buildFileUuid,
+        comment: 'Settings.bundle in Resources',
+      });
+      console.log('[withSettingsBundle] Added Settings.bundle to Resources build phase');
     } else {
-      console.log('[withSettingsBundle] Settings.bundle already in project');
+      console.log('[withSettingsBundle] Warning: Could not find Resources build phase');
     }
+
+    console.log('[withSettingsBundle] Successfully added Settings.bundle to project');
 
     return config;
   });
