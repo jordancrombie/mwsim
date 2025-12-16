@@ -29,6 +29,9 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [ ] Filter by date/card/merchant
 - [ ] Search transactions
 
+### UI Polish
+- [ ] Custom splash screen - preload Joey image before showing text (avoid flash)
+
 ### Push Notifications
 - [ ] Expo Push Notifications setup
 - [ ] Payment request notifications
