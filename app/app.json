@@ -40,7 +40,8 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "./plugins/withSettingsBundle"
+      "./plugins/withSettingsBundle",
+      "./plugins/withSigningTeam"
     ]
   }
 }
