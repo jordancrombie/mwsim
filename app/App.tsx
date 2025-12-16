@@ -24,6 +24,7 @@ import { api } from './src/services/api';
 import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
 import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
+import { getEnvironmentName, isDevelopment } from './src/config/env';
 import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
 
 type Screen =
@@ -1069,6 +1070,12 @@ export default function App() {
       <View style={styles.container}>
           <StatusBar style="dark" />
           <View style={styles.homeContent}>
+            {/* Environment indicator */}
+            {isDevelopment() && (
+              <View style={styles.envBadge}>
+                <Text style={styles.envBadgeText}>{getEnvironmentName()}</Text>
+              </View>
+            )}
             <View style={styles.homeHeader}>
               <View>
                 <Text style={styles.homeGreeting}>Welcome back,</Text>
@@ -1496,6 +1503,22 @@ const styles = StyleSheet.create({
   centered: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  envBadge: {
+    position: 'absolute',
+    top: 50,
+    right: 16,
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    zIndex: 100,
+  },
+  envBadgeText: {
+    color: '#ffffff',
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'uppercase',
   },
   content: {
     flex: 1,

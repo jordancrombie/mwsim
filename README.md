@@ -42,6 +42,8 @@ mwsim enables users to:
 - **Return to Store** - Seamless return to merchant checkout after approval
 
 ### Developer Tools
+- **Environment Switching** - Toggle between Dev/Production servers in iOS Settings
+- **Environment Indicator** - Orange badge shows current environment on home screen
 - **Reset Device** - Generate new device ID for testing (dev mode)
 - **Debug Logging** - Console logs for enrollment and API debugging
 

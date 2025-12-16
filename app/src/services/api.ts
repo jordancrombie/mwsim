@@ -1,5 +1,5 @@
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { config } from '../config/env';
+import { getConfig, getEnvironmentName } from '../config/env';
 import { secureStorage } from './secureStorage';
 import type {
   User,
@@ -13,8 +13,11 @@ import type {
   PendingPayment,
 } from '../types';
 
-// Create axios instance
+// Create axios instance with current environment config
 const createApiClient = (): AxiosInstance => {
+  const config = getConfig();
+  console.log(`[API] Initializing with ${getEnvironmentName()} environment: ${config.apiUrl}`);
+
   const client = axios.create({
     baseURL: config.apiUrl,
     timeout: config.apiTimeout,
