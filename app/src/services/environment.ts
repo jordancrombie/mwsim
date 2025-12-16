@@ -6,8 +6,7 @@
  *
  * Users can switch environments in iOS Settings > mwsim > Server
  */
-import Settings from 'expo-settings';
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
 
 export type Environment = 'development' | 'production';
 
@@ -34,6 +33,29 @@ const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
 let cachedEnvironment: Environment | null = null;
 
 /**
+ * Reads a value from iOS UserDefaults (where Settings.bundle values are stored).
+ * Uses React Native's Settings module on iOS.
+ */
+function getSettingsValue(key: string): string | null {
+  if (Platform.OS !== 'ios') {
+    return null;
+  }
+
+  try {
+    // React Native's SettingsManager reads from NSUserDefaults
+    const { SettingsManager } = NativeModules;
+    if (SettingsManager && SettingsManager.settings) {
+      const value = SettingsManager.settings[key];
+      return value ?? null;
+    }
+  } catch (error) {
+    console.log('[Environment] Error reading settings:', error);
+  }
+
+  return null;
+}
+
+/**
  * Gets the current environment from iOS Settings.
  * Falls back to 'development' if not set or on non-iOS platforms.
  */
@@ -42,18 +64,11 @@ export function getEnvironment(): Environment {
     return cachedEnvironment;
   }
 
-  if (Platform.OS === 'ios') {
-    try {
-      // expo-settings reads from NSUserDefaults which is where Settings.bundle values are stored
-      const settings = Settings.get('environment');
-      if (settings === 'production' || settings === 'development') {
-        cachedEnvironment = settings;
-        console.log('[Environment] Loaded from iOS Settings:', settings);
-        return settings;
-      }
-    } catch (error) {
-      console.log('[Environment] Error reading settings:', error);
-    }
+  const settings = getSettingsValue('environment');
+  if (settings === 'production' || settings === 'development') {
+    cachedEnvironment = settings;
+    console.log('[Environment] Loaded from iOS Settings:', settings);
+    return settings;
   }
 
   // Default to development
