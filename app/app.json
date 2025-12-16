@@ -16,6 +16,7 @@
       "bundleIdentifier": "com.banksim.wsim",
       "buildNumber": "1",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": [
           "googlechrome",
           "googlechromes",
