@@ -19,6 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoSplashScreen from 'expo-splash-screen';
+import { BarCodeScanner } from 'expo-barcode-scanner';
 import { v4 as uuidv4 } from 'uuid';
 
 import { api } from './src/services/api';
@@ -42,7 +43,8 @@ type Screen =
   | 'bankSelection'
   | 'home'
   | 'cardDetails'
-  | 'paymentApproval';
+  | 'paymentApproval'
+  | 'qrScanner';
 
 export default function App() {
   // Navigation state
@@ -86,6 +88,11 @@ export default function App() {
   // Splash screen state
   const [showCustomSplash, setShowCustomSplash] = useState(true);
   const [appIsReady, setAppIsReady] = useState(false);
+
+  // QR Scanner state
+  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [qrScanned, setQrScanned] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -719,6 +726,90 @@ export default function App() {
     ]);
   };
 
+  // QR Scanner functions
+  const handleOpenQrScanner = async () => {
+    // Request camera permission
+    const { status } = await BarCodeScanner.requestPermissionsAsync();
+    setHasCameraPermission(status === 'granted');
+
+    if (status === 'granted') {
+      setQrScanned(false);
+      setTorchOn(false);
+      setCurrentScreen('qrScanner');
+    } else {
+      Alert.alert(
+        'Camera Permission Required',
+        'Please enable camera access in Settings to scan QR codes.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+    }
+  };
+
+  const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
+    if (qrScanned) return; // Prevent multiple scans
+
+    console.log('[QR Scanner] Scanned:', data);
+
+    // Validate the URL format
+    // Expected formats:
+    // - https://wsim.banksim.ca/pay/{requestId}
+    // - mwsim://payment/{requestId}
+
+    let requestId: string | null = null;
+
+    // Try Universal Link format: https://wsim.banksim.ca/pay/{requestId}
+    const universalLinkMatch = data.match(/https:\/\/wsim\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+    if (universalLinkMatch) {
+      requestId = universalLinkMatch[1];
+    }
+
+    // Try deep link format: mwsim://payment/{requestId}
+    if (!requestId) {
+      const deepLinkMatch = data.match(/mwsim:\/\/payment\/([a-zA-Z0-9_-]+)/);
+      if (deepLinkMatch) {
+        requestId = deepLinkMatch[1];
+      }
+    }
+
+    if (!requestId) {
+      // Not a valid payment QR code
+      Alert.alert(
+        'Invalid QR Code',
+        'This doesn\'t appear to be a valid payment QR code. Please scan a QR code from a merchant checkout.',
+        [
+          { text: 'Try Again', onPress: () => setQrScanned(false) },
+          { text: 'Cancel', onPress: () => setCurrentScreen('home'), style: 'cancel' },
+        ]
+      );
+      setQrScanned(true);
+      return;
+    }
+
+    // Valid payment QR code found
+    setQrScanned(true);
+    console.log('[QR Scanner] Payment request ID:', requestId);
+
+    // Store for cold start recovery (same as deep link flow)
+    await secureStorage.set('pendingPaymentRequestId', requestId);
+    setPendingRequestId(requestId);
+
+    // Source is QR scan (not a browser)
+    setSourceBrowser(null);
+    await secureStorage.remove('pendingPaymentSourceBrowser');
+
+    // Navigate to payment approval
+    await loadPaymentRequest(requestId);
+  };
+
+  const handleCloseQrScanner = () => {
+    setQrScanned(false);
+    setTorchOn(false);
+    setCurrentScreen('home');
+  };
+
   const handleResetDevice = async () => {
     Alert.alert(
       'Reset Device',
@@ -1086,6 +1177,87 @@ export default function App() {
     );
   }
 
+  // QR Scanner Screen
+  if (currentScreen === 'qrScanner') {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.qrScannerContainer}>
+          {/* Header */}
+          <View style={styles.qrScannerHeader}>
+            <TouchableOpacity onPress={handleCloseQrScanner} style={styles.qrScannerBackButton}>
+              <Text style={styles.qrScannerBackText}>← Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.qrScannerTitle}>Scan QR Code</Text>
+            <View style={{ width: 70 }} />
+          </View>
+
+          {/* Camera View */}
+          <View style={styles.qrScannerCameraContainer}>
+            {hasCameraPermission === false ? (
+              <View style={styles.qrScannerPermissionDenied}>
+                <Text style={styles.qrScannerPermissionIcon}>📷</Text>
+                <Text style={styles.qrScannerPermissionTitle}>Camera Access Required</Text>
+                <Text style={styles.qrScannerPermissionText}>
+                  Please enable camera access in Settings to scan payment QR codes.
+                </Text>
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={() => Linking.openSettings()}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.primaryButtonText}>Open Settings</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <BarCodeScanner
+                  onBarCodeScanned={qrScanned ? undefined : handleBarCodeScanned}
+                  style={StyleSheet.absoluteFillObject}
+                  barCodeTypes={[BarCodeScanner.Constants.BarCodeType.qr]}
+                />
+
+                {/* Scanning Frame Overlay */}
+                <View style={styles.qrScannerOverlay}>
+                  <View style={styles.qrScannerOverlayTop} />
+                  <View style={styles.qrScannerOverlayMiddle}>
+                    <View style={styles.qrScannerOverlaySide} />
+                    <View style={styles.qrScannerFrame}>
+                      {/* Corner markers */}
+                      <View style={[styles.qrCorner, styles.qrCornerTopLeft]} />
+                      <View style={[styles.qrCorner, styles.qrCornerTopRight]} />
+                      <View style={[styles.qrCorner, styles.qrCornerBottomLeft]} />
+                      <View style={[styles.qrCorner, styles.qrCornerBottomRight]} />
+                    </View>
+                    <View style={styles.qrScannerOverlaySide} />
+                  </View>
+                  <View style={styles.qrScannerOverlayBottom} />
+                </View>
+
+                {/* Instructions */}
+                <View style={styles.qrScannerInstructions}>
+                  <Text style={styles.qrScannerInstructionsText}>
+                    Point your camera at a payment QR code
+                  </Text>
+                </View>
+
+                {/* Torch Toggle */}
+                <TouchableOpacity
+                  style={styles.qrTorchButton}
+                  onPress={() => setTorchOn(!torchOn)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.qrTorchIcon}>{torchOn ? '🔦' : '💡'}</Text>
+                  <Text style={styles.qrTorchText}>{torchOn ? 'Light On' : 'Light Off'}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
   // Home Screen
   if (currentScreen === 'home') {
     return (
@@ -1171,6 +1343,15 @@ export default function App() {
                     activeOpacity={0.7}
                   >
                     <Text style={styles.outlineButtonText}>+ Add Another Bank</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.qrScanButton, { marginTop: 12 }]}
+                    onPress={handleOpenQrScanner}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.qrScanButtonIcon}>📷</Text>
+                    <Text style={styles.qrScanButtonText}>Scan QR Code to Pay</Text>
                   </TouchableOpacity>
                 </>
               )}
@@ -2124,5 +2305,172 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 24,
+  },
+  // QR Scanner styles
+  qrScanButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+  },
+  qrScanButtonIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  qrScanButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  qrScannerContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  qrScannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    zIndex: 10,
+  },
+  qrScannerBackButton: {
+    padding: 8,
+  },
+  qrScannerBackText: {
+    color: '#ffffff',
+    fontSize: 16,
+  },
+  qrScannerTitle: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  qrScannerCameraContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  qrScannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qrScannerOverlayTop: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  qrScannerOverlayMiddle: {
+    flexDirection: 'row',
+    height: 280,
+  },
+  qrScannerOverlaySide: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  qrScannerOverlayBottom: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  qrScannerFrame: {
+    width: 280,
+    height: 280,
+    position: 'relative',
+  },
+  qrCorner: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderColor: '#3b82f6',
+  },
+  qrCornerTopLeft: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 4,
+    borderLeftWidth: 4,
+  },
+  qrCornerTopRight: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 4,
+    borderRightWidth: 4,
+  },
+  qrCornerBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
+  },
+  qrCornerBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
+  },
+  qrScannerInstructions: {
+    position: 'absolute',
+    bottom: 160,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  qrScannerInstructionsText: {
+    color: '#ffffff',
+    fontSize: 16,
+    textAlign: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  qrTorchButton: {
+    position: 'absolute',
+    bottom: 80,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 25,
+  },
+  qrTorchIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  qrTorchText: {
+    color: '#ffffff',
+    fontSize: 14,
+  },
+  qrScannerPermissionDenied: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#111827',
+    paddingHorizontal: 32,
+  },
+  qrScannerPermissionIcon: {
+    fontSize: 64,
+    marginBottom: 24,
+  },
+  qrScannerPermissionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  qrScannerPermissionText: {
+    fontSize: 16,
+    color: '#9ca3af',
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: 32,
   },
 });

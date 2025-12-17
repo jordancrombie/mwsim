@@ -4,6 +4,21 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [Unreleased]
 
+### Added
+- QR Code payment scanner for merchant checkout
+  - New "Scan QR Code to Pay" button on home screen
+  - Camera-based QR scanner with scanning frame overlay and corner markers
+  - Torch toggle button for low-light scanning
+  - Support for Universal Link format (`https://wsim.banksim.ca/pay/{requestId}`)
+  - Support for Deep Link format (`mwsim://payment/{requestId}`)
+  - Camera permission handling with Settings redirect
+  - Invalid QR code detection with user-friendly error messages
+  - Navigation to existing payment approval flow on successful scan
+
+### Technical
+- Added `expo-barcode-scanner` dependency for QR scanning
+- Added `NSCameraUsageDescription` to Info.plist for camera permission
+
 ## [1.0.1] - 2025-12-16
 
 ### Added

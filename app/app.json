@@ -17,6 +17,7 @@
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes",
         "LSApplicationQueriesSchemes": [
           "googlechrome",
           "googlechromes",
