@@ -19,7 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import { CameraView } from 'expo-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { v4 as uuidv4 } from 'uuid';
 
 import { api } from './src/services/api';
@@ -90,7 +90,7 @@ export default function App() {
   const [appIsReady, setAppIsReady] = useState(false);
 
   // QR Scanner state
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [qrScanned, setQrScanned] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
 
@@ -728,11 +728,10 @@ export default function App() {
 
   // QR Scanner functions
   const handleOpenQrScanner = async () => {
-    // Request camera permission using expo-camera
-    const { status } = await CameraView.requestCameraPermissionsAsync();
-    setHasCameraPermission(status === 'granted');
+    // Request camera permission using expo-camera hook
+    const result = await requestCameraPermission();
 
-    if (status === 'granted') {
+    if (result.granted) {
       setQrScanned(false);
       setTorchOn(false);
       setCurrentScreen('qrScanner');
@@ -1194,7 +1193,7 @@ export default function App() {
 
           {/* Camera View */}
           <View style={styles.qrScannerCameraContainer}>
-            {hasCameraPermission === false ? (
+            {cameraPermission?.granted === false ? (
               <View style={styles.qrScannerPermissionDenied}>
                 <Text style={styles.qrScannerPermissionIcon}>📷</Text>
                 <Text style={styles.qrScannerPermissionTitle}>Camera Access Required</Text>
