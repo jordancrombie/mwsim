@@ -16,7 +16,7 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - Navigation to existing payment approval flow on successful scan
 
 ### Technical
-- Added `expo-barcode-scanner` dependency for QR scanning
+- Added `expo-camera` dependency for QR scanning (replaces deprecated expo-barcode-scanner)
 - Added `NSCameraUsageDescription` to Info.plist for camera permission
 
 ## [1.0.1] - 2025-12-16

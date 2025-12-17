@@ -19,7 +19,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { CameraView } from 'expo-camera';
 import { v4 as uuidv4 } from 'uuid';
 
 import { api } from './src/services/api';
@@ -728,8 +728,8 @@ export default function App() {
 
   // QR Scanner functions
   const handleOpenQrScanner = async () => {
-    // Request camera permission
-    const { status } = await BarCodeScanner.requestPermissionsAsync();
+    // Request camera permission using expo-camera
+    const { status } = await CameraView.requestCameraPermissionsAsync();
     setHasCameraPermission(status === 'granted');
 
     if (status === 'granted') {
@@ -1211,10 +1211,11 @@ export default function App() {
               </View>
             ) : (
               <>
-                <BarCodeScanner
-                  onBarCodeScanned={qrScanned ? undefined : handleBarCodeScanned}
+                <CameraView
+                  onBarcodeScanned={qrScanned ? undefined : handleBarCodeScanned}
                   style={StyleSheet.absoluteFillObject}
-                  barCodeTypes={[BarCodeScanner.Constants.BarCodeType.qr]}
+                  barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                  enableTorch={torchOn}
                 />
 
                 {/* Scanning Frame Overlay */}
