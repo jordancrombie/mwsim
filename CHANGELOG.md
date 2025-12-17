@@ -2,7 +2,7 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-## [Unreleased]
+## [1.1.0] - 2025-12-17
 
 ### Added
 - QR Code payment scanner for merchant checkout
