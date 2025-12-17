@@ -15,8 +15,11 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - Invalid QR code detection with user-friendly error messages
   - Navigation to existing payment approval flow on successful scan
 
+### Fixed
+- Camera permission not appearing in iOS Settings (added expo-camera plugin for native code generation)
+
 ### Technical
-- Added `expo-camera` dependency for QR scanning (replaces deprecated expo-barcode-scanner)
+- Added `expo-camera` dependency and plugin for QR scanning (replaces deprecated expo-barcode-scanner)
 - Added `NSCameraUsageDescription` to Info.plist for camera permission
 
 ## [1.0.1] - 2025-12-16

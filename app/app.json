@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.banksim.wsim",
-      "buildNumber": "3",
+      "buildNumber": "4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes",
@@ -41,6 +41,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-camera",
       "./plugins/withSettingsBundle",
       "./plugins/withSigningTeam"
     ]
