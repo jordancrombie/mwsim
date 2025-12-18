@@ -5,8 +5,10 @@
  * the appropriate API URLs for Development or Production environments.
  *
  * Users can switch environments in iOS Settings > mwsim > Server
+ *
+ * Note: Settings.bundle defaults are registered in AppDelegate via withSettingsDefaults plugin.
  */
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform, Settings } from 'react-native';
 
 export type Environment = 'development' | 'production';
 
@@ -34,18 +36,31 @@ let cachedEnvironment: Environment | null = null;
 
 /**
  * Reads a value from iOS UserDefaults (where Settings.bundle values are stored).
- * Uses React Native's Settings module on iOS.
+ * Defaults are registered in AppDelegate via withSettingsDefaults plugin.
  */
 function getSettingsValue(key: string): string | null {
   if (Platform.OS !== 'ios') {
+    console.log('[Environment] Not iOS, returning null');
     return null;
   }
 
   try {
-    // React Native's SettingsManager reads from NSUserDefaults
+    // Method 1: Try React Native's Settings.get() API
+    const settingsValue = Settings.get(key);
+    console.log(`[Environment] Settings.get("${key}"):`, settingsValue, `(type: ${typeof settingsValue})`);
+
+    if (settingsValue !== null && settingsValue !== undefined) {
+      return String(settingsValue);
+    }
+
+    // Method 2: Fallback to NativeModules.SettingsManager (snapshot at startup)
     const { SettingsManager } = NativeModules;
+    console.log('[Environment] SettingsManager exists:', !!SettingsManager);
+    console.log('[Environment] SettingsManager.settings exists:', !!(SettingsManager?.settings));
+
     if (SettingsManager && SettingsManager.settings) {
       const value = SettingsManager.settings[key];
+      console.log(`[Environment] SettingsManager value for "${key}":`, value, `(type: ${typeof value})`);
       return value ?? null;
     }
   } catch (error) {
@@ -127,4 +142,38 @@ export function isProduction(): boolean {
  */
 export function isDevelopment(): boolean {
   return getEnvironment() === 'development';
+}
+
+/**
+ * Gets debug information about environment settings.
+ * Useful for troubleshooting Settings.bundle issues.
+ */
+export function getEnvironmentDebugInfo(): string {
+  if (Platform.OS !== 'ios') {
+    return 'Not iOS - Settings.bundle not available';
+  }
+
+  const lines: string[] = [];
+
+  try {
+    // Try Settings.get()
+    const settingsValue = Settings.get('environment');
+    lines.push(`Settings.get: ${JSON.stringify(settingsValue)}`);
+
+    // Try SettingsManager
+    const { SettingsManager } = NativeModules;
+    lines.push(`SettingsManager: ${!!SettingsManager}`);
+    lines.push(`settings obj: ${!!(SettingsManager?.settings)}`);
+
+    if (SettingsManager?.settings) {
+      lines.push(`env value: ${JSON.stringify(SettingsManager.settings.environment)}`);
+    }
+
+    lines.push(`Cached: ${cachedEnvironment}`);
+    lines.push(`Active: ${getEnvironment()}`);
+  } catch (error: any) {
+    lines.push(`Error: ${error.message}`);
+  }
+
+  return lines.join('\n');
 }
