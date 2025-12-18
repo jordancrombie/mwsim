@@ -35,7 +35,7 @@ const ROOT_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
             <key>Key</key>
             <string>environment</string>
             <key>DefaultValue</key>
-            <string>development</string>
+            <string>production</string>
             <key>Titles</key>
             <array>
                 <string>Development</string>
@@ -117,6 +117,27 @@ function createSettingsBundle(iosPath) {
 }
 
 /**
+ * Check if Settings.bundle is already in the project by scanning all file references
+ */
+function hasSettingsBundle(project) {
+  const fileRefs = project.pbxFileReferenceSection();
+  for (const key of Object.keys(fileRefs)) {
+    const ref = fileRefs[key];
+    if (ref && typeof ref === 'object' && ref.path === 'Settings.bundle') {
+      return key; // Return the UUID if found
+    }
+  }
+  return null;
+}
+
+/**
+ * Generate a simple UUID-like string
+ */
+function generateUuid() {
+  return 'SETTINGS' + Math.random().toString(36).substr(2, 16).toUpperCase();
+}
+
+/**
  * Main plugin function
  */
 const withSettingsBundle = (config) => {
@@ -127,45 +148,55 @@ const withSettingsBundle = (config) => {
     // Create Settings.bundle files
     createSettingsBundle(iosPath);
 
-    // Get the main group and target
-    const mainGroup = project.getFirstProject().firstProject.mainGroup;
-    const targetUuid = project.getFirstTarget().uuid;
-
-    // Generate a unique UUID for the file reference
-    const fileRefUuid = project.generateUuid();
-    const buildFileUuid = project.generateUuid();
-
     // Check if Settings.bundle already exists in the project
-    const existingFile = project.pbxFileReferenceSection()['Settings.bundle'];
-    if (existingFile) {
-      console.log('[withSettingsBundle] Settings.bundle already exists in project');
+    const existingUuid = hasSettingsBundle(project);
+    if (existingUuid) {
+      console.log('[withSettingsBundle] Settings.bundle already exists in project with UUID:', existingUuid);
       return config;
     }
 
-    // Add file reference to PBXFileReference section
-    project.addToPbxFileReferenceSection({
-      uuid: fileRefUuid,
-      basename: 'Settings.bundle',
+    // Generate UUIDs for the file reference and build file
+    const fileRefUuid = project.generateUuid();
+    const buildFileUuid = project.generateUuid();
+
+    // Get the main group UUID and first target UUID
+    const projectObj = project.getFirstProject().firstProject;
+    const mainGroupUuid = projectObj.mainGroup;
+    const targetUuid = project.getFirstTarget().uuid;
+
+    // 1. Add to PBXFileReference section
+    const pbxFileRefSection = project.pbxFileReferenceSection();
+    pbxFileRefSection[fileRefUuid] = {
+      isa: 'PBXFileReference',
       lastKnownFileType: 'wrapper.plug-in',
       path: 'Settings.bundle',
       sourceTree: '"<group>"',
-      fileEncoding: undefined,
-      explicitFileType: undefined,
-      includeInIndex: 0,
-    });
+    };
+    pbxFileRefSection[fileRefUuid + '_comment'] = 'Settings.bundle';
+    console.log('[withSettingsBundle] Added file reference with UUID:', fileRefUuid);
 
-    // Add to main group
-    project.addToPbxGroup(fileRefUuid, 'Settings.bundle', mainGroup);
+    // 2. Add to main PBXGroup
+    const pbxGroupSection = project.pbxGroupByName(projectObj.projectName) ||
+                            project.getPBXGroupByKey(mainGroupUuid);
+    if (pbxGroupSection && pbxGroupSection.children) {
+      pbxGroupSection.children.push({
+        value: fileRefUuid,
+        comment: 'Settings.bundle',
+      });
+      console.log('[withSettingsBundle] Added to main group');
+    }
 
-    // Add to PBXBuildFile section
-    project.addToPbxBuildFileSection({
-      uuid: buildFileUuid,
+    // 3. Add to PBXBuildFile section
+    const pbxBuildFileSection = project.pbxBuildFileSection();
+    pbxBuildFileSection[buildFileUuid] = {
+      isa: 'PBXBuildFile',
       fileRef: fileRefUuid,
-      basename: 'Settings.bundle',
-      group: 'Resources',
-    });
+      fileRef_comment: 'Settings.bundle',
+    };
+    pbxBuildFileSection[buildFileUuid + '_comment'] = 'Settings.bundle in Resources';
+    console.log('[withSettingsBundle] Added build file with UUID:', buildFileUuid);
 
-    // Add to Resources build phase
+    // 4. Add to Resources build phase
     const resourcesBuildPhase = project.pbxResourcesBuildPhaseObj(targetUuid);
     if (resourcesBuildPhase && resourcesBuildPhase.files) {
       resourcesBuildPhase.files.push({

@@ -10,7 +10,7 @@
 import { getApiUrl, getAuthUrl, getEnvironmentName } from '../services/environment';
 
 // Re-export environment functions for convenience
-export { getEnvironment, getEnvironmentName, isProduction, isDevelopment, clearEnvironmentCache } from '../services/environment';
+export { getEnvironment, getEnvironmentName, isProduction, isDevelopment, clearEnvironmentCache, getEnvironmentDebugInfo } from '../services/environment';
 
 /**
  * Get the current configuration.
