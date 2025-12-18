@@ -41,11 +41,12 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - @testing-library/react-native v13.3.3 for component testing
   - @testing-library/jest-native v5.4.3 for enhanced matchers
 - Test scripts: `npm test`, `npm run test:watch`, `npm run test:coverage`
-- Initial test coverage for core services:
+- Test coverage for core services (85 tests total):
+  - `api.ts` - 94% coverage (38 tests) - auth, wallet, enrollment, payment endpoints
   - `secureStorage.ts` - 100% coverage (27 tests)
   - `environment.ts` - 58% coverage (17 tests)
   - `withSettingsDefaults.js` plugin - 100% coverage (3 tests)
-- Jest configuration with Expo-specific mocks for expo-secure-store, expo-local-authentication, expo-device, expo-web-browser, and expo-camera
+- Jest configuration with Expo-specific mocks for axios, expo-secure-store, expo-local-authentication, expo-device, expo-web-browser, and expo-camera
 
 ## [1.0.1] - 2025-12-16
 
