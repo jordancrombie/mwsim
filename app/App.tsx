@@ -26,7 +26,7 @@ import { api } from './src/services/api';
 import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
 import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
-import { getEnvironmentName, isDevelopment } from './src/config/env';
+import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './src/config/env';
 import { SplashScreen } from './src/components/SplashScreen';
 import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
 
@@ -1265,12 +1265,18 @@ export default function App() {
       <View style={styles.container}>
           <StatusBar style="dark" />
           <View style={styles.homeContent}>
-            {/* Environment indicator */}
-            {isDevelopment() && (
-              <View style={styles.envBadge}>
-                <Text style={styles.envBadgeText}>{getEnvironmentName()}</Text>
-              </View>
-            )}
+            {/* Environment indicator - always visible for debugging */}
+            {/* Long-press to show debug info */}
+            <TouchableOpacity
+              style={[styles.envBadge, isDevelopment() && styles.envBadgeDev]}
+              onLongPress={() => {
+                const debugInfo = getEnvironmentDebugInfo();
+                Alert.alert('Environment Debug Info', debugInfo);
+              }}
+              delayLongPress={500}
+            >
+              <Text style={styles.envBadgeText}>{getEnvironmentName()}</Text>
+            </TouchableOpacity>
             <View style={styles.homeHeader}>
               <View>
                 <Text style={styles.homeGreeting}>Welcome back,</Text>
@@ -1712,11 +1718,14 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 50,
     right: 16,
-    backgroundColor: '#f59e0b',
+    backgroundColor: '#22c55e', // Green for production
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
     zIndex: 100,
+  },
+  envBadgeDev: {
+    backgroundColor: '#f59e0b', // Orange for development
   },
   envBadgeText: {
     color: '#ffffff',

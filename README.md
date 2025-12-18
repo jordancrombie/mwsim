@@ -35,6 +35,10 @@ mwsim enables users to:
 - **Add More Banks** - Enroll additional banks at any time
 
 ### Payment Authorization
+- **QR Code Scanner** - Scan merchant QR codes to initiate payments
+  - Camera-based scanner with torch toggle for low-light conditions
+  - Supports Universal Links (`https://wsim.banksim.ca/pay/{requestId}`)
+  - Supports Deep Links (`mwsim://payment/{requestId}`)
 - **Deep Link Payments** - Receive payment requests via `mwsim://payment/:requestId`
 - **Payment Approval Screen** - Review merchant, amount, and select card
 - **Biometric Confirmation** - Face ID / Touch ID required to approve payments
@@ -54,12 +58,17 @@ mwsim/
 ├── app/                    # React Native application
 │   ├── App.tsx             # Main app component with all screens
 │   ├── app.json            # Expo configuration (scheme, bundle ID)
+│   ├── plugins/            # Custom Expo config plugins
+│   │   ├── withSettingsBundle.js   # Creates iOS Settings.bundle
+│   │   ├── withSettingsDefaults.js # Registers Settings defaults in AppDelegate
+│   │   └── withSigningTeam.js      # Sets iOS code signing team
 │   ├── src/
 │   │   ├── screens/        # Screen components (for future navigation)
 │   │   ├── components/     # Reusable UI components
 │   │   ├── services/       # API, auth, storage services
 │   │   │   ├── api.ts      # Axios API client with JWT auth
 │   │   │   ├── biometric.ts # Biometric authentication
+│   │   │   ├── environment.ts # Environment config (reads iOS Settings)
 │   │   │   └── secureStorage.ts # Expo Secure Store wrapper
 │   │   ├── store/          # Zustand state management
 │   │   ├── types/          # TypeScript types
@@ -82,6 +91,25 @@ mwsim/
 - **Expo Secure Store** - Secure credential storage
 - **Expo Local Authentication** - Biometrics (Face ID / Touch ID)
 - **Expo Web Browser** - System browser for OAuth flows
+- **Expo Camera** - QR code scanning for payments
+
+## Custom Expo Plugins
+
+The app uses custom Expo config plugins in `app/plugins/` to handle native iOS configuration:
+
+### withSettingsBundle
+Creates an iOS Settings.bundle that appears in the iOS Settings app. Allows users to:
+- Switch between Development and Production servers
+- View app version and build number
+
+### withSettingsDefaults
+Registers Settings.bundle default values in AppDelegate at app startup. This ensures:
+- `UserDefaults.standard.register(defaults:)` is called before React Native loads
+- iOS Settings values are readable via React Native's `Settings.get()` API
+- Environment selection works correctly on first launch
+
+### withSigningTeam
+Automatically configures the iOS code signing team for builds, ensuring `DEVELOPMENT_TEAM` is set correctly across `expo prebuild --clean` operations.
 
 ## Getting Started
 

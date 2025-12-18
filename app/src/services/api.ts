@@ -321,8 +321,20 @@ export const api = {
    * Called when user opens a payment deep link.
    */
   async getPaymentDetails(requestId: string): Promise<PaymentRequest> {
-    const { data } = await apiClient.get(`/mobile/payment/${requestId}`);
-    return data;
+    const url = `/mobile/payment/${requestId}`;
+    console.log(`[API] getPaymentDetails: Fetching from ${apiClient.defaults.baseURL}${url}`);
+    try {
+      const { data } = await apiClient.get(url);
+      console.log('[API] getPaymentDetails: Success');
+      return data;
+    } catch (error: any) {
+      console.log('[API] getPaymentDetails: Error', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+      throw error;
+    }
   },
 
   /**

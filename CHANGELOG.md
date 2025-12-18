@@ -2,7 +2,7 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-## [1.1.0] - 2025-12-17
+## [1.1.0] - 2025-12-18
 
 ### Added
 - QR Code payment scanner for merchant checkout
@@ -14,13 +14,26 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - Camera permission handling with Settings redirect
   - Invalid QR code detection with user-friendly error messages
   - Navigation to existing payment approval flow on successful scan
+- Environment badge always visible on home screen (green=Production, orange=Development)
+- Debug logging for payment API calls showing full URL and error details
 
 ### Fixed
 - Camera permission not appearing in iOS Settings (added expo-camera plugin for native code generation)
+- Camera permission not triggering (switched to `useCameraPermissions()` hook)
+- QR scanner now supports development environment URLs (`wsim-dev.banksim.ca`)
+- **iOS Settings environment selector not working** (Build 8)
+  - Settings.bundle values were not being read by the app
+  - Added `withSettingsDefaults` Expo config plugin to register Settings.bundle defaults in AppDelegate at startup
+  - Environment changes in iOS Settings now correctly switch between Development and Production servers
 
 ### Technical
 - Added `expo-camera` dependency and plugin for QR scanning (replaces deprecated expo-barcode-scanner)
 - Added `NSCameraUsageDescription` to Info.plist for camera permission
+- QR URL regex updated to match both production and development URLs
+- Added `withSettingsDefaults` Expo config plugin (`plugins/withSettingsDefaults.js`)
+  - Modifies AppDelegate.swift to call `UserDefaults.standard.register(defaults:)` at startup
+  - Reads Settings.bundle/Root.plist and extracts default values for each preference
+  - Ensures iOS Settings values are available to React Native's `Settings.get()` API
 
 ## [1.0.1] - 2025-12-16
 
