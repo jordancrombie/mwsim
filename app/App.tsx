@@ -754,13 +754,14 @@ export default function App() {
 
     // Validate the URL format
     // Expected formats:
-    // - https://wsim.banksim.ca/pay/{requestId}
+    // - https://wsim.banksim.ca/pay/{requestId} (production)
+    // - https://wsim-dev.banksim.ca/pay/{requestId} (development)
     // - mwsim://payment/{requestId}
 
     let requestId: string | null = null;
 
-    // Try Universal Link format: https://wsim.banksim.ca/pay/{requestId}
-    const universalLinkMatch = data.match(/https:\/\/wsim\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+    // Try Universal Link format (supports both prod and dev URLs)
+    const universalLinkMatch = data.match(/https:\/\/wsim(?:-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
     if (universalLinkMatch) {
       requestId = universalLinkMatch[1];
     }
