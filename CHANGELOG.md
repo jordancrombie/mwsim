@@ -35,6 +35,18 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - Reads Settings.bundle/Root.plist and extracts default values for each preference
   - Ensures iOS Settings values are available to React Native's `Settings.get()` API
 
+### Developer Experience
+- Added Jest testing framework with full Expo/React Native support
+  - Jest v29.7.0 with jest-expo v54.0.16 preset
+  - @testing-library/react-native v13.3.3 for component testing
+  - @testing-library/jest-native v5.4.3 for enhanced matchers
+- Test scripts: `npm test`, `npm run test:watch`, `npm run test:coverage`
+- Initial test coverage for core services:
+  - `secureStorage.ts` - 100% coverage (27 tests)
+  - `environment.ts` - 58% coverage (17 tests)
+  - `withSettingsDefaults.js` plugin - 100% coverage (3 tests)
+- Jest configuration with Expo-specific mocks for expo-secure-store, expo-local-authentication, expo-device, expo-web-browser, and expo-camera
+
 ## [1.0.1] - 2025-12-16
 
 ### Added
