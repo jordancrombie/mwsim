@@ -68,6 +68,47 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+// Order Details types (for enhanced payment approval)
+export interface OrderLineItem {
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  sku?: string;
+  imageUrl?: string;
+}
+
+export interface OrderShipping {
+  method?: string;
+  amount: number;
+}
+
+export interface OrderTax {
+  amount: number;
+  rate?: number;      // 0.13 for 13%
+  label?: string;     // "HST", "GST", "Sales Tax"
+}
+
+export interface OrderDiscount {
+  code?: string;
+  description?: string;
+  amount: number;     // Positive number (displayed as negative)
+}
+
+export interface OrderFee {
+  label: string;
+  amount: number;
+}
+
+export interface OrderDetails {
+  version?: number;
+  items?: OrderLineItem[];
+  subtotal?: number;
+  shipping?: OrderShipping;
+  tax?: OrderTax;
+  discounts?: OrderDiscount[];
+  fees?: OrderFee[];
+}
+
 // Payment types
 export interface PaymentRequest {
   requestId: string;
@@ -82,6 +123,7 @@ export interface PaymentRequest {
   createdAt: string;
   expiresAt: string;
   cards: PaymentCard[];
+  orderDetails?: OrderDetails;  // Enhanced purchase info (optional)
 }
 
 export interface PaymentCard {
