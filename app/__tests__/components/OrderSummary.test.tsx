@@ -26,7 +26,7 @@ describe('OrderSummary', () => {
       );
 
       expect(getByText('Widget Pro')).toBeTruthy();
-      expect(getByText(/x1 @/)).toBeTruthy();
+      expect(getByText(/Qty: 1 ×/)).toBeTruthy();
       expect(getByText('$89.99')).toBeTruthy();
     });
 
@@ -72,7 +72,7 @@ describe('OrderSummary', () => {
         <OrderSummary orderDetails={orderDetails} currency={defaultCurrency} />
       );
 
-      expect(getByText(/x1.5 @/)).toBeTruthy();
+      expect(getByText(/Qty: 1.5 ×/)).toBeTruthy();
       // 1.5 x $20 = $30
       expect(getByText('$30.00')).toBeTruthy();
     });
@@ -88,8 +88,8 @@ describe('OrderSummary', () => {
         <OrderSummary orderDetails={orderDetails} currency={defaultCurrency} />
       );
 
-      // Should show truncated name with ellipsis (35 chars max, including ellipsis)
-      expect(getByText(/This is a very long product name t…/)).toBeTruthy();
+      // Should show truncated name with ellipsis (32 chars max, including ellipsis)
+      expect(getByText(/This is a very long product nam…/)).toBeTruthy();
     });
 
     it('should not render items section when items array is empty', () => {
@@ -174,7 +174,7 @@ describe('OrderSummary', () => {
 
       // Now visible
       expect(getByText('Item 6')).toBeTruthy();
-      expect(getByText('Show fewer items')).toBeTruthy();
+      expect(getByText('Show less')).toBeTruthy();
     });
 
     it('should collapse when "Show fewer" is pressed', () => {
@@ -198,7 +198,7 @@ describe('OrderSummary', () => {
       expect(getByText('Item 6')).toBeTruthy();
 
       // Collapse
-      fireEvent.press(getByText('Show fewer items'));
+      fireEvent.press(getByText('Show less'));
       expect(queryByText('Item 6')).toBeNull();
       expect(getByText(/View all 6 items/)).toBeTruthy();
     });
