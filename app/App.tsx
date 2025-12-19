@@ -28,6 +28,7 @@ import { biometricService } from './src/services/biometric';
 import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
 import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './src/config/env';
 import { SplashScreen } from './src/components/SplashScreen';
+import { OrderSummary } from './src/components/OrderSummary';
 import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
 
 // Keep the splash screen visible while we fetch resources
@@ -1568,14 +1569,25 @@ export default function App() {
                 </View>
               )}
               <Text style={styles.merchantName}>{paymentRequest?.merchantName}</Text>
-              {paymentRequest?.orderDescription && (
+              {/* Only show orderDescription if no orderDetails (fallback) */}
+              {paymentRequest?.orderDescription && !paymentRequest?.orderDetails && (
                 <Text style={styles.orderDescription}>{paymentRequest.orderDescription}</Text>
               )}
             </View>
 
-            {/* Amount */}
+            {/* Order Details (Enhanced Purchase Info) */}
+            {paymentRequest?.orderDetails && (
+              <View style={styles.orderDetailsSection}>
+                <OrderSummary
+                  orderDetails={paymentRequest.orderDetails}
+                  currency={paymentRequest.currency}
+                />
+              </View>
+            )}
+
+            {/* Amount - Total */}
             <View style={styles.amountSection}>
-              <Text style={styles.amountLabel}>Amount</Text>
+              <Text style={styles.amountLabel}>Total</Text>
               <Text style={styles.amountValue}>
                 {paymentRequest ? formatAmount(paymentRequest.amount, paymentRequest.currency) : ''}
               </Text>
@@ -2172,6 +2184,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
     textAlign: 'center',
+  },
+  orderDetailsSection: {
+    paddingHorizontal: 0,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
   },
   amountSection: {
     alignItems: 'center',
