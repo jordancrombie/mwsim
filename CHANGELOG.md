@@ -2,6 +2,31 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.2.0] - 2025-12-18
+
+### Added
+- **Enhanced Purchase Information on Payment Approval Screen**
+  - Itemized line items showing product name, quantity, unit price, and line total
+  - Collapsible item list: shows first 5 items, "View all X items" expands inline
+  - Cost breakdown section: subtotal, shipping (with method), tax (with rate/label)
+  - Discount display with promo codes in green negative values
+  - Additional fees display
+  - Accessibility labels for all order details elements (VoiceOver support)
+  - Fallback to simple amount display when orderDetails is not provided
+
+### Technical
+- Added `OrderDetails` types to `src/types/index.ts`:
+  - `OrderLineItem`, `OrderShipping`, `OrderTax`, `OrderDiscount`, `OrderFee`, `OrderDetails`
+  - Extended `PaymentRequest` interface with optional `orderDetails` field
+- New `OrderSummary` component (`src/components/OrderSummary.tsx`)
+  - Handles currency formatting with `Intl.NumberFormat`
+  - Text truncation for long product names (35 chars max)
+  - Decimal quantity support for weight-based items
+
+### Developer Experience
+- Added 25 unit tests for OrderSummary component (163 total tests)
+- Tests cover: line items, collapsible behavior, cost breakdown, edge cases
+
 ## [1.1.0] - 2025-12-18
 
 ### Added
