@@ -1585,49 +1585,62 @@ export default function App() {
               </View>
             )}
 
-            {/* Amount - Total */}
-            <View style={styles.amountSection}>
-              <Text style={styles.amountLabel}>Total</Text>
-              <Text style={styles.amountValue}>
-                {paymentRequest ? formatAmount(paymentRequest.amount, paymentRequest.currency) : ''}
-              </Text>
-            </View>
-
-            {/* Time remaining */}
-            <View style={styles.timerSection}>
-              <Text style={styles.timerLabel}>Time remaining: {getTimeRemaining()}</Text>
+            {/* Total Amount Card */}
+            <View style={styles.totalCard}>
+              <View style={styles.totalCardContent}>
+                <Text style={styles.totalLabel}>Total to Pay</Text>
+                <Text style={styles.totalValue}>
+                  {paymentRequest ? formatAmount(paymentRequest.amount, paymentRequest.currency) : ''}
+                </Text>
+                <Text style={styles.timerText}>
+                  ⏱ {getTimeRemaining()} remaining
+                </Text>
+              </View>
             </View>
 
             {/* Card Selection */}
-            <View style={styles.cardSelectionSection}>
-              <Text style={styles.cardSelectionTitle}>Pay with</Text>
-              {paymentRequest?.cards.map((card) => {
-                const isSelected = selectedPaymentCard?.id === card.id;
-                const cardColor = card.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
+            <View style={styles.paymentMethodCard}>
+              <View style={styles.paymentMethodHeader}>
+                <Text style={styles.paymentMethodIcon}>💳</Text>
+                <Text style={styles.paymentMethodTitle}>Payment Method</Text>
+              </View>
+              <View style={styles.paymentMethodList}>
+                {paymentRequest?.cards.map((card, index) => {
+                  const isSelected = selectedPaymentCard?.id === card.id;
+                  const cardColor = card.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
+                  const isLast = index === (paymentRequest?.cards.length || 0) - 1;
 
-                return (
-                  <TouchableOpacity
-                    key={card.id}
-                    style={[
-                      styles.paymentCardOption,
-                      isSelected && styles.paymentCardOptionSelected,
-                    ]}
-                    onPress={() => setSelectedPaymentCard(card)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.paymentCardBadge, { backgroundColor: cardColor }]}>
-                      <Text style={styles.paymentCardBadgeText}>{card.cardType}</Text>
-                    </View>
-                    <View style={styles.paymentCardInfo}>
-                      <Text style={styles.paymentCardNumber}>•••• {card.lastFour}</Text>
-                      <Text style={styles.paymentCardBank}>{card.bankName}</Text>
-                    </View>
-                    <View style={styles.paymentCardCheck}>
-                      {isSelected && <Text style={styles.paymentCardCheckMark}>✓</Text>}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                  return (
+                    <TouchableOpacity
+                      key={card.id}
+                      style={[
+                        styles.paymentCardOption,
+                        isSelected && styles.paymentCardOptionSelected,
+                        !isLast && styles.paymentCardOptionBorder,
+                      ]}
+                      onPress={() => setSelectedPaymentCard(card)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.paymentCardBadge, { backgroundColor: cardColor }]}>
+                        <Text style={styles.paymentCardBadgeText}>{card.cardType}</Text>
+                      </View>
+                      <View style={styles.paymentCardInfo}>
+                        <Text style={styles.paymentCardNumber}>•••• {card.lastFour}</Text>
+                        <Text style={styles.paymentCardBank}>{card.bankName}</Text>
+                      </View>
+                      <View style={styles.paymentCardCheck}>
+                        {isSelected ? (
+                          <View style={styles.paymentCardCheckCircle}>
+                            <Text style={styles.paymentCardCheckMark}>✓</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.paymentCardCheckEmpty} />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             </View>
           </ScrollView>
 
@@ -2186,85 +2199,121 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   orderDetailsSection: {
-    paddingHorizontal: 0,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    paddingTop: 20,
   },
-  amountSection: {
+  // Total Amount Card
+  totalCard: {
+    backgroundColor: '#1e40af',
+    borderRadius: 16,
+    marginTop: 16,
+    shadowColor: '#1e40af',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  totalCardContent: {
     alignItems: 'center',
     paddingVertical: 24,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    paddingHorizontal: 20,
   },
-  amountLabel: {
+  totalLabel: {
     fontSize: 14,
-    color: '#6b7280',
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  totalValue: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#ffffff',
     marginBottom: 8,
   },
-  amountValue: {
-    fontSize: 40,
-    fontWeight: 'bold',
-    color: '#111827',
+  timerText: {
+    fontSize: 13,
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontWeight: '500',
   },
-  timerSection: {
+  // Payment Method Card
+  paymentMethodCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    marginTop: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  paymentMethodHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
-  timerLabel: {
-    fontSize: 14,
-    color: '#9ca3af',
-  },
-  cardSelectionSection: {
-    paddingVertical: 16,
-  },
-  cardSelectionTitle: {
+  paymentMethodIcon: {
     fontSize: 16,
+    marginRight: 8,
+  },
+  paymentMethodTitle: {
+    fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
-    marginBottom: 12,
+    color: '#1e293b',
+  },
+  paymentMethodList: {
+    paddingHorizontal: 16,
   },
   paymentCardOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
+    paddingVertical: 14,
+  },
+  paymentCardOptionBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   paymentCardOptionSelected: {
-    borderColor: '#3b82f6',
     backgroundColor: '#eff6ff',
+    marginHorizontal: -16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
   },
   paymentCardBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     marginRight: 12,
   },
   paymentCardBadgeText: {
     color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
   },
   paymentCardInfo: {
     flex: 1,
   },
   paymentCardNumber: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    color: '#111827',
+    color: '#1e293b',
   },
   paymentCardBank: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: '#64748b',
     marginTop: 2,
   },
   paymentCardCheck: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentCardCheckCircle: {
     width: 24,
     height: 24,
     borderRadius: 12,
@@ -2272,10 +2321,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  paymentCardCheckEmpty: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
+  },
   paymentCardCheckMark: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontSize: 12,
+    fontWeight: '700',
   },
   paymentActions: {
     padding: 24,

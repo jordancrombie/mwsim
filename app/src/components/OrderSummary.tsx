@@ -3,7 +3,7 @@
  * on the payment approval screen.
  *
  * Shows line items, cost breakdown (subtotal, shipping, tax, fees, discounts),
- * with collapsible behavior for long order lists.
+ * with collapsible behavior for long order lists, styled in a card format.
  */
 
 import React, { useState } from 'react';
@@ -12,15 +12,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  AccessibilityInfo,
 } from 'react-native';
 import type {
   OrderDetails,
   OrderLineItem as OrderLineItemType,
-  OrderShipping,
-  OrderTax,
-  OrderDiscount,
-  OrderFee,
 } from '../types';
 
 interface OrderSummaryProps {
@@ -45,7 +40,6 @@ function formatCurrency(amount: number, currency: string): string {
  * Format quantity (handles decimals for weight-based items)
  */
 function formatQuantity(quantity: number): string {
-  // Show decimals only if needed
   if (Number.isInteger(quantity)) {
     return quantity.toLocaleString();
   }
@@ -55,7 +49,7 @@ function formatQuantity(quantity: number): string {
 /**
  * Truncate long text with ellipsis
  */
-function truncateText(text: string, maxLength: number = 35): string {
+function truncateText(text: string, maxLength: number = 32): string {
   if (text.length <= maxLength) return text;
   return text.slice(0, maxLength - 1) + '…';
 }
@@ -66,16 +60,17 @@ function truncateText(text: string, maxLength: number = 35): string {
 interface LineItemProps {
   item: OrderLineItemType;
   currency: string;
+  isLast: boolean;
 }
 
-function OrderLineItem({ item, currency }: LineItemProps) {
+function OrderLineItem({ item, currency, isLast }: LineItemProps) {
   const lineTotal = item.quantity * item.unitPrice;
   const displayName = truncateText(item.name);
   const accessibilityLabel = `${item.name}, quantity ${formatQuantity(item.quantity)}, ${formatCurrency(lineTotal, currency)}`;
 
   return (
     <View
-      style={styles.lineItem}
+      style={[styles.lineItem, !isLast && styles.lineItemBorder]}
       accessible={true}
       accessibilityLabel={accessibilityLabel}
     >
@@ -84,7 +79,7 @@ function OrderLineItem({ item, currency }: LineItemProps) {
           {displayName}
         </Text>
         <Text style={styles.lineItemQuantity}>
-          x{formatQuantity(item.quantity)} @ {formatCurrency(item.unitPrice, currency)}
+          Qty: {formatQuantity(item.quantity)} × {formatCurrency(item.unitPrice, currency)}
         </Text>
       </View>
       <Text style={styles.lineItemTotal}>
@@ -102,7 +97,7 @@ interface BreakdownRowProps {
   amount: number;
   currency: string;
   isDiscount?: boolean;
-  isBold?: boolean;
+  isTotal?: boolean;
   accessibilityLabel?: string;
 }
 
@@ -111,27 +106,26 @@ function CostBreakdownRow({
   amount,
   currency,
   isDiscount = false,
-  isBold = false,
+  isTotal = false,
   accessibilityLabel,
 }: BreakdownRowProps) {
-  const displayAmount = isDiscount ? -Math.abs(amount) : amount;
   const formattedAmount = formatCurrency(Math.abs(amount), currency);
   const displayText = isDiscount ? `-${formattedAmount}` : formattedAmount;
 
   return (
     <View
-      style={styles.breakdownRow}
+      style={[styles.breakdownRow, isTotal && styles.breakdownRowTotal]}
       accessible={true}
       accessibilityLabel={accessibilityLabel || `${label}, ${displayText}`}
     >
-      <Text style={[styles.breakdownLabel, isBold && styles.breakdownLabelBold]}>
+      <Text style={[styles.breakdownLabel, isTotal && styles.breakdownLabelTotal]}>
         {label}
       </Text>
       <Text
         style={[
           styles.breakdownAmount,
           isDiscount && styles.breakdownAmountDiscount,
-          isBold && styles.breakdownAmountBold,
+          isTotal && styles.breakdownAmountTotal,
         ]}
       >
         {displayText}
@@ -161,114 +155,117 @@ export function OrderSummary({ orderDetails, currency }: OrderSummaryProps) {
 
   return (
     <View style={styles.container}>
-      {/* Line Items Section */}
+      {/* Items Card */}
       {items.length > 0 && (
-        <View style={styles.itemsSection}>
-          <Text style={styles.sectionTitle}>Order Items</Text>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardIcon}>🛒</Text>
+            <Text style={styles.cardTitle}>Order Items</Text>
+            <Text style={styles.itemCount}>{items.length} {items.length === 1 ? 'item' : 'items'}</Text>
+          </View>
 
-          {visibleItems.map((item, index) => (
-            <OrderLineItem
-              key={item.sku || `item-${index}`}
-              item={item}
-              currency={currency}
-            />
-          ))}
+          <View style={styles.itemsList}>
+            {visibleItems.map((item, index) => (
+              <OrderLineItem
+                key={item.sku || `item-${index}`}
+                item={item}
+                currency={currency}
+                isLast={index === visibleItems.length - 1 && !hasMoreItems}
+              />
+            ))}
 
-          {/* Show "View all" button if there are hidden items */}
-          {hasMoreItems && !showAllItems && (
-            <TouchableOpacity
-              style={styles.viewAllButton}
-              onPress={() => setShowAllItems(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`View all ${items.length} items`}
-            >
-              <Text style={styles.viewAllText}>
-                View all {items.length} items (+{hiddenItemCount} more)
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Show "Show less" button if expanded */}
-          {hasMoreItems && showAllItems && (
-            <TouchableOpacity
-              style={styles.viewAllButton}
-              onPress={() => setShowAllItems(false)}
-              accessibilityRole="button"
-              accessibilityLabel="Show fewer items"
-            >
-              <Text style={styles.viewAllText}>Show fewer items</Text>
-            </TouchableOpacity>
-          )}
+            {/* View all / Show less toggle */}
+            {hasMoreItems && (
+              <TouchableOpacity
+                style={styles.viewAllButton}
+                onPress={() => setShowAllItems(!showAllItems)}
+                accessibilityRole="button"
+                accessibilityLabel={showAllItems ? 'Show fewer items' : `View all ${items.length} items`}
+              >
+                <Text style={styles.viewAllText}>
+                  {showAllItems ? 'Show less' : `View all ${items.length} items`}
+                </Text>
+                <Text style={styles.viewAllIcon}>
+                  {showAllItems ? '↑' : '↓'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
 
-      {/* Cost Breakdown Section */}
+      {/* Cost Breakdown Card */}
       {hasBreakdown && (
-        <View style={styles.breakdownSection}>
-          <View style={styles.breakdownDivider} />
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardIcon}>📋</Text>
+            <Text style={styles.cardTitle}>Price Breakdown</Text>
+          </View>
 
-          {/* Subtotal */}
-          {orderDetails.subtotal !== undefined && (
-            <CostBreakdownRow
-              label="Subtotal"
-              amount={orderDetails.subtotal}
-              currency={currency}
-            />
-          )}
+          <View style={styles.breakdownList}>
+            {/* Subtotal */}
+            {orderDetails.subtotal !== undefined && (
+              <CostBreakdownRow
+                label="Subtotal"
+                amount={orderDetails.subtotal}
+                currency={currency}
+              />
+            )}
 
-          {/* Shipping */}
-          {orderDetails.shipping !== undefined && (
-            <CostBreakdownRow
-              label={
-                orderDetails.shipping.method
-                  ? `Shipping (${orderDetails.shipping.method})`
-                  : 'Shipping'
-              }
-              amount={orderDetails.shipping.amount}
-              currency={currency}
-            />
-          )}
+            {/* Shipping */}
+            {orderDetails.shipping !== undefined && (
+              <CostBreakdownRow
+                label={
+                  orderDetails.shipping.method
+                    ? `Shipping (${orderDetails.shipping.method})`
+                    : 'Shipping'
+                }
+                amount={orderDetails.shipping.amount}
+                currency={currency}
+              />
+            )}
 
-          {/* Fees */}
-          {orderDetails.fees?.map((fee, index) => (
-            <CostBreakdownRow
-              key={`fee-${index}`}
-              label={fee.label}
-              amount={fee.amount}
-              currency={currency}
-            />
-          ))}
+            {/* Fees */}
+            {orderDetails.fees?.map((fee, index) => (
+              <CostBreakdownRow
+                key={`fee-${index}`}
+                label={fee.label}
+                amount={fee.amount}
+                currency={currency}
+              />
+            ))}
 
-          {/* Tax */}
-          {orderDetails.tax !== undefined && (
-            <CostBreakdownRow
-              label={
-                orderDetails.tax.label
-                  ? orderDetails.tax.rate
-                    ? `${orderDetails.tax.label} (${(orderDetails.tax.rate * 100).toFixed(0)}%)`
-                    : orderDetails.tax.label
-                  : 'Tax'
-              }
-              amount={orderDetails.tax.amount}
-              currency={currency}
-            />
-          )}
+            {/* Tax */}
+            {orderDetails.tax !== undefined && (
+              <CostBreakdownRow
+                label={
+                  orderDetails.tax.label
+                    ? orderDetails.tax.rate
+                      ? `${orderDetails.tax.label} (${(orderDetails.tax.rate * 100).toFixed(0)}%)`
+                      : orderDetails.tax.label
+                    : 'Tax'
+                }
+                amount={orderDetails.tax.amount}
+                currency={currency}
+              />
+            )}
 
-          {/* Discounts */}
-          {orderDetails.discounts?.map((discount, index) => (
-            <CostBreakdownRow
-              key={`discount-${index}`}
-              label={
-                discount.code
-                  ? `Promo: ${discount.code}`
-                  : discount.description || 'Discount'
-              }
-              amount={discount.amount}
-              currency={currency}
-              isDiscount={true}
-              accessibilityLabel={`Discount, ${discount.code || discount.description || 'applied'}, minus ${formatCurrency(discount.amount, currency)}`}
-            />
-          ))}
+            {/* Discounts */}
+            {orderDetails.discounts?.map((discount, index) => (
+              <CostBreakdownRow
+                key={`discount-${index}`}
+                label={
+                  discount.code
+                    ? `Promo: ${discount.code}`
+                    : discount.description || 'Discount'
+                }
+                amount={discount.amount}
+                currency={currency}
+                isDiscount={true}
+                accessibilityLabel={`Discount, ${discount.code || discount.description || 'applied'}, minus ${formatCurrency(discount.amount, currency)}`}
+              />
+            ))}
+          </View>
         </View>
       )}
     </View>
@@ -277,85 +274,128 @@ export function OrderSummary({ orderDetails, currency }: OrderSummaryProps) {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 16,
+    gap: 12,
   },
-  itemsSection: {
-    paddingVertical: 8,
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+    overflow: 'hidden',
   },
-  sectionTitle: {
-    fontSize: 14,
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  cardIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
+  cardTitle: {
+    fontSize: 15,
     fontWeight: '600',
-    color: '#6b7280',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: '#1e293b',
+    flex: 1,
+  },
+  itemCount: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  itemsList: {
+    paddingHorizontal: 16,
   },
   lineItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingVertical: 10,
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  lineItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   lineItemLeft: {
     flex: 1,
     marginRight: 12,
   },
   lineItemName: {
-    fontSize: 16,
-    color: '#111827',
+    fontSize: 15,
+    color: '#1e293b',
     fontWeight: '500',
+    marginBottom: 2,
   },
   lineItemQuantity: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 2,
+    fontSize: 13,
+    color: '#64748b',
   },
   lineItemTotal: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#111827',
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1e293b',
   },
   viewAllButton: {
-    paddingVertical: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    gap: 6,
   },
   viewAllText: {
     fontSize: 14,
     color: '#3b82f6',
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  breakdownSection: {
-    paddingTop: 8,
+  viewAllIcon: {
+    fontSize: 12,
+    color: '#3b82f6',
   },
-  breakdownDivider: {
-    height: 1,
-    backgroundColor: '#e5e7eb',
-    marginBottom: 12,
+  breakdownList: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
   },
   breakdownRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 10,
+  },
+  breakdownRowTotal: {
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    marginTop: 4,
+    paddingTop: 14,
   },
   breakdownLabel: {
     fontSize: 14,
-    color: '#6b7280',
+    color: '#64748b',
   },
-  breakdownLabelBold: {
+  breakdownLabelTotal: {
+    fontSize: 16,
     fontWeight: '600',
-    color: '#111827',
+    color: '#1e293b',
   },
   breakdownAmount: {
     fontSize: 14,
-    color: '#111827',
+    color: '#1e293b',
+    fontWeight: '500',
   },
   breakdownAmountDiscount: {
-    color: '#22c55e',
-  },
-  breakdownAmountBold: {
+    color: '#16a34a',
     fontWeight: '600',
-    fontSize: 16,
+  },
+  breakdownAmountTotal: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1e293b',
   },
 });
 
