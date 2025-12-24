@@ -40,9 +40,9 @@ export function BankListItem({ bank, onPress }: BankListItemProps) {
           marginRight: 14,
         }}
       >
-        {bank.logo ? (
+        {bank.logoUrl ? (
           <Image
-            source={{ uri: bank.logo }}
+            source={{ uri: bank.logoUrl }}
             style={{ width: 32, height: 32 }}
             resizeMode="contain"
           />
