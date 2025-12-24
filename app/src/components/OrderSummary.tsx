@@ -21,6 +21,8 @@ import type {
 interface OrderSummaryProps {
   orderDetails: OrderDetails;
   currency: string;
+  /** When true, renders without card wrappers for embedding in parent container */
+  embedded?: boolean;
 }
 
 // Number of items to show before "View all" link
@@ -137,7 +139,7 @@ function CostBreakdownRow({
 /**
  * Main OrderSummary component
  */
-export function OrderSummary({ orderDetails, currency }: OrderSummaryProps) {
+export function OrderSummary({ orderDetails, currency, embedded = false }: OrderSummaryProps) {
   const [showAllItems, setShowAllItems] = useState(false);
 
   const items = orderDetails.items || [];
@@ -154,11 +156,11 @@ export function OrderSummary({ orderDetails, currency }: OrderSummaryProps) {
     (orderDetails.fees && orderDetails.fees.length > 0);
 
   return (
-    <View style={styles.container}>
-      {/* Items Card */}
+    <View style={embedded ? styles.containerEmbedded : styles.container}>
+      {/* Items Section */}
       {items.length > 0 && (
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
+        <View style={embedded ? styles.sectionEmbedded : styles.card}>
+          <View style={embedded ? styles.sectionHeaderEmbedded : styles.cardHeader}>
             <Text style={styles.cardIcon}>🛒</Text>
             <Text style={styles.cardTitle}>Order Items</Text>
             <Text style={styles.itemCount}>{items.length} {items.length === 1 ? 'item' : 'items'}</Text>
@@ -194,10 +196,10 @@ export function OrderSummary({ orderDetails, currency }: OrderSummaryProps) {
         </View>
       )}
 
-      {/* Cost Breakdown Card */}
+      {/* Cost Breakdown Section */}
       {hasBreakdown && (
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
+        <View style={embedded ? styles.sectionEmbedded : styles.card}>
+          <View style={embedded ? styles.sectionHeaderEmbedded : styles.cardHeader}>
             <Text style={styles.cardIcon}>📋</Text>
             <Text style={styles.cardTitle}>Price Breakdown</Text>
           </View>
@@ -275,6 +277,23 @@ export function OrderSummary({ orderDetails, currency }: OrderSummaryProps) {
 const styles = StyleSheet.create({
   container: {
     gap: 12,
+  },
+  containerEmbedded: {
+    // No gap needed when embedded, sections handle their own spacing
+  },
+  sectionEmbedded: {
+    // No card styling when embedded
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  sectionHeaderEmbedded: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
   },
   card: {
     backgroundColor: '#ffffff',

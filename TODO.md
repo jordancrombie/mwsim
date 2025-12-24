@@ -20,7 +20,7 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [x] End-to-end flow tested in dev (2025-12-14)
 - [x] Browser-aware return flow (sourceBrowser parameter, iOS browser URL schemes)
 - [x] Safari and Chrome checkout flow verified on iOS (2025-12-15)
-- [ ] QR code scanning for payment (Phase 3)
+- [x] QR code scanning for payment
 - [ ] Transaction receipt display
 
 ### Transaction History
@@ -76,8 +76,15 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [ ] Android Keystore integration
 - [ ] Biometric key binding
 
+### Developer Tools & Debugging
+- [ ] In-app debug console/log viewer (accessible via Settings or shake gesture)
+- [ ] Toggle to enable verbose API request/response logging
+- [ ] Network request inspector (view headers, payloads, timing)
+- [ ] Environment indicator with detailed config info
+- [ ] Export debug logs for troubleshooting
+
 ### Testing
-- [ ] Unit tests for services
+- [x] Unit tests for services (169 tests)
 - [ ] Component tests
 - [ ] E2E tests with Detox
 - [ ] API mock server

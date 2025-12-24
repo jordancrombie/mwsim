@@ -29,6 +29,7 @@ import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn'
 import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './src/config/env';
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
+import { SuccessAnimation } from './src/components/SuccessAnimation';
 import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
 
 // Keep the splash screen visible while we fetch resources
@@ -85,6 +86,8 @@ export default function App() {
   const [paymentStatus, setPaymentStatus] = useState<'loading' | 'ready' | 'approving' | 'success' | 'error'>('loading');
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [sourceBrowser, setSourceBrowser] = useState<string | null>(null);
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [paymentReturnUrl, setPaymentReturnUrl] = useState<string | null>(null);
 
   // Splash screen state
   const [showCustomSplash, setShowCustomSplash] = useState(true);
@@ -253,39 +256,16 @@ export default function App() {
       await secureStorage.remove('pendingPaymentRequestId');
       setPendingRequestId(null);
 
-      setPaymentStatus('success');
+      // Store return URL for use after animation
+      if (result.returnUrl) {
+        const separator = result.returnUrl.includes('?') ? '&' : '?';
+        const returnUrlWithContext = `${result.returnUrl}${separator}mwsim_return=${paymentRequest.requestId}`;
+        setPaymentReturnUrl(returnUrlWithContext);
+        console.log('[Payment] Stored returnUrl for after animation:', returnUrlWithContext);
+      }
 
-      // Show success with option to return to store
-      Alert.alert(
-        'Payment Approved',
-        'Your payment has been approved successfully.',
-        [
-          {
-            text: 'Return to Store',
-            onPress: async () => {
-              if (result.returnUrl) {
-                // Append mwsim_return param so SSIM checkout knows the payment context
-                const separator = result.returnUrl.includes('?') ? '&' : '?';
-                const returnUrlWithContext = `${result.returnUrl}${separator}mwsim_return=${paymentRequest.requestId}`;
-                console.log('[Payment] Opening returnUrl:', returnUrlWithContext);
-                console.log('[Payment] Original returnUrl:', result.returnUrl);
-                console.log('[Payment] requestId:', paymentRequest.requestId);
-                console.log('[Payment] sourceBrowser:', sourceBrowser);
-                // Use browser-aware return to open in the same browser user came from
-                await openReturnUrl(returnUrlWithContext, sourceBrowser);
-              } else {
-                console.log('[Payment] No returnUrl in result:', result);
-              }
-              handleClosePayment();
-            },
-          },
-          {
-            text: 'Stay in Wallet',
-            onPress: handleClosePayment,
-            style: 'cancel',
-          },
-        ]
-      );
+      setPaymentStatus('success');
+      setShowSuccessAnimation(true);
     } catch (e: any) {
       console.error('[Payment] Approval failed:', e);
       const errorMessage = e.response?.data?.message || e.message || 'Failed to approve payment';
@@ -323,6 +303,34 @@ export default function App() {
     );
   };
 
+  // Handle success animation completion - show stay/redirect options
+  const handleSuccessAnimationComplete = () => {
+    setShowSuccessAnimation(false);
+
+    Alert.alert(
+      'Payment Approved',
+      'Your payment has been approved successfully.',
+      [
+        {
+          text: 'Return to Store',
+          onPress: async () => {
+            if (paymentReturnUrl) {
+              console.log('[Payment] Opening returnUrl:', paymentReturnUrl);
+              console.log('[Payment] sourceBrowser:', sourceBrowser);
+              await openReturnUrl(paymentReturnUrl, sourceBrowser);
+            }
+            handleClosePayment();
+          },
+        },
+        {
+          text: 'Stay in Wallet',
+          onPress: handleClosePayment,
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
   // Close payment screen and return to home
   const handleClosePayment = async () => {
     await secureStorage.remove('pendingPaymentRequestId');
@@ -333,6 +341,8 @@ export default function App() {
     setSelectedPaymentCard(null);
     setPaymentStatus('loading');
     setPaymentError(null);
+    setShowSuccessAnimation(false);
+    setPaymentReturnUrl(null);
     setCurrentScreen('home');
   };
 
@@ -1539,6 +1549,18 @@ export default function App() {
       );
     }
 
+    // Success animation state
+    if (showSuccessAnimation) {
+      return (
+        <SuccessAnimation
+          onComplete={handleSuccessAnimationComplete}
+          animationDuration={800}
+          delayAfterAnimation={2000}
+          message="Payment Approved"
+        />
+      );
+    }
+
     // Ready / Approving state
     return (
       <View style={styles.container}>
@@ -1554,38 +1576,7 @@ export default function App() {
           </View>
 
           <ScrollView style={styles.paymentScrollContent}>
-            {/* Merchant Info */}
-            <View style={styles.merchantSection}>
-              {paymentRequest?.merchantLogoUrl ? (
-                <Image
-                  source={{ uri: paymentRequest.merchantLogoUrl }}
-                  style={styles.merchantLogo}
-                />
-              ) : (
-                <View style={styles.merchantLogoPlaceholder}>
-                  <Text style={styles.merchantLogoText}>
-                    {paymentRequest?.merchantName?.charAt(0) || 'M'}
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.merchantName}>{paymentRequest?.merchantName}</Text>
-              {/* Only show orderDescription if no orderDetails (fallback) */}
-              {paymentRequest?.orderDescription && !paymentRequest?.orderDetails && (
-                <Text style={styles.orderDescription}>{paymentRequest.orderDescription}</Text>
-              )}
-            </View>
-
-            {/* Order Details (Enhanced Purchase Info) */}
-            {paymentRequest?.orderDetails && (
-              <View style={styles.orderDetailsSection}>
-                <OrderSummary
-                  orderDetails={paymentRequest.orderDetails}
-                  currency={paymentRequest.currency}
-                />
-              </View>
-            )}
-
-            {/* Total Amount Card */}
+            {/* Total Amount Card - Standalone at Top */}
             <View style={styles.totalCard}>
               <View style={styles.totalCardContent}>
                 <Text style={styles.totalLabel}>Total to Pay</Text>
@@ -1598,48 +1589,71 @@ export default function App() {
               </View>
             </View>
 
-            {/* Card Selection */}
-            <View style={styles.paymentMethodCard}>
-              <View style={styles.paymentMethodHeader}>
-                <Text style={styles.paymentMethodIcon}>💳</Text>
-                <Text style={styles.paymentMethodTitle}>Payment Method</Text>
+            {/* Outer Container Card - Contains merchant, order details, and payment method */}
+            <View style={styles.outerCard}>
+              {/* Merchant Name Header */}
+              <View style={styles.orderCardMerchantHeader}>
+                <Text style={styles.orderCardMerchantName}>{paymentRequest?.merchantName}</Text>
+                {/* Only show orderDescription if no orderDetails (fallback) */}
+                {paymentRequest?.orderDescription && !paymentRequest?.orderDetails && (
+                  <Text style={styles.orderCardDescription}>{paymentRequest.orderDescription}</Text>
+                )}
               </View>
-              <View style={styles.paymentMethodList}>
-                {paymentRequest?.cards.map((card, index) => {
-                  const isSelected = selectedPaymentCard?.id === card.id;
-                  const cardColor = card.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
-                  const isLast = index === (paymentRequest?.cards.length || 0) - 1;
 
-                  return (
-                    <TouchableOpacity
-                      key={card.id}
-                      style={[
-                        styles.paymentCardOption,
-                        isSelected && styles.paymentCardOptionSelected,
-                        !isLast && styles.paymentCardOptionBorder,
-                      ]}
-                      onPress={() => setSelectedPaymentCard(card)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.paymentCardBadge, { backgroundColor: cardColor }]}>
-                        <Text style={styles.paymentCardBadgeText}>{card.cardType}</Text>
-                      </View>
-                      <View style={styles.paymentCardInfo}>
-                        <Text style={styles.paymentCardNumber}>•••• {card.lastFour}</Text>
-                        <Text style={styles.paymentCardBank}>{card.bankName}</Text>
-                      </View>
-                      <View style={styles.paymentCardCheck}>
-                        {isSelected ? (
-                          <View style={styles.paymentCardCheckCircle}>
-                            <Text style={styles.paymentCardCheckMark}>✓</Text>
+              {/* Inner Content Area with Nested Cards */}
+              <View style={styles.outerCardContent}>
+                {/* Order Details (Enhanced Purchase Info) - with full card styling */}
+                {paymentRequest?.orderDetails && (
+                  <OrderSummary
+                    orderDetails={paymentRequest.orderDetails}
+                    currency={paymentRequest.currency}
+                  />
+                )}
+
+                {/* Payment Method - Nested Card */}
+                <View style={styles.nestedCard}>
+                  <View style={styles.paymentMethodHeader}>
+                    <Text style={styles.paymentMethodIcon}>💳</Text>
+                    <Text style={styles.paymentMethodTitle}>Payment Method</Text>
+                  </View>
+                  <View style={styles.paymentMethodList}>
+                    {paymentRequest?.cards.map((card, index) => {
+                      const isSelected = selectedPaymentCard?.id === card.id;
+                      const cardColor = card.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
+                      const isLast = index === (paymentRequest?.cards.length || 0) - 1;
+
+                      return (
+                        <TouchableOpacity
+                          key={card.id}
+                          style={[
+                            styles.paymentCardOption,
+                            isSelected && styles.paymentCardOptionSelected,
+                            !isLast && styles.paymentCardOptionBorder,
+                          ]}
+                          onPress={() => setSelectedPaymentCard(card)}
+                          activeOpacity={0.7}
+                        >
+                          <View style={[styles.paymentCardBadge, { backgroundColor: cardColor }]}>
+                            <Text style={styles.paymentCardBadgeText}>{card.cardType}</Text>
                           </View>
-                        ) : (
-                          <View style={styles.paymentCardCheckEmpty} />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
+                          <View style={styles.paymentCardInfo}>
+                            <Text style={styles.paymentCardNumber}>•••• {card.lastFour}</Text>
+                            <Text style={styles.paymentCardBank}>{card.bankName}</Text>
+                          </View>
+                          <View style={styles.paymentCardCheck}>
+                            {isSelected ? (
+                              <View style={styles.paymentCardCheckCircle}>
+                                <Text style={styles.paymentCardCheckMark}>✓</Text>
+                              </View>
+                            ) : (
+                              <View style={styles.paymentCardCheckEmpty} />
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
               </View>
             </View>
           </ScrollView>
@@ -2234,9 +2248,9 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     fontWeight: '500',
   },
-  // Payment Method Card
-  paymentMethodCard: {
-    backgroundColor: '#ffffff',
+  // Outer Container Card - Wraps merchant, order details, and payment method
+  outerCard: {
+    backgroundColor: '#f8fafc',
     borderRadius: 16,
     marginTop: 16,
     shadowColor: '#000',
@@ -2244,6 +2258,41 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 8,
     elevation: 3,
+    overflow: 'hidden',
+  },
+  outerCardContent: {
+    padding: 12,
+    gap: 12,
+  },
+  orderCardMerchantHeader: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  orderCardMerchantName: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1e293b',
+    textAlign: 'center',
+  },
+  orderCardDescription: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  // Nested Card - for cards inside the outer container
+  nestedCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
     overflow: 'hidden',
   },
   paymentMethodHeader: {
