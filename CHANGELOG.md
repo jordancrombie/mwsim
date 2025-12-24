@@ -2,6 +2,30 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [Unreleased] - Multi-Bank & P2P Support
+
+### Added
+- **Bank Logo Display**
+  - Card component now displays bank logo (24x24) next to bank name
+  - Fallback to bank initials when logo unavailable or fails to load
+  - BankListItem component updated to use logoUrl
+
+- **P2P Transfers Planning**
+  - Added comprehensive P2P section to TODO.md
+  - Planned features: alias management, send/receive money, QR codes, transfer history
+
+### Changed
+- **Type Updates for Multi-Bank API**
+  - `Card.bankLogoUrl` - Bank logo URL (optional)
+  - `Bank.logoUrl` - Renamed from `logo` for API consistency
+  - `EnrolledBank.logoUrl` - Bank logo URL
+  - `EnrolledBank.credentialExpiry` - Credential expiration date
+  - `PaymentCard.bankLogoUrl` - Bank logo URL for payment selection
+
+### Documentation
+- Updated MWSIM_MULTI_BANK_PROPOSAL.md with implementation status
+- Updated MULTI_BANK_PROJECT_TRACKER.md with completed tasks
+
 ## [1.2.3] - 2025-12-19
 
 ### Fixed
