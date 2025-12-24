@@ -25,7 +25,7 @@ export function getConfig() {
 
     // App identification
     appName: 'mwsim',
-    appVersion: '0.3.2',
+    appVersion: '1.2.3',
 
     // Timeouts
     apiTimeout: 30000, // 30 seconds
