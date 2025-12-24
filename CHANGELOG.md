@@ -2,6 +2,55 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.2.3] - 2025-12-19
+
+### Fixed
+- **Payment Approval Screen Layout**
+  - Fixed Order Items and Price Breakdown sections not displaying
+  - Implemented proper nested card structure as intended:
+    - Blue Total Amount card standalone at top
+    - Outer container card (light gray background) containing:
+      - Merchant name header
+      - Order Summary cards (Order Items + Price Breakdown) with full styling
+      - Payment Method card nested inside
+  - Removed broken `embedded` mode from OrderSummary component usage
+
+### Technical
+- New styles: `outerCard`, `outerCardContent`, `nestedCard`
+- OrderSummary now renders with default `embedded={false}` for proper card display
+
+## [1.2.2] - 2025-12-18
+
+### Changed
+- **Improved Payment Approval Screen Layout**
+  - Moved Total Amount card to top of screen for immediate visibility
+  - Combined merchant name with order details in single card container
+  - Order Items and Price Breakdown sections now embedded within order card
+  - Reduced vertical space usage to fit all content on one screen
+  - Removed large merchant logo placeholder that was taking up space
+
+### Technical
+- Added `embedded` prop to OrderSummary component for seamless card integration
+- New styles: `orderCard`, `orderCardMerchantHeader`, `containerEmbedded`, `sectionEmbedded`
+
+## [1.2.1] - 2025-12-18
+
+### Added
+- **Animated Success Screen for Payment Approval**
+  - Green circle with animated checkmark appears after successful payment
+  - Circle scales in with spring bounce effect (~300ms)
+  - Checkmark fades in and scales with smooth easing (~800ms)
+  - "Payment Approved" message fades in below animation
+  - 2-second hold before showing stay/redirect options
+  - Configurable animation duration and delay timing
+
+### Technical
+- New `SuccessAnimation` component (`src/components/SuccessAnimation.tsx`)
+  - Uses React Native's built-in Animated API (no additional dependencies)
+  - Configurable `animationDuration` and `delayAfterAnimation` props
+  - `onComplete` callback for integration with payment flow
+- Added 6 unit tests for SuccessAnimation component (169 total tests)
+
 ## [1.2.0] - 2025-12-18
 
 ### Added
