@@ -38,6 +38,57 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [ ] Transaction confirmation notifications
 - [ ] Security alerts
 
+## Multi-Bank Support
+
+### Bank Display
+- [x] Display bankName on card component
+- [x] Display bankName in wallet card list
+- [x] Display bankName in payment card selection
+- [x] Display bank logo with fallback (icon/initials if missing)
+
+### Connected Banks Management
+- [ ] "Connected Banks" section in profile/settings
+- [ ] Show enrolled banks with card counts
+- [ ] "Connect Another Bank" action
+
+## P2P Transfers (Planning)
+
+Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
+
+### Alias Management
+- [ ] Register email alias
+- [ ] Register phone alias
+- [ ] Register username alias
+- [ ] View/manage aliases
+- [ ] Set primary alias
+- [ ] Alias verification flow (email/SMS)
+
+### Send Money
+- [ ] Send by alias (email, phone, username)
+- [ ] Send by QR code scan
+- [ ] Send by NFC tap
+- [ ] Amount entry with currency formatting
+- [ ] Add memo/description
+- [ ] Confirmation screen with recipient preview
+- [ ] Biometric authorization for transfers
+
+### Receive Money
+- [ ] Generate receive QR code
+- [ ] Share alias (copy, share sheet)
+- [ ] Request specific amount (optional)
+- [ ] Receive QR expiration handling
+
+### Transfer History
+- [ ] Transfer list view (sent/received)
+- [ ] Transfer detail view
+- [ ] Filter by status, date, direction
+- [ ] Search by alias/name
+
+### Notifications
+- [ ] Push notification for incoming transfer
+- [ ] Push notification for transfer complete
+- [ ] In-app notification center
+
 ## Phase 3: OpenWallet Foundation
 
 ### OID4VCI (Verifiable Credential Issuance)

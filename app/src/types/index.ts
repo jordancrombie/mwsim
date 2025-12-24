@@ -13,7 +13,7 @@ export interface Card {
   lastFour: string;
   cardType: 'VISA' | 'MASTERCARD' | 'AMEX' | 'DISCOVER' | 'DEBIT';
   bankName: string;
-  bankLogo?: string;
+  bankLogoUrl?: string;  // Bank logo URL (null if not configured)
   isDefault: boolean;
   addedAt: string;
 }
@@ -22,15 +22,17 @@ export interface Card {
 export interface Bank {
   bsimId: string;
   name: string;
-  logo?: string;
+  logoUrl?: string;  // Bank logo URL
   description?: string;
 }
 
 export interface EnrolledBank {
   bsimId: string;
   name: string;
+  logoUrl?: string;  // Bank logo URL
   cardCount: number;
   enrolledAt: string;
+  credentialExpiry?: string;
 }
 
 // Auth types
@@ -134,6 +136,7 @@ export interface PaymentCard {
   expiryMonth?: number;
   expiryYear?: number;
   bankName: string;
+  bankLogoUrl?: string;  // Bank logo URL
   isDefault: boolean;
 }
 
