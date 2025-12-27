@@ -122,6 +122,7 @@ export default function App() {
   const [aliases, setAliases] = useState<Alias[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [recentTransfers, setRecentTransfers] = useState<Transfer[]>([]);
+  const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -2584,6 +2585,10 @@ export default function App() {
                   key={transfer.transferId}
                   style={styles.historyItem}
                   activeOpacity={0.7}
+                  onPress={() => {
+                    setSelectedTransfer(transfer);
+                    setCurrentScreen('transferDetail');
+                  }}
                 >
                   {/* Direction Icon */}
                   <View style={[
@@ -2620,6 +2625,169 @@ export default function App() {
                 </TouchableOpacity>
               ))
             )}
+          </ScrollView>
+        </View>
+      </View>
+    );
+  }
+
+  // Transfer Detail Screen
+  if (currentScreen === 'transferDetail' && selectedTransfer) {
+    const isSent = selectedTransfer.direction === 'sent';
+    const counterpartyName = isSent
+      ? selectedTransfer.recipientDisplayName || selectedTransfer.recipientAlias || 'Unknown'
+      : selectedTransfer.senderDisplayName || selectedTransfer.senderAlias || 'Unknown';
+    const counterpartyAlias = isSent
+      ? selectedTransfer.recipientAlias
+      : selectedTransfer.senderAlias;
+    const counterpartyBank = isSent
+      ? selectedTransfer.recipientBankName
+      : selectedTransfer.senderBankName;
+
+    const formatFullDate = (dateString: string) => {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    };
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case 'COMPLETED': return '#22c55e';
+        case 'PENDING':
+        case 'RESOLVING':
+        case 'DEBITING':
+        case 'CREDITING': return '#f59e0b';
+        case 'CANCELLED':
+        case 'EXPIRED': return '#6b7280';
+        default: return '#ef4444';
+      }
+    };
+
+    const getStatusText = (status: string) => {
+      switch (status) {
+        case 'COMPLETED': return 'Completed';
+        case 'PENDING': return 'Pending';
+        case 'RESOLVING': return 'Finding recipient...';
+        case 'DEBITING': return 'Processing...';
+        case 'CREDITING': return 'Depositing...';
+        case 'CANCELLED': return 'Cancelled';
+        case 'EXPIRED': return 'Expired';
+        case 'REVERSED': return 'Reversed';
+        case 'DEBIT_FAILED': return 'Payment failed';
+        case 'CREDIT_FAILED': return 'Deposit failed';
+        default: return status;
+      }
+    };
+
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.transferDetailContent}>
+          {/* Header */}
+          <View style={styles.transferDetailHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedTransfer(null);
+                setCurrentScreen('transferHistory');
+              }}
+            >
+              <Text style={styles.backButton}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.transferDetailTitle}>Transfer Details</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <ScrollView style={styles.transferDetailScroll} showsVerticalScrollIndicator={false}>
+            {/* Amount and Direction */}
+            <View style={styles.transferDetailAmountCard}>
+              <View style={[
+                styles.transferDetailDirectionIcon,
+                { backgroundColor: isSent ? '#fef2f2' : '#f0fdf4' }
+              ]}>
+                <Text style={{ fontSize: 32 }}>{isSent ? '↗️' : '↙️'}</Text>
+              </View>
+              <Text style={[
+                styles.transferDetailAmount,
+                { color: isSent ? '#dc2626' : '#16a34a' }
+              ]}>
+                {isSent ? '-' : '+'}${selectedTransfer.amount.toFixed(2)} {selectedTransfer.currency}
+              </Text>
+              <View style={[
+                styles.transferDetailStatusBadge,
+                { backgroundColor: getStatusColor(selectedTransfer.status) + '20' }
+              ]}>
+                <Text style={[
+                  styles.transferDetailStatusText,
+                  { color: getStatusColor(selectedTransfer.status) }
+                ]}>
+                  {getStatusText(selectedTransfer.status)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Counterparty Info */}
+            <View style={styles.transferDetailSection}>
+              <Text style={styles.transferDetailSectionTitle}>
+                {isSent ? 'Sent to' : 'Received from'}
+              </Text>
+              <View style={styles.transferDetailInfoCard}>
+                <View style={styles.transferDetailPersonIcon}>
+                  <Text style={{ fontSize: 24 }}>👤</Text>
+                </View>
+                <View style={styles.transferDetailPersonInfo}>
+                  <Text style={styles.transferDetailPersonName}>{counterpartyName}</Text>
+                  {counterpartyAlias && (
+                    <Text style={styles.transferDetailPersonAlias}>{counterpartyAlias}</Text>
+                  )}
+                  {counterpartyBank && (
+                    <Text style={styles.transferDetailPersonBank}>{counterpartyBank}</Text>
+                  )}
+                </View>
+              </View>
+            </View>
+
+            {/* Description/Note */}
+            {selectedTransfer.description && (
+              <View style={styles.transferDetailSection}>
+                <Text style={styles.transferDetailSectionTitle}>Note</Text>
+                <View style={styles.transferDetailNoteCard}>
+                  <Text style={styles.transferDetailNoteText}>{selectedTransfer.description}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Transaction Details */}
+            <View style={styles.transferDetailSection}>
+              <Text style={styles.transferDetailSectionTitle}>Transaction Details</Text>
+              <View style={styles.transferDetailInfoCard}>
+                <View style={styles.transferDetailRow}>
+                  <Text style={styles.transferDetailLabel}>Date</Text>
+                  <Text style={styles.transferDetailValue}>
+                    {formatFullDate(selectedTransfer.createdAt)}
+                  </Text>
+                </View>
+                {selectedTransfer.completedAt && (
+                  <View style={styles.transferDetailRow}>
+                    <Text style={styles.transferDetailLabel}>Completed</Text>
+                    <Text style={styles.transferDetailValue}>
+                      {formatFullDate(selectedTransfer.completedAt)}
+                    </Text>
+                  </View>
+                )}
+                <View style={[styles.transferDetailRow, { borderBottomWidth: 0 }]}>
+                  <Text style={styles.transferDetailLabel}>Reference</Text>
+                  <Text style={styles.transferDetailValueMono}>
+                    {selectedTransfer.transferId.substring(0, 12)}...
+                  </Text>
+                </View>
+              </View>
+            </View>
           </ScrollView>
         </View>
       </View>
@@ -5015,6 +5183,150 @@ const styles = StyleSheet.create({
   historyItemAmount: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  // Transfer Detail styles
+  transferDetailContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  transferDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 24,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  transferDetailTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  transferDetailScroll: {
+    flex: 1,
+    padding: 24,
+    paddingTop: 0,
+  },
+  transferDetailAmountCard: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  transferDetailDirectionIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  transferDetailAmount: {
+    fontSize: 36,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  transferDetailStatusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  transferDetailStatusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  transferDetailSection: {
+    marginBottom: 24,
+  },
+  transferDetailSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  transferDetailInfoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  transferDetailPersonIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#f3f4f6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  transferDetailPersonInfo: {
+    flex: 1,
+  },
+  transferDetailPersonName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  transferDetailPersonAlias: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  transferDetailPersonBank: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  transferDetailNoteCard: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#f59e0b',
+  },
+  transferDetailNoteText: {
+    fontSize: 15,
+    color: '#78350f',
+    lineHeight: 22,
+  },
+  transferDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  transferDetailLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    flex: 1,
+  },
+  transferDetailValue: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '500',
+    flex: 2,
+    textAlign: 'right',
+  },
+  transferDetailValueMono: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    flex: 2,
+    textAlign: 'right',
   },
   // P2P QR Confirm styles
   p2pQrConfirmContent: {
