@@ -1716,6 +1716,393 @@ export default function App() {
     );
   }
 
+  // Alias Management Screen
+  if (currentScreen === 'aliasManagement') {
+    const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
+    const [newAliasValue, setNewAliasValue] = useState('');
+    const [aliasLoading, setAliasLoading] = useState(false);
+    const [aliasError, setAliasError] = useState<string | null>(null);
+
+    const handleCreateAlias = async () => {
+      if (!newAliasValue.trim()) {
+        setAliasError('Please enter an alias value');
+        return;
+      }
+
+      setAliasLoading(true);
+      setAliasError(null);
+
+      try {
+        const newAlias = await transferSimApi.createAlias(newAliasType, newAliasValue.trim());
+        setAliases([...aliases, newAlias]);
+        setNewAliasValue('');
+        Alert.alert('Success', 'Alias created successfully!');
+      } catch (e: any) {
+        console.error('[Alias] Create failed:', e);
+        const message = e.response?.data?.message || e.message || 'Failed to create alias';
+        setAliasError(message);
+      } finally {
+        setAliasLoading(false);
+      }
+    };
+
+    const handleDeleteAlias = async (aliasId: string) => {
+      Alert.alert(
+        'Delete Alias',
+        'Are you sure you want to delete this alias? People will no longer be able to send you money using it.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await transferSimApi.deleteAlias(aliasId);
+                setAliases(aliases.filter(a => a.id !== aliasId));
+                Alert.alert('Success', 'Alias deleted');
+              } catch (e: any) {
+                Alert.alert('Error', 'Failed to delete alias');
+              }
+            },
+          },
+        ]
+      );
+    };
+
+    const handleSetPrimary = async (aliasId: string) => {
+      try {
+        await transferSimApi.setPrimaryAlias(aliasId);
+        setAliases(aliases.map(a => ({
+          ...a,
+          isPrimary: a.id === aliasId,
+        })));
+        Alert.alert('Success', 'Primary alias updated');
+      } catch (e: any) {
+        Alert.alert('Error', 'Failed to set primary alias');
+      }
+    };
+
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.aliasManagementContent}>
+          {/* Header */}
+          <View style={styles.aliasManagementHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setActiveHomeTab('p2p');
+                setCurrentScreen('home');
+              }}
+            >
+              <Text style={styles.backButton}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.aliasManagementTitle}>My Aliases</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <ScrollView style={styles.aliasManagementScroll}>
+            {/* Add New Alias Section */}
+            <View style={styles.aliasAddSection}>
+              <Text style={styles.aliasAddTitle}>Add New Alias</Text>
+              <Text style={styles.aliasAddSubtitle}>
+                People can send you money using your alias instead of your account number.
+              </Text>
+
+              {/* Alias Type Selector */}
+              <View style={styles.aliasTypeSelector}>
+                <TouchableOpacity
+                  style={[
+                    styles.aliasTypeOption,
+                    newAliasType === 'USERNAME' && styles.aliasTypeOptionActive,
+                  ]}
+                  onPress={() => setNewAliasType('USERNAME')}
+                >
+                  <Text
+                    style={[
+                      styles.aliasTypeOptionText,
+                      newAliasType === 'USERNAME' && styles.aliasTypeOptionTextActive,
+                    ]}
+                  >
+                    @username
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.aliasTypeOption,
+                    newAliasType === 'EMAIL' && styles.aliasTypeOptionActive,
+                  ]}
+                  onPress={() => setNewAliasType('EMAIL')}
+                >
+                  <Text
+                    style={[
+                      styles.aliasTypeOptionText,
+                      newAliasType === 'EMAIL' && styles.aliasTypeOptionTextActive,
+                    ]}
+                  >
+                    Email
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.aliasTypeOption,
+                    newAliasType === 'PHONE' && styles.aliasTypeOptionActive,
+                  ]}
+                  onPress={() => setNewAliasType('PHONE')}
+                >
+                  <Text
+                    style={[
+                      styles.aliasTypeOptionText,
+                      newAliasType === 'PHONE' && styles.aliasTypeOptionTextActive,
+                    ]}
+                  >
+                    Phone
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Alias Input */}
+              <View style={styles.aliasInputContainer}>
+                {newAliasType === 'USERNAME' && (
+                  <Text style={styles.aliasInputPrefix}>@</Text>
+                )}
+                <TextInput
+                  style={[
+                    styles.aliasInput,
+                    newAliasType === 'USERNAME' && styles.aliasInputWithPrefix,
+                  ]}
+                  value={newAliasValue}
+                  onChangeText={setNewAliasValue}
+                  placeholder={
+                    newAliasType === 'USERNAME'
+                      ? 'johndoe'
+                      : newAliasType === 'EMAIL'
+                      ? 'you@example.com'
+                      : '+1 (555) 123-4567'
+                  }
+                  keyboardType={
+                    newAliasType === 'EMAIL'
+                      ? 'email-address'
+                      : newAliasType === 'PHONE'
+                      ? 'phone-pad'
+                      : 'default'
+                  }
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              {aliasError && (
+                <Text style={styles.aliasErrorText}>{aliasError}</Text>
+              )}
+
+              <TouchableOpacity
+                style={[styles.primaryButton, { marginTop: 16 }]}
+                onPress={handleCreateAlias}
+                disabled={aliasLoading}
+                activeOpacity={0.7}
+              >
+                {aliasLoading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Add Alias</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Existing Aliases */}
+            <View style={styles.aliasListSection}>
+              <Text style={styles.sectionTitle}>Your Aliases</Text>
+              {aliases.length === 0 ? (
+                <View style={styles.aliasEmptyState}>
+                  <Text style={styles.aliasEmptyText}>
+                    No aliases yet. Add one above to receive money!
+                  </Text>
+                </View>
+              ) : (
+                aliases.map((alias) => (
+                  <View key={alias.id} style={styles.aliasListItem}>
+                    <View style={styles.aliasListInfo}>
+                      <Text style={styles.aliasListValue}>{alias.value}</Text>
+                      <View style={styles.aliasListMeta}>
+                        <Text style={styles.aliasListType}>{alias.type}</Text>
+                        {alias.isPrimary && (
+                          <View style={styles.aliasPrimaryBadge}>
+                            <Text style={styles.aliasPrimaryBadgeText}>Primary</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.aliasListActions}>
+                      {!alias.isPrimary && (
+                        <TouchableOpacity
+                          style={styles.aliasActionButton}
+                          onPress={() => handleSetPrimary(alias.id)}
+                        >
+                          <Text style={styles.aliasActionButtonText}>Set Primary</Text>
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={styles.aliasDeleteButton}
+                        onPress={() => handleDeleteAlias(alias.id)}
+                      >
+                        <Text style={styles.aliasDeleteButtonText}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    );
+  }
+
+  // Receive Money Screen
+  if (currentScreen === 'receiveMoney') {
+    const [receiveLoading, setReceiveLoading] = useState(false);
+    const [receiveToken, setReceiveToken] = useState<{ tokenId: string; qrPayload: string; expiresAt: string } | null>(null);
+
+    const primaryAlias = aliases.find(a => a.isPrimary) || aliases[0];
+
+    const handleGenerateQR = async () => {
+      setReceiveLoading(true);
+      try {
+        const token = await transferSimApi.generateReceiveToken();
+        setReceiveToken(token);
+      } catch (e: any) {
+        console.error('[Receive] Generate token failed:', e);
+        Alert.alert('Error', 'Failed to generate receive code');
+      } finally {
+        setReceiveLoading(false);
+      }
+    };
+
+    const handleShareAlias = async () => {
+      if (!primaryAlias) {
+        Alert.alert('No Alias', 'Please create an alias first');
+        return;
+      }
+
+      try {
+        // Use React Native Share
+        const { Share } = await import('react-native');
+        await Share.share({
+          message: `Send me money on mwsim! My alias is: ${primaryAlias.value}`,
+        });
+      } catch (e) {
+        console.log('Share cancelled or failed');
+      }
+    };
+
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.receiveContent}>
+          {/* Header */}
+          <View style={styles.receiveHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setActiveHomeTab('p2p');
+                setCurrentScreen('home');
+                setReceiveToken(null);
+              }}
+            >
+              <Text style={styles.backButton}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.receiveTitle}>Receive Money</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <ScrollView style={styles.receiveScroll} contentContainerStyle={styles.receiveScrollContent}>
+            {/* QR Code Section */}
+            <View style={styles.receiveQRSection}>
+              <View style={styles.receiveQRPlaceholder}>
+                {receiveLoading ? (
+                  <ActivityIndicator size="large" color="#3b82f6" />
+                ) : receiveToken ? (
+                  <>
+                    {/* QR code would be displayed here with react-native-qrcode-svg */}
+                    <View style={styles.receiveQRBox}>
+                      <Text style={styles.receiveQRIcon}>📱</Text>
+                      <Text style={styles.receiveQRText}>QR Code Ready</Text>
+                      <Text style={styles.receiveQRSubtext}>
+                        Expires: {new Date(receiveToken.expiresAt).toLocaleTimeString()}
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.receiveQRIcon}>📱</Text>
+                    <Text style={styles.receiveQRText}>Generate a QR code</Text>
+                    <Text style={styles.receiveQRSubtext}>
+                      Others can scan to send you money
+                    </Text>
+                  </>
+                )}
+              </View>
+
+              <TouchableOpacity
+                style={[styles.primaryButton, { marginTop: 16 }]}
+                onPress={handleGenerateQR}
+                disabled={receiveLoading}
+                activeOpacity={0.7}
+              >
+                {receiveLoading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>
+                    {receiveToken ? 'Refresh QR Code' : 'Generate QR Code'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Or share alias */}
+            <View style={styles.receiveOrSection}>
+              <View style={styles.receiveOrLine} />
+              <Text style={styles.receiveOrText}>OR</Text>
+              <View style={styles.receiveOrLine} />
+            </View>
+
+            {/* Share Alias Section */}
+            <View style={styles.receiveAliasSection}>
+              <Text style={styles.receiveAliasTitle}>Share Your Alias</Text>
+              {primaryAlias ? (
+                <>
+                  <View style={styles.receiveAliasCard}>
+                    <Text style={styles.receiveAliasValue}>{primaryAlias.value}</Text>
+                    <Text style={styles.receiveAliasType}>{primaryAlias.type}</Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[styles.outlineButton, { marginTop: 16 }]}
+                    onPress={handleShareAlias}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.outlineButtonText}>Share Alias</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.receiveNoAliasText}>
+                    Create an alias so people can send you money easily
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.primaryButton, { marginTop: 16 }]}
+                    onPress={() => setCurrentScreen('aliasManagement')}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.primaryButtonText}>Create Alias</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    );
+  }
+
   // Card Details Screen
   if (currentScreen === 'cardDetails' && selectedCard) {
     const cardColor = selectedCard.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
@@ -3138,5 +3525,291 @@ const styles = StyleSheet.create({
   },
   p2pTransferAmountReceived: {
     color: '#22c55e',
+  },
+  // Alias Management Styles
+  aliasManagementContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  aliasManagementHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  aliasManagementTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  aliasManagementScroll: {
+    flex: 1,
+    padding: 24,
+  },
+  aliasAddSection: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+  },
+  aliasAddTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  aliasAddSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  aliasTypeSelector: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    gap: 8,
+  },
+  aliasTypeOption: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  aliasTypeOptionActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  aliasTypeOptionText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  aliasTypeOptionTextActive: {
+    color: '#ffffff',
+  },
+  aliasInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#d1d5db',
+  },
+  aliasInputPrefix: {
+    fontSize: 18,
+    color: '#6b7280',
+    paddingLeft: 16,
+    fontWeight: '500',
+  },
+  aliasInput: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: '#111827',
+  },
+  aliasInputWithPrefix: {
+    paddingLeft: 8,
+  },
+  aliasErrorText: {
+    color: '#ef4444',
+    fontSize: 14,
+    marginTop: 8,
+  },
+  aliasListSection: {
+    marginBottom: 24,
+  },
+  aliasEmptyState: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  aliasEmptyText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  aliasListItem: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  aliasListInfo: {
+    marginBottom: 12,
+  },
+  aliasListValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  aliasListMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  aliasListType: {
+    fontSize: 12,
+    color: '#6b7280',
+    textTransform: 'uppercase',
+  },
+  aliasPrimaryBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  aliasPrimaryBadgeText: {
+    fontSize: 11,
+    color: '#1d4ed8',
+    fontWeight: '600',
+  },
+  aliasListActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  aliasActionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#eff6ff',
+  },
+  aliasActionButtonText: {
+    fontSize: 14,
+    color: '#3b82f6',
+    fontWeight: '500',
+  },
+  aliasDeleteButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#fef2f2',
+  },
+  aliasDeleteButtonText: {
+    fontSize: 14,
+    color: '#ef4444',
+    fontWeight: '500',
+  },
+  // Receive Money Styles
+  receiveContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  receiveHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  receiveTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  receiveScroll: {
+    flex: 1,
+  },
+  receiveScrollContent: {
+    padding: 24,
+  },
+  receiveQRSection: {
+    alignItems: 'center',
+  },
+  receiveQRPlaceholder: {
+    width: 220,
+    height: 220,
+    backgroundColor: '#f9fafb',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  receiveQRBox: {
+    alignItems: 'center',
+  },
+  receiveQRIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  receiveQRText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  receiveQRSubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  receiveOrSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 32,
+  },
+  receiveOrLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e5e7eb',
+  },
+  receiveOrText: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginHorizontal: 16,
+    fontWeight: '500',
+  },
+  receiveAliasSection: {
+    alignItems: 'center',
+  },
+  receiveAliasTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 16,
+  },
+  receiveAliasCard: {
+    backgroundColor: '#eff6ff',
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  receiveAliasValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1d4ed8',
+  },
+  receiveAliasType: {
+    fontSize: 12,
+    color: '#3b82f6',
+    marginTop: 4,
+    textTransform: 'uppercase',
+  },
+  receiveNoAliasText: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
