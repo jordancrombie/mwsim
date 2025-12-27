@@ -2,7 +2,7 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-## [Unreleased] - Multi-Bank & P2P Support
+## [1.3.0] - 2025-12-24 - Multi-Bank & P2P Support
 
 ### Added
 - **Bank Logo Display**
