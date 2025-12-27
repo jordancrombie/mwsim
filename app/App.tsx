@@ -31,7 +31,7 @@ import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './sr
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
-import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer } from './src/types';
+import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken } from './src/types';
 
 // Keep the splash screen visible while we fetch resources
 ExpoSplashScreen.preventAutoHideAsync();
@@ -56,7 +56,8 @@ type Screen =
   | 'sendConfirm'
   | 'receiveMoney'
   | 'transferHistory'
-  | 'transferDetail';
+  | 'transferDetail'
+  | 'p2pQrScan';
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
@@ -1566,6 +1567,17 @@ export default function App() {
               </View>
               <Text style={styles.p2pQuickActionText}>Aliases</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.p2pQuickAction}
+              onPress={() => setCurrentScreen('p2pQrScan')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.p2pQuickActionIcon, { backgroundColor: '#fce7f3' }]}>
+                <Text style={{ fontSize: 24 }}>📷</Text>
+              </View>
+              <Text style={styles.p2pQuickActionText}>Scan QR</Text>
+            </TouchableOpacity>
           </View>
 
           {/* My Aliases */}
@@ -2609,6 +2621,313 @@ export default function App() {
               ))
             )}
           </ScrollView>
+        </View>
+      </View>
+    );
+  }
+
+  // P2P QR Scanner Screen
+  if (currentScreen === 'p2pQrScan') {
+    const [p2pQrScanned, setP2pQrScanned] = useState(false);
+    const [p2pTorchOn, setP2pTorchOn] = useState(false);
+    const [resolving, setResolving] = useState(false);
+    const [resolvedToken, setResolvedToken] = useState<ResolvedToken | null>(null);
+    const [p2pSendAmount, setP2pSendAmount] = useState('');
+    const [p2pSendNote, setP2pSendNote] = useState('');
+    const [p2pSelectedAccount, setP2pSelectedAccount] = useState<BankAccount | null>(
+      bankAccounts.length > 0 ? bankAccounts[0] : null
+    );
+    const [p2pSending, setP2pSending] = useState(false);
+
+    const handleP2pQrScanned = async ({ data }: { type: string; data: string }) => {
+      if (p2pQrScanned) return;
+      setP2pQrScanned(true);
+      setResolving(true);
+
+      console.log('[P2P QR] Scanned:', data);
+
+      try {
+        // The QR payload could be a token ID or a full URL
+        // Expected format: tsim://pay/{tokenId} or just the tokenId
+        let tokenId = data;
+        const tokenMatch = data.match(/tsim:\/\/pay\/([a-zA-Z0-9_-]+)/);
+        if (tokenMatch) {
+          tokenId = tokenMatch[1];
+        }
+
+        const resolved = await transferSimApi.resolveToken(tokenId);
+        setResolvedToken(resolved);
+
+        // Pre-fill amount if specified in token
+        if (resolved.amount) {
+          setP2pSendAmount(resolved.amount.toString());
+        }
+        if (resolved.description) {
+          setP2pSendNote(resolved.description);
+        }
+      } catch (e: any) {
+        console.error('[P2P QR] Resolve failed:', e);
+        Alert.alert(
+          'Invalid QR Code',
+          'This QR code is not a valid P2P receive code.',
+          [{ text: 'Try Again', onPress: () => setP2pQrScanned(false) }]
+        );
+      } finally {
+        setResolving(false);
+      }
+    };
+
+    const handleP2pQrSend = async () => {
+      if (!resolvedToken || !p2pSelectedAccount) return;
+
+      const amount = parseFloat(p2pSendAmount);
+      if (!amount || amount <= 0) {
+        Alert.alert('Error', 'Please enter a valid amount');
+        return;
+      }
+
+      setP2pSending(true);
+      try {
+        await transferSimApi.sendMoney(
+          resolvedToken.recipientAlias,
+          amount,
+          p2pSelectedAccount.accountId,
+          p2pSendNote.trim() || undefined
+        );
+
+        Alert.alert(
+          'Money Sent!',
+          `$${amount.toFixed(2)} sent to ${resolvedToken.recipientDisplayName}`,
+          [{
+            text: 'Done',
+            onPress: () => {
+              setActiveHomeTab('p2p');
+              setCurrentScreen('home');
+            }
+          }]
+        );
+      } catch (e: any) {
+        console.error('[P2P QR] Send failed:', e);
+        Alert.alert('Transfer Failed', e.response?.data?.message || 'Failed to send money');
+      } finally {
+        setP2pSending(false);
+      }
+    };
+
+    const handleCancelP2pQr = () => {
+      setP2pQrScanned(false);
+      setResolvedToken(null);
+      setP2pSendAmount('');
+      setP2pSendNote('');
+      setActiveHomeTab('p2p');
+      setCurrentScreen('home');
+    };
+
+    // Show confirm screen after resolving
+    if (resolvedToken) {
+      return (
+        <View style={styles.container}>
+          <StatusBar style="dark" />
+          <View style={styles.p2pQrConfirmContent}>
+            {/* Header */}
+            <View style={styles.p2pQrConfirmHeader}>
+              <TouchableOpacity onPress={() => {
+                setResolvedToken(null);
+                setP2pQrScanned(false);
+              }}>
+                <Text style={styles.backButton}>← Back</Text>
+              </TouchableOpacity>
+              <Text style={styles.p2pQrConfirmTitle}>Send to QR</Text>
+              <View style={{ width: 50 }} />
+            </View>
+
+            <ScrollView style={styles.p2pQrConfirmScroll} showsVerticalScrollIndicator={false}>
+              {/* Recipient Card */}
+              <View style={styles.p2pQrRecipientCard}>
+                <View style={styles.p2pQrRecipientIcon}>
+                  <Text style={{ fontSize: 32 }}>👤</Text>
+                </View>
+                <Text style={styles.p2pQrRecipientName}>{resolvedToken.recipientDisplayName}</Text>
+                <Text style={styles.p2pQrRecipientAlias}>{resolvedToken.recipientAlias}</Text>
+                <Text style={styles.p2pQrRecipientBank}>{resolvedToken.recipientBankName}</Text>
+              </View>
+
+              {/* Amount Input */}
+              <View style={styles.sendSection}>
+                <Text style={styles.sendSectionLabel}>Amount</Text>
+                <View style={styles.amountInputContainer}>
+                  <Text style={styles.amountCurrency}>$</Text>
+                  <TextInput
+                    style={styles.amountInput}
+                    placeholder="0.00"
+                    value={p2pSendAmount}
+                    onChangeText={setP2pSendAmount}
+                    keyboardType="decimal-pad"
+                    editable={!resolvedToken.amount} // Disable if amount is fixed
+                  />
+                  <Text style={styles.amountCurrencyCode}>CAD</Text>
+                </View>
+                {resolvedToken.amount && (
+                  <Text style={styles.p2pQrFixedAmountNote}>
+                    Amount set by recipient
+                  </Text>
+                )}
+              </View>
+
+              {/* Source Account */}
+              <View style={styles.sendSection}>
+                <Text style={styles.sendSectionLabel}>From account</Text>
+                {bankAccounts.map((account) => (
+                  <TouchableOpacity
+                    key={account.accountId}
+                    style={[
+                      styles.accountOption,
+                      p2pSelectedAccount?.accountId === account.accountId && styles.accountOptionSelected
+                    ]}
+                    onPress={() => setP2pSelectedAccount(account)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.accountOptionInfo}>
+                      <Text style={styles.accountOptionName}>{account.displayName}</Text>
+                      <Text style={styles.accountOptionBank}>{account.bankName}</Text>
+                    </View>
+                    <View style={styles.accountOptionBalance}>
+                      <Text style={styles.accountOptionBalanceAmount}>
+                        ${account.balance?.toFixed(2) || '—'}
+                      </Text>
+                      {p2pSelectedAccount?.accountId === account.accountId && (
+                        <Text style={styles.accountOptionCheck}>✓</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Note Input */}
+              <View style={styles.sendSection}>
+                <Text style={styles.sendSectionLabel}>Note (optional)</Text>
+                <TextInput
+                  style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
+                  placeholder="What's this for?"
+                  value={p2pSendNote}
+                  onChangeText={setP2pSendNote}
+                  multiline
+                  maxLength={140}
+                  editable={!resolvedToken.description}
+                />
+                {resolvedToken.description && (
+                  <Text style={styles.p2pQrFixedAmountNote}>
+                    Note set by recipient
+                  </Text>
+                )}
+              </View>
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={styles.sendActions}>
+              <TouchableOpacity
+                style={[
+                  styles.primaryButton,
+                  (!p2pSendAmount || !p2pSelectedAccount || p2pSending) && styles.buttonDisabled
+                ]}
+                onPress={handleP2pQrSend}
+                disabled={!p2pSendAmount || !p2pSelectedAccount || p2pSending}
+                activeOpacity={0.7}
+              >
+                {p2pSending ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Send Money</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Camera View
+    return (
+      <View style={styles.container}>
+        <StatusBar style="light" />
+        <View style={styles.qrScannerContainer}>
+          {/* Header */}
+          <View style={styles.qrScannerHeader}>
+            <TouchableOpacity onPress={handleCancelP2pQr} style={styles.qrScannerBackButton}>
+              <Text style={styles.qrScannerBackText}>← Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.qrScannerTitle}>Scan to Send</Text>
+            <View style={{ width: 70 }} />
+          </View>
+
+          {/* Camera View */}
+          <View style={styles.qrScannerCameraContainer}>
+            {cameraPermission?.granted === false ? (
+              <View style={styles.qrScannerPermissionDenied}>
+                <Text style={styles.qrScannerPermissionIcon}>📷</Text>
+                <Text style={styles.qrScannerPermissionTitle}>Camera Access Required</Text>
+                <Text style={styles.qrScannerPermissionText}>
+                  Please enable camera access in Settings to scan P2P QR codes.
+                </Text>
+                <TouchableOpacity
+                  style={styles.primaryButton}
+                  onPress={() => Linking.openSettings()}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.primaryButtonText}>Open Settings</Text>
+                </TouchableOpacity>
+              </View>
+            ) : resolving ? (
+              <View style={styles.qrScannerPermissionDenied}>
+                <ActivityIndicator size="large" color="#1d4ed8" />
+                <Text style={[styles.qrScannerPermissionTitle, { marginTop: 16 }]}>
+                  Looking up recipient...
+                </Text>
+              </View>
+            ) : (
+              <>
+                <CameraView
+                  onBarcodeScanned={p2pQrScanned ? undefined : handleP2pQrScanned}
+                  style={StyleSheet.absoluteFillObject}
+                  barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                  enableTorch={p2pTorchOn}
+                />
+
+                {/* Scanning Frame Overlay */}
+                <View style={styles.qrScannerOverlay}>
+                  <View style={styles.qrScannerOverlayTop} />
+                  <View style={styles.qrScannerOverlayMiddle}>
+                    <View style={styles.qrScannerOverlaySide} />
+                    <View style={styles.qrScannerFrame}>
+                      <View style={[styles.qrCorner, styles.qrCornerTopLeft]} />
+                      <View style={[styles.qrCorner, styles.qrCornerTopRight]} />
+                      <View style={[styles.qrCorner, styles.qrCornerBottomLeft]} />
+                      <View style={[styles.qrCorner, styles.qrCornerBottomRight]} />
+                    </View>
+                    <View style={styles.qrScannerOverlaySide} />
+                  </View>
+                  <View style={styles.qrScannerOverlayBottom} />
+                </View>
+
+                {/* Instructions */}
+                <View style={styles.qrScannerInstructions}>
+                  <Text style={styles.qrScannerInstructionsText}>
+                    Scan a recipient's P2P receive code
+                  </Text>
+                </View>
+
+                {/* Torch Toggle */}
+                <TouchableOpacity
+                  style={styles.qrTorchButton}
+                  onPress={() => setP2pTorchOn(!p2pTorchOn)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.qrTorchIcon}>{p2pTorchOn ? '🔦' : '💡'}</Text>
+                  <Text style={styles.qrTorchText}>{p2pTorchOn ? 'Light On' : 'Light Off'}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
         </View>
       </View>
     );
@@ -4696,5 +5015,68 @@ const styles = StyleSheet.create({
   historyItemAmount: {
     fontSize: 18,
     fontWeight: '700',
+  },
+  // P2P QR Confirm styles
+  p2pQrConfirmContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  p2pQrConfirmHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  p2pQrConfirmTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  p2pQrConfirmScroll: {
+    flex: 1,
+    padding: 24,
+  },
+  p2pQrRecipientCard: {
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    padding: 24,
+    borderRadius: 16,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  p2pQrRecipientIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  p2pQrRecipientName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  p2pQrRecipientAlias: {
+    fontSize: 14,
+    color: '#16a34a',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  p2pQrRecipientBank: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  p2pQrFixedAmountNote: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });
