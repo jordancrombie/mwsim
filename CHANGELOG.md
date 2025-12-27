@@ -2,6 +2,59 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.4.0] - 2025-12-27 - P2P Transfer Integration
+
+### Added
+- **Bottom Tab Navigation**
+  - New tab bar with Cards and P2P tabs
+  - Seamless switching between wallet and P2P features
+  - Active tab indicator with blue highlight
+
+- **P2P Tab with Enrollment**
+  - P2P enrollment check on tab access
+  - "Enable P2P Transfers" prompt for unenrolled users
+  - One-tap enrollment using first connected bank
+  - P2P home screen with quick actions
+
+- **Alias Management**
+  - Add new aliases (username, email, or phone)
+  - Type selector with @username, Email, Phone options
+  - View list of registered aliases
+  - Set alias as primary for receiving
+  - Delete existing aliases with confirmation
+
+- **Receive Money Screen**
+  - QR code generation (placeholder for react-native-qrcode-svg)
+  - Share alias via device share sheet
+  - Display primary alias prominently
+  - Token expiration display
+
+- **TransferSim Service Integration**
+  - New `transferSim.ts` API client
+  - X-API-Key authentication for orchestrator
+  - Authorization header with userId:bsimId format
+  - Enrollment, alias, transfer, and token endpoints
+
+### Technical
+- **New Types** (`src/types/index.ts`)
+  - `Alias`, `AliasType` - Alias management
+  - `Transfer`, `TransferStatus`, `TransferDirection` - P2P transfers
+  - `BankAccount` - Bank accounts for P2P (different from cards)
+  - `P2PEnrollment`, `P2PState` - Enrollment tracking
+  - `ReceiveToken`, `ResolvedToken` - QR token handling
+  - `AliasLookupResult` - Alias search results
+
+- **Secure Storage** (`src/services/secureStorage.ts`)
+  - `P2P_USER_CONTEXT` - userId and bsimId for TransferSim auth
+  - `P2P_LAST_ACCOUNT` - Remember last used account
+  - `P2P_ENROLLMENT` - Cached enrollment status
+  - All P2P data cleared on logout
+
+### In Progress
+- Send money by alias flow
+- Send money by QR scan
+- Transfer history view
+
 ## [1.3.0] - 2025-12-24 - Multi-Bank & P2P Support
 
 ### Added
