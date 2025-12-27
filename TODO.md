@@ -74,7 +74,7 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 - [x] Amount entry with currency formatting
 - [x] Add memo/description
 - [x] Confirmation screen with recipient preview
-- [ ] Biometric authorization for transfers
+- [x] Biometric authorization for transfers
 
 ### Receive Money
 - [x] Generate receive QR code (via TransferSim token API)
@@ -85,7 +85,7 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 ### Transfer History
 - [x] Transfer list view (sent/received)
 - [x] Filter by direction (All/Sent/Received)
-- [ ] Transfer detail view
+- [x] Transfer detail view
 - [ ] Filter by status, date
 - [ ] Search by alias/name
 

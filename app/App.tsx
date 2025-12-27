@@ -2170,6 +2170,18 @@ export default function App() {
     const handleSendMoney = async () => {
       if (!selectedAccount || !recipientInfo?.found) return;
 
+      // Biometric authentication before sending
+      const recipientName = recipientInfo.displayName || recipientAlias.trim();
+      const amountFormatted = `$${parseFloat(sendAmount).toFixed(2)}`;
+      const authResult = await biometricService.authenticateForTransfer(amountFormatted, recipientName);
+
+      if (!authResult.success) {
+        if (authResult.error !== 'Authentication cancelled') {
+          Alert.alert('Authentication Failed', authResult.error || 'Please try again');
+        }
+        return;
+      }
+
       setSendLoading(true);
       try {
         const result = await transferSimApi.sendMoney(
@@ -2851,6 +2863,20 @@ export default function App() {
       const amount = parseFloat(p2pSendAmount);
       if (!amount || amount <= 0) {
         Alert.alert('Error', 'Please enter a valid amount');
+        return;
+      }
+
+      // Biometric authentication before sending
+      const amountFormatted = `$${amount.toFixed(2)}`;
+      const authResult = await biometricService.authenticateForTransfer(
+        amountFormatted,
+        resolvedToken.recipientDisplayName
+      );
+
+      if (!authResult.success) {
+        if (authResult.error !== 'Authentication cancelled') {
+          Alert.alert('Authentication Failed', authResult.error || 'Please try again');
+        }
         return;
       }
 
