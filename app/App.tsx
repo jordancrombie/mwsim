@@ -26,11 +26,12 @@ import { api } from './src/services/api';
 import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
 import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
+import { transferSimApi } from './src/services/transferSim';
 import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './src/config/env';
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
-import type { User, Card, Bank, PaymentRequest, PaymentCard } from './src/types';
+import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, P2PEnrollment, BankAccount, Transfer } from './src/types';
 
 // Keep the splash screen visible while we fetch resources
 ExpoSplashScreen.preventAutoHideAsync();
@@ -46,7 +47,19 @@ type Screen =
   | 'home'
   | 'cardDetails'
   | 'paymentApproval'
-  | 'qrScanner';
+  | 'qrScanner'
+  // P2P screens
+  | 'p2pHome'
+  | 'p2pEnrollment'
+  | 'aliasManagement'
+  | 'sendMoney'
+  | 'sendConfirm'
+  | 'receiveMoney'
+  | 'transferHistory'
+  | 'transferDetail';
+
+// Home tabs
+type HomeTab = 'cards' | 'p2p';
 
 export default function App() {
   // Navigation state
@@ -97,6 +110,17 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [qrScanned, setQrScanned] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+
+  // Home tab state (for bottom tabs)
+  const [activeHomeTab, setActiveHomeTab] = useState<HomeTab>('cards');
+
+  // P2P state
+  const [p2pEnrolled, setP2pEnrolled] = useState(false);
+  const [p2pEnrollment, setP2pEnrollment] = useState<P2PEnrollment | null>(null);
+  const [p2pLoading, setP2pLoading] = useState(false);
+  const [aliases, setAliases] = useState<Alias[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [recentTransfers, setRecentTransfers] = useState<Transfer[]>([]);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -821,6 +845,120 @@ export default function App() {
     setCurrentScreen('home');
   };
 
+  // P2P Functions
+  const checkP2PEnrollment = async () => {
+    try {
+      setP2pLoading(true);
+
+      // Set up P2P user context for TransferSim auth
+      // Get userId from user state
+      if (user?.id) {
+        // For now, use the first enrolled bank's bsimId
+        // In production, user should select which bank to use for P2P
+        const enrolledBanks = await api.getEnrolledBanks();
+        if (enrolledBanks.enrollments.length > 0) {
+          const bsimId = enrolledBanks.enrollments[0].bsimId;
+          await secureStorage.setP2PUserContext({ userId: user.id, bsimId });
+        }
+      }
+
+      const result = await transferSimApi.checkEnrollment();
+      setP2pEnrolled(result.enrolled);
+      if (result.enrollment) {
+        setP2pEnrollment(result.enrollment);
+        await secureStorage.setP2PEnrollment(result.enrollment);
+
+        // Load aliases and recent transfers
+        await loadP2PData();
+      }
+    } catch (e) {
+      console.log('[P2P] Enrollment check failed:', e);
+      setP2pEnrolled(false);
+    } finally {
+      setP2pLoading(false);
+    }
+  };
+
+  const loadP2PData = async () => {
+    try {
+      // Load aliases, accounts, and recent transfers in parallel
+      const [aliasesResult, accountsResult, transfersResult] = await Promise.all([
+        transferSimApi.getAliases().catch(() => []),
+        transferSimApi.getAccounts().catch(() => []),
+        transferSimApi.getTransfers('all', 10).catch(() => ({ transfers: [], total: 0 })),
+      ]);
+
+      setAliases(aliasesResult);
+      setBankAccounts(accountsResult);
+      setRecentTransfers(transfersResult.transfers);
+    } catch (e) {
+      console.log('[P2P] Failed to load P2P data:', e);
+    }
+  };
+
+  const handleStartP2PEnrollment = async () => {
+    if (!user?.id) {
+      Alert.alert('Error', 'Please sign in first');
+      return;
+    }
+
+    try {
+      setP2pLoading(true);
+
+      // Get the user's enrolled banks to select which bank to use for P2P
+      const enrolledBanks = await api.getEnrolledBanks();
+      if (enrolledBanks.enrollments.length === 0) {
+        Alert.alert(
+          'No Bank Connected',
+          'Please connect a bank first before enabling P2P transfers.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Add Bank',
+              onPress: () => {
+                handleLoadBanks();
+                setCurrentScreen('bankSelection');
+              },
+            },
+          ]
+        );
+        return;
+      }
+
+      // For now, use the first enrolled bank
+      // TODO: Let user choose if multiple banks are enrolled
+      const bsimId = enrolledBanks.enrollments[0].bsimId;
+
+      // Store P2P user context
+      await secureStorage.setP2PUserContext({ userId: user.id, bsimId });
+
+      // Enroll in P2P network
+      const enrollment = await transferSimApi.enrollUser(user.id, bsimId);
+
+      setP2pEnrolled(true);
+      setP2pEnrollment(enrollment);
+      await secureStorage.setP2PEnrollment(enrollment);
+
+      // Now navigate to alias setup
+      Alert.alert(
+        'P2P Enabled!',
+        'You\'re now set up for P2P transfers. Let\'s create your first alias so people can send you money.',
+        [
+          {
+            text: 'Set Up Alias',
+            onPress: () => setCurrentScreen('aliasManagement'),
+          },
+        ]
+      );
+    } catch (e: any) {
+      console.error('[P2P] Enrollment failed:', e);
+      const message = e.response?.data?.message || e.message || 'Failed to enable P2P transfers';
+      Alert.alert('Enrollment Failed', message);
+    } finally {
+      setP2pLoading(false);
+    }
+  };
+
   const handleResetDevice = async () => {
     Alert.alert(
       'Reset Device',
@@ -1270,112 +1408,311 @@ export default function App() {
     );
   }
 
-  // Home Screen
+  // Home Screen with Tabs
   if (currentScreen === 'home') {
+    // Cards Tab Content
+    const renderCardsTab = () => (
+      <ScrollView
+        style={styles.cardList}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefreshWallet} />
+        }
+      >
+        <Text style={styles.sectionTitle}>My Cards</Text>
+
+        {cards.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyEmoji}>💳</Text>
+            <Text style={styles.emptyTitle}>No cards yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Add a bank to get started with your digital wallet.
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 20 }]}
+              onPress={() => {
+                handleLoadBanks();
+                setCurrentScreen('bankSelection');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Add a Bank</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {cards.map((card) => (
+              <TouchableOpacity
+                key={card.id}
+                style={[
+                  styles.card,
+                  { backgroundColor: card.cardType === 'VISA' ? '#1a1f71' : '#eb001b' },
+                ]}
+                activeOpacity={0.9}
+                onPress={() => {
+                  setSelectedCard(card);
+                  setCurrentScreen('cardDetails');
+                }}
+              >
+                <View style={styles.cardTop}>
+                  <Text style={styles.cardBank}>{card.bankName}</Text>
+                  {card.isDefault && (
+                    <View style={styles.defaultBadge}>
+                      <Text style={styles.defaultBadgeText}>Default</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.cardNumber}>•••• •••• •••• {card.lastFour}</Text>
+                <Text style={styles.cardType}>{card.cardType}</Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              style={[styles.outlineButton, { marginTop: 16 }]}
+              onPress={() => {
+                handleLoadBanks();
+                setCurrentScreen('bankSelection');
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.outlineButtonText}>+ Add Another Bank</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.qrScanButton, { marginTop: 12 }]}
+              onPress={handleOpenQrScanner}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.qrScanButtonIcon}>📷</Text>
+              <Text style={styles.qrScanButtonText}>Scan QR Code to Pay</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+    );
+
+    // P2P Tab Content
+    const renderP2PTab = () => {
+      // Loading state
+      if (p2pLoading) {
+        return (
+          <View style={styles.p2pLoadingContainer}>
+            <ActivityIndicator size="large" color="#3b82f6" />
+            <Text style={styles.loadingText}>Loading P2P...</Text>
+          </View>
+        );
+      }
+
+      // Not enrolled state
+      if (!p2pEnrolled) {
+        return (
+          <View style={styles.p2pEnrollContainer}>
+            <View style={styles.p2pEnrollIcon}>
+              <Text style={{ fontSize: 48 }}>💸</Text>
+            </View>
+            <Text style={styles.p2pEnrollTitle}>Enable P2P Transfers</Text>
+            <Text style={styles.p2pEnrollSubtitle}>
+              Send and receive money instantly to anyone with just their email, phone number, or username.
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 24 }]}
+              onPress={handleStartP2PEnrollment}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Get Started with P2P</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+
+      // Enrolled state - show P2P home
+      return (
+        <ScrollView
+          style={styles.p2pContent}
+          refreshControl={
+            <RefreshControl refreshing={p2pLoading} onRefresh={loadP2PData} />
+          }
+        >
+          {/* Quick Actions */}
+          <View style={styles.p2pQuickActions}>
+            <TouchableOpacity
+              style={styles.p2pQuickAction}
+              onPress={() => setCurrentScreen('sendMoney')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.p2pQuickActionIcon, { backgroundColor: '#eff6ff' }]}>
+                <Text style={{ fontSize: 24 }}>↗️</Text>
+              </View>
+              <Text style={styles.p2pQuickActionText}>Send</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.p2pQuickAction}
+              onPress={() => setCurrentScreen('receiveMoney')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.p2pQuickActionIcon, { backgroundColor: '#f0fdf4' }]}>
+                <Text style={{ fontSize: 24 }}>↙️</Text>
+              </View>
+              <Text style={styles.p2pQuickActionText}>Receive</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.p2pQuickAction}
+              onPress={() => setCurrentScreen('aliasManagement')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.p2pQuickActionIcon, { backgroundColor: '#fef3c7' }]}>
+                <Text style={{ fontSize: 24 }}>@</Text>
+              </View>
+              <Text style={styles.p2pQuickActionText}>Aliases</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* My Aliases */}
+          <View style={styles.p2pSection}>
+            <Text style={styles.sectionTitle}>My Aliases</Text>
+            {aliases.length === 0 ? (
+              <TouchableOpacity
+                style={styles.p2pAddAliasCard}
+                onPress={() => setCurrentScreen('aliasManagement')}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.p2pAddAliasText}>+ Add your first alias to receive money</Text>
+              </TouchableOpacity>
+            ) : (
+              aliases.map((alias) => (
+                <View key={alias.id} style={styles.p2pAliasCard}>
+                  <View style={styles.p2pAliasInfo}>
+                    <Text style={styles.p2pAliasValue}>{alias.value}</Text>
+                    <Text style={styles.p2pAliasType}>{alias.type}</Text>
+                  </View>
+                  {alias.isPrimary && (
+                    <View style={styles.p2pPrimaryBadge}>
+                      <Text style={styles.p2pPrimaryBadgeText}>Primary</Text>
+                    </View>
+                  )}
+                </View>
+              ))
+            )}
+          </View>
+
+          {/* Recent Transfers */}
+          <View style={styles.p2pSection}>
+            <View style={styles.p2pSectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Transfers</Text>
+              {recentTransfers.length > 0 && (
+                <TouchableOpacity onPress={() => setCurrentScreen('transferHistory')}>
+                  <Text style={styles.p2pSeeAllText}>See All</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {recentTransfers.length === 0 ? (
+              <View style={styles.p2pEmptyTransfers}>
+                <Text style={styles.p2pEmptyTransfersText}>No transfers yet</Text>
+              </View>
+            ) : (
+              recentTransfers.slice(0, 5).map((transfer) => (
+                <View key={transfer.transferId} style={styles.p2pTransferItem}>
+                  <View style={styles.p2pTransferInfo}>
+                    <Text style={styles.p2pTransferName}>
+                      {transfer.direction === 'sent'
+                        ? transfer.recipientDisplayName || transfer.recipientAlias
+                        : transfer.senderDisplayName || transfer.senderAlias}
+                    </Text>
+                    <Text style={styles.p2pTransferDate}>
+                      {new Date(transfer.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Text
+                    style={[
+                      styles.p2pTransferAmount,
+                      transfer.direction === 'received' && styles.p2pTransferAmountReceived,
+                    ]}
+                  >
+                    {transfer.direction === 'sent' ? '-' : '+'}${transfer.amount.toFixed(2)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      );
+    };
+
     return (
       <View style={styles.container}>
-          <StatusBar style="dark" />
-          <View style={styles.homeContent}>
-            {/* Environment indicator - always visible for debugging */}
-            {/* Long-press to show debug info */}
-            <TouchableOpacity
-              style={[styles.envBadge, isDevelopment() && styles.envBadgeDev]}
-              onLongPress={() => {
-                const debugInfo = getEnvironmentDebugInfo();
-                Alert.alert('Environment Debug Info', debugInfo);
-              }}
-              delayLongPress={500}
-            >
-              <Text style={styles.envBadgeText}>{getEnvironmentName()}</Text>
-            </TouchableOpacity>
-            <View style={styles.homeHeader}>
-              <View>
-                <Text style={styles.homeGreeting}>Welcome back,</Text>
-                <Text style={styles.homeName}>{user?.name || 'User'}</Text>
-              </View>
-              <TouchableOpacity onPress={handleLogout}>
-                <Text style={styles.signOutText}>Sign Out</Text>
-              </TouchableOpacity>
+        <StatusBar style="dark" />
+        <View style={styles.homeContent}>
+          {/* Environment indicator */}
+          <TouchableOpacity
+            style={[styles.envBadge, isDevelopment() && styles.envBadgeDev]}
+            onLongPress={() => {
+              const debugInfo = getEnvironmentDebugInfo();
+              Alert.alert('Environment Debug Info', debugInfo);
+            }}
+            delayLongPress={500}
+          >
+            <Text style={styles.envBadgeText}>{getEnvironmentName()}</Text>
+          </TouchableOpacity>
+
+          {/* Header */}
+          <View style={styles.homeHeader}>
+            <View>
+              <Text style={styles.homeGreeting}>Welcome back,</Text>
+              <Text style={styles.homeName}>{user?.name || 'User'}</Text>
             </View>
+            <TouchableOpacity onPress={handleLogout}>
+              <Text style={styles.signOutText}>Sign Out</Text>
+            </TouchableOpacity>
+          </View>
 
-            <ScrollView
-              style={styles.cardList}
-              refreshControl={
-                <RefreshControl refreshing={isRefreshing} onRefresh={handleRefreshWallet} />
-              }
+          {/* Tab Content */}
+          <View style={styles.tabContent}>
+            {activeHomeTab === 'cards' ? renderCardsTab() : renderP2PTab()}
+          </View>
+
+          {/* Bottom Tab Bar */}
+          <View style={styles.bottomTabBar}>
+            <TouchableOpacity
+              style={[styles.bottomTab, activeHomeTab === 'cards' && styles.bottomTabActive]}
+              onPress={() => setActiveHomeTab('cards')}
+              activeOpacity={0.7}
             >
-              <Text style={styles.sectionTitle}>My Cards</Text>
+              <Text style={styles.bottomTabIcon}>💳</Text>
+              <Text
+                style={[
+                  styles.bottomTabText,
+                  activeHomeTab === 'cards' && styles.bottomTabTextActive,
+                ]}
+              >
+                Cards
+              </Text>
+            </TouchableOpacity>
 
-              {cards.length === 0 ? (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyEmoji}>💳</Text>
-                  <Text style={styles.emptyTitle}>No cards yet</Text>
-                  <Text style={styles.emptySubtitle}>
-                    Add a bank to get started with your digital wallet.
-                  </Text>
-                  <TouchableOpacity
-                    style={[styles.primaryButton, { marginTop: 20 }]}
-                    onPress={() => {
-                      handleLoadBanks();
-                      setCurrentScreen('bankSelection');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.primaryButtonText}>Add a Bank</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <>
-                  {cards.map((card) => (
-                    <TouchableOpacity
-                      key={card.id}
-                      style={[
-                        styles.card,
-                        { backgroundColor: card.cardType === 'VISA' ? '#1a1f71' : '#eb001b' },
-                      ]}
-                      activeOpacity={0.9}
-                      onPress={() => {
-                        setSelectedCard(card);
-                        setCurrentScreen('cardDetails');
-                      }}
-                    >
-                      <View style={styles.cardTop}>
-                        <Text style={styles.cardBank}>{card.bankName}</Text>
-                        {card.isDefault && (
-                          <View style={styles.defaultBadge}>
-                            <Text style={styles.defaultBadgeText}>Default</Text>
-                          </View>
-                        )}
-                      </View>
-                      <Text style={styles.cardNumber}>•••• •••• •••• {card.lastFour}</Text>
-                      <Text style={styles.cardType}>{card.cardType}</Text>
-                    </TouchableOpacity>
-                  ))}
-
-                  <TouchableOpacity
-                    style={[styles.outlineButton, { marginTop: 16 }]}
-                    onPress={() => {
-                      handleLoadBanks();
-                      setCurrentScreen('bankSelection');
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.outlineButtonText}>+ Add Another Bank</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.qrScanButton, { marginTop: 12 }]}
-                    onPress={handleOpenQrScanner}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.qrScanButtonIcon}>📷</Text>
-                    <Text style={styles.qrScanButtonText}>Scan QR Code to Pay</Text>
-                  </TouchableOpacity>
-                </>
-              )}
-            </ScrollView>
+            <TouchableOpacity
+              style={[styles.bottomTab, activeHomeTab === 'p2p' && styles.bottomTabActive]}
+              onPress={() => {
+                setActiveHomeTab('p2p');
+                // Check P2P enrollment when switching to tab
+                if (!p2pEnrolled && !p2pLoading) {
+                  checkP2PEnrollment();
+                }
+              }}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.bottomTabIcon}>💸</Text>
+              <Text
+                style={[
+                  styles.bottomTabText,
+                  activeHomeTab === 'p2p' && styles.bottomTabTextActive,
+                ]}
+              >
+                P2P
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
+      </View>
     );
   }
 
@@ -2605,5 +2942,201 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 32,
+  },
+  // Tab Content and Bottom Tab Bar
+  tabContent: {
+    flex: 1,
+  },
+  bottomTabBar: {
+    flexDirection: 'row',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    backgroundColor: '#ffffff',
+    paddingBottom: 20, // Safe area for home indicator
+  },
+  bottomTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  bottomTabActive: {
+    backgroundColor: '#f8fafc',
+  },
+  bottomTabIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  bottomTabText: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  bottomTabTextActive: {
+    color: '#3b82f6',
+    fontWeight: '600',
+  },
+  // P2P Styles
+  p2pLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  p2pEnrollContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  p2pEnrollIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#eff6ff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  p2pEnrollTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  p2pEnrollSubtitle: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  p2pContent: {
+    flex: 1,
+    padding: 24,
+  },
+  p2pQuickActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 24,
+  },
+  p2pQuickAction: {
+    alignItems: 'center',
+  },
+  p2pQuickActionIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  p2pQuickActionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  p2pSection: {
+    marginBottom: 24,
+  },
+  p2pSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  p2pSeeAllText: {
+    fontSize: 14,
+    color: '#3b82f6',
+    fontWeight: '500',
+  },
+  p2pAddAliasCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+  },
+  p2pAddAliasText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  p2pAliasCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  p2pAliasInfo: {
+    flex: 1,
+  },
+  p2pAliasValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  p2pAliasType: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  p2pPrimaryBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  p2pPrimaryBadgeText: {
+    fontSize: 12,
+    color: '#1d4ed8',
+    fontWeight: '500',
+  },
+  p2pEmptyTransfers: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+  },
+  p2pEmptyTransfersText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  p2pTransferItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  p2pTransferInfo: {
+    flex: 1,
+  },
+  p2pTransferName: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#111827',
+  },
+  p2pTransferDate: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  p2pTransferAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ef4444',
+  },
+  p2pTransferAmountReceived: {
+    color: '#22c55e',
   },
 });
