@@ -14,7 +14,7 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - P2P enrollment check on tab access
   - "Enable P2P Transfers" prompt for unenrolled users
   - One-tap enrollment using first connected bank
-  - P2P home screen with quick actions
+  - P2P home screen with quick actions (Send, Receive, Aliases, Scan QR)
 
 - **Alias Management**
   - Add new aliases (username, email, or phone)
@@ -23,11 +23,38 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - Set alias as primary for receiving
   - Delete existing aliases with confirmation
 
+- **Send Money**
+  - Send by alias with recipient lookup and preview
+  - Multi-step flow: input → confirm → success
+  - Amount entry with currency formatting
+  - Source account selection
+  - Optional note/description
+  - Biometric authentication (Face ID/Touch ID) before sending
+
+- **Send by QR Scan**
+  - Camera-based QR code scanner
+  - Token resolution to get recipient info
+  - Pre-filled amount and note when set by recipient
+  - Same confirmation and biometric flow as alias send
+
 - **Receive Money Screen**
-  - QR code generation (placeholder for react-native-qrcode-svg)
+  - QR code generation via TransferSim token API
   - Share alias via device share sheet
   - Display primary alias prominently
   - Token expiration display
+
+- **Transfer History**
+  - Full transfer list with sent/received filtering
+  - Direction icons and status colors
+  - Relative date formatting
+  - Pull-to-refresh functionality
+
+- **Transfer Detail View**
+  - Large amount display with direction indicator
+  - Status badge with human-readable text
+  - Counterparty info (name, alias, bank)
+  - Note/description with callout styling
+  - Transaction details (date, completion time, reference ID)
 
 - **TransferSim Service Integration**
   - New `transferSim.ts` API client
@@ -50,10 +77,8 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - `P2P_ENROLLMENT` - Cached enrollment status
   - All P2P data cleared on logout
 
-### In Progress
-- Send money by alias flow
-- Send money by QR scan
-- Transfer history view
+- **Biometric Service** (`src/services/biometric.ts`)
+  - `authenticateForTransfer()` - Transfer-specific auth prompt
 
 ## [1.3.0] - 2025-12-24 - Multi-Bank & P2P Support
 
