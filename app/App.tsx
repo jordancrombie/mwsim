@@ -31,7 +31,7 @@ import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './sr
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
-import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, P2PEnrollment, BankAccount, Transfer } from './src/types';
+import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer } from './src/types';
 
 // Keep the splash screen visible while we fetch resources
 ExpoSplashScreen.preventAutoHideAsync();
@@ -2103,6 +2103,517 @@ export default function App() {
     );
   }
 
+  // Send Money Screen
+  if (currentScreen === 'sendMoney') {
+    const [sendStep, setSendStep] = useState<'input' | 'confirm' | 'success'>('input');
+    const [recipientAlias, setRecipientAlias] = useState('');
+    const [sendAmount, setSendAmount] = useState('');
+    const [sendNote, setSendNote] = useState('');
+    const [recipientInfo, setRecipientInfo] = useState<AliasLookupResult | null>(null);
+    const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(
+      bankAccounts.length > 0 ? bankAccounts[0] : null
+    );
+    const [sendLoading, setSendLoading] = useState(false);
+    const [lookupLoading, setLookupLoading] = useState(false);
+    const [completedTransfer, setCompletedTransfer] = useState<{ transferId: string; status: string } | null>(null);
+
+    const handleLookupRecipient = async () => {
+      if (!recipientAlias.trim()) {
+        Alert.alert('Error', 'Please enter a recipient alias');
+        return;
+      }
+
+      setLookupLoading(true);
+      try {
+        const result = await transferSimApi.lookupAlias(recipientAlias.trim());
+        setRecipientInfo(result);
+        if (!result.found) {
+          Alert.alert('Not Found', 'No user found with that alias. Please check and try again.');
+        }
+      } catch (e: any) {
+        console.error('[Send] Lookup failed:', e);
+        Alert.alert('Error', 'Failed to look up recipient');
+      } finally {
+        setLookupLoading(false);
+      }
+    };
+
+    const handleProceedToConfirm = () => {
+      if (!recipientInfo?.found) {
+        Alert.alert('Error', 'Please look up a valid recipient first');
+        return;
+      }
+      if (!sendAmount || parseFloat(sendAmount) <= 0) {
+        Alert.alert('Error', 'Please enter a valid amount');
+        return;
+      }
+      if (!selectedAccount) {
+        Alert.alert('Error', 'Please select a source account');
+        return;
+      }
+      setSendStep('confirm');
+    };
+
+    const handleSendMoney = async () => {
+      if (!selectedAccount || !recipientInfo?.found) return;
+
+      setSendLoading(true);
+      try {
+        const result = await transferSimApi.sendMoney(
+          recipientAlias.trim(),
+          parseFloat(sendAmount),
+          selectedAccount.accountId,
+          sendNote.trim() || undefined
+        );
+        setCompletedTransfer(result);
+        setSendStep('success');
+      } catch (e: any) {
+        console.error('[Send] Transfer failed:', e);
+        Alert.alert('Transfer Failed', e.response?.data?.message || 'Failed to send money. Please try again.');
+      } finally {
+        setSendLoading(false);
+      }
+    };
+
+    const handleDone = () => {
+      setActiveHomeTab('p2p');
+      setCurrentScreen('home');
+      // Reset state
+      setSendStep('input');
+      setRecipientAlias('');
+      setSendAmount('');
+      setSendNote('');
+      setRecipientInfo(null);
+      setCompletedTransfer(null);
+    };
+
+    // Success Screen
+    if (sendStep === 'success' && completedTransfer) {
+      return (
+        <View style={styles.container}>
+          <StatusBar style="dark" />
+          <View style={styles.sendSuccessContent}>
+            <View style={styles.sendSuccessIcon}>
+              <Text style={{ fontSize: 64 }}>✓</Text>
+            </View>
+            <Text style={styles.sendSuccessTitle}>Money Sent!</Text>
+            <Text style={styles.sendSuccessAmount}>
+              ${parseFloat(sendAmount).toFixed(2)} CAD
+            </Text>
+            <Text style={styles.sendSuccessRecipient}>
+              to {recipientInfo?.displayName || recipientAlias}
+            </Text>
+            {sendNote ? (
+              <Text style={styles.sendSuccessNote}>"{sendNote}"</Text>
+            ) : null}
+            <Text style={styles.sendSuccessStatus}>
+              Status: {completedTransfer.status}
+            </Text>
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 32, width: '100%' }]}
+              onPress={handleDone}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    // Confirm Screen
+    if (sendStep === 'confirm') {
+      return (
+        <View style={styles.container}>
+          <StatusBar style="dark" />
+          <View style={styles.sendContent}>
+            {/* Header */}
+            <View style={styles.sendHeader}>
+              <TouchableOpacity onPress={() => setSendStep('input')}>
+                <Text style={styles.backButton}>← Back</Text>
+              </TouchableOpacity>
+              <Text style={styles.sendTitle}>Confirm Transfer</Text>
+              <View style={{ width: 50 }} />
+            </View>
+
+            <ScrollView style={styles.sendScrollContent} showsVerticalScrollIndicator={false}>
+              {/* Transfer Summary */}
+              <View style={styles.sendConfirmCard}>
+                <View style={styles.sendConfirmRow}>
+                  <Text style={styles.sendConfirmLabel}>Amount</Text>
+                  <Text style={styles.sendConfirmValueLarge}>
+                    ${parseFloat(sendAmount).toFixed(2)} CAD
+                  </Text>
+                </View>
+
+                <View style={styles.sendConfirmDivider} />
+
+                <View style={styles.sendConfirmRow}>
+                  <Text style={styles.sendConfirmLabel}>To</Text>
+                  <View>
+                    <Text style={styles.sendConfirmValue}>{recipientInfo?.displayName}</Text>
+                    <Text style={styles.sendConfirmValueSub}>{recipientAlias}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.sendConfirmDivider} />
+
+                <View style={styles.sendConfirmRow}>
+                  <Text style={styles.sendConfirmLabel}>From</Text>
+                  <View>
+                    <Text style={styles.sendConfirmValue}>{selectedAccount?.displayName}</Text>
+                    <Text style={styles.sendConfirmValueSub}>{selectedAccount?.bankName}</Text>
+                  </View>
+                </View>
+
+                {sendNote ? (
+                  <>
+                    <View style={styles.sendConfirmDivider} />
+                    <View style={styles.sendConfirmRow}>
+                      <Text style={styles.sendConfirmLabel}>Note</Text>
+                      <Text style={styles.sendConfirmValue}>{sendNote}</Text>
+                    </View>
+                  </>
+                ) : null}
+              </View>
+
+              <Text style={styles.sendConfirmDisclaimer}>
+                By confirming, you authorize the transfer of funds from your account.
+              </Text>
+            </ScrollView>
+
+            {/* Actions */}
+            <View style={styles.sendActions}>
+              <TouchableOpacity
+                style={[styles.primaryButton, sendLoading && styles.buttonDisabled]}
+                onPress={handleSendMoney}
+                disabled={sendLoading}
+                activeOpacity={0.7}
+              >
+                {sendLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Confirm & Send</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Input Screen (default)
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.sendContent}>
+          {/* Header */}
+          <View style={styles.sendHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setActiveHomeTab('p2p');
+                setCurrentScreen('home');
+              }}
+            >
+              <Text style={styles.backButton}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.sendTitle}>Send Money</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <ScrollView style={styles.sendScrollContent} showsVerticalScrollIndicator={false}>
+            {/* Recipient Input */}
+            <View style={styles.sendSection}>
+              <Text style={styles.sendSectionLabel}>Send to</Text>
+              <View style={styles.sendRecipientRow}>
+                <TextInput
+                  style={[styles.input, { flex: 1, marginRight: 8 }]}
+                  placeholder="@username, email, or phone"
+                  value={recipientAlias}
+                  onChangeText={(text) => {
+                    setRecipientAlias(text);
+                    setRecipientInfo(null); // Reset lookup when typing
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  style={[styles.lookupButton, lookupLoading && styles.buttonDisabled]}
+                  onPress={handleLookupRecipient}
+                  disabled={lookupLoading}
+                  activeOpacity={0.7}
+                >
+                  {lookupLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.lookupButtonText}>Look up</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Recipient Info */}
+              {recipientInfo && (
+                <View style={[
+                  styles.recipientInfoCard,
+                  !recipientInfo.found && styles.recipientInfoCardError
+                ]}>
+                  {recipientInfo.found ? (
+                    <>
+                      <View style={styles.recipientInfoIcon}>
+                        <Text style={{ fontSize: 24 }}>👤</Text>
+                      </View>
+                      <View style={styles.recipientInfoDetails}>
+                        <Text style={styles.recipientInfoName}>{recipientInfo.displayName}</Text>
+                        <Text style={styles.recipientInfoBank}>{recipientInfo.bankName}</Text>
+                      </View>
+                      <Text style={styles.recipientInfoCheck}>✓</Text>
+                    </>
+                  ) : (
+                    <Text style={styles.recipientInfoError}>
+                      No user found with this alias
+                    </Text>
+                  )}
+                </View>
+              )}
+            </View>
+
+            {/* Amount Input */}
+            <View style={styles.sendSection}>
+              <Text style={styles.sendSectionLabel}>Amount</Text>
+              <View style={styles.amountInputContainer}>
+                <Text style={styles.amountCurrency}>$</Text>
+                <TextInput
+                  style={styles.amountInput}
+                  placeholder="0.00"
+                  value={sendAmount}
+                  onChangeText={setSendAmount}
+                  keyboardType="decimal-pad"
+                />
+                <Text style={styles.amountCurrencyCode}>CAD</Text>
+              </View>
+            </View>
+
+            {/* Source Account */}
+            <View style={styles.sendSection}>
+              <Text style={styles.sendSectionLabel}>From account</Text>
+              {bankAccounts.map((account) => (
+                <TouchableOpacity
+                  key={account.accountId}
+                  style={[
+                    styles.accountOption,
+                    selectedAccount?.accountId === account.accountId && styles.accountOptionSelected
+                  ]}
+                  onPress={() => setSelectedAccount(account)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.accountOptionInfo}>
+                    <Text style={styles.accountOptionName}>{account.displayName}</Text>
+                    <Text style={styles.accountOptionBank}>{account.bankName}</Text>
+                  </View>
+                  <View style={styles.accountOptionBalance}>
+                    <Text style={styles.accountOptionBalanceAmount}>
+                      ${account.balance?.toFixed(2) || '—'}
+                    </Text>
+                    {selectedAccount?.accountId === account.accountId && (
+                      <Text style={styles.accountOptionCheck}>✓</Text>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Note Input */}
+            <View style={styles.sendSection}>
+              <Text style={styles.sendSectionLabel}>Note (optional)</Text>
+              <TextInput
+                style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
+                placeholder="What's this for?"
+                value={sendNote}
+                onChangeText={setSendNote}
+                multiline
+                maxLength={140}
+              />
+            </View>
+          </ScrollView>
+
+          {/* Continue Button */}
+          <View style={styles.sendActions}>
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                (!recipientInfo?.found || !sendAmount || !selectedAccount) && styles.buttonDisabled
+              ]}
+              onPress={handleProceedToConfirm}
+              disabled={!recipientInfo?.found || !sendAmount || !selectedAccount}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.primaryButtonText}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // Transfer History Screen
+  if (currentScreen === 'transferHistory') {
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'received'>('all');
+    const [transfers, setTransfers] = useState<Transfer[]>(recentTransfers);
+
+    const loadTransfers = async () => {
+      setHistoryLoading(true);
+      try {
+        const result = await transferSimApi.getTransfers(historyFilter, 50, 0);
+        setTransfers(result.transfers);
+      } catch (e: any) {
+        console.error('[History] Load failed:', e);
+        Alert.alert('Error', 'Failed to load transfer history');
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    useEffect(() => {
+      loadTransfers();
+    }, [historyFilter]);
+
+    const getStatusColor = (status: string) => {
+      switch (status) {
+        case 'COMPLETED': return '#22c55e';
+        case 'PENDING':
+        case 'RESOLVING':
+        case 'DEBITING':
+        case 'CREDITING': return '#f59e0b';
+        case 'CANCELLED':
+        case 'EXPIRED': return '#6b7280';
+        default: return '#ef4444';
+      }
+    };
+
+    const formatDate = (dateString: string) => {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diff = now.getTime() - date.getTime();
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+      if (days === 0) {
+        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      } else if (days === 1) {
+        return 'Yesterday';
+      } else if (days < 7) {
+        return date.toLocaleDateString('en-US', { weekday: 'short' });
+      } else {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+    };
+
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.historyContent}>
+          {/* Header */}
+          <View style={styles.historyHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setActiveHomeTab('p2p');
+                setCurrentScreen('home');
+              }}
+            >
+              <Text style={styles.backButton}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.historyTitle}>Transfer History</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          {/* Filter Tabs */}
+          <View style={styles.historyFilterTabs}>
+            {(['all', 'sent', 'received'] as const).map((filter) => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.historyFilterTab,
+                  historyFilter === filter && styles.historyFilterTabActive
+                ]}
+                onPress={() => setHistoryFilter(filter)}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.historyFilterTabText,
+                  historyFilter === filter && styles.historyFilterTabTextActive
+                ]}>
+                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Transfer List */}
+          <ScrollView
+            style={styles.historyList}
+            refreshControl={
+              <RefreshControl
+                refreshing={historyLoading}
+                onRefresh={loadTransfers}
+              />
+            }
+          >
+            {transfers.length === 0 ? (
+              <View style={styles.historyEmpty}>
+                <Text style={styles.historyEmptyIcon}>📋</Text>
+                <Text style={styles.historyEmptyText}>No transfers yet</Text>
+                <Text style={styles.historyEmptySubtext}>
+                  Your transfer history will appear here
+                </Text>
+              </View>
+            ) : (
+              transfers.map((transfer) => (
+                <TouchableOpacity
+                  key={transfer.transferId}
+                  style={styles.historyItem}
+                  activeOpacity={0.7}
+                >
+                  {/* Direction Icon */}
+                  <View style={[
+                    styles.historyItemIcon,
+                    { backgroundColor: transfer.direction === 'sent' ? '#fef2f2' : '#f0fdf4' }
+                  ]}>
+                    <Text style={{ fontSize: 20 }}>
+                      {transfer.direction === 'sent' ? '↗️' : '↙️'}
+                    </Text>
+                  </View>
+
+                  {/* Details */}
+                  <View style={styles.historyItemDetails}>
+                    <Text style={styles.historyItemName}>
+                      {transfer.direction === 'sent'
+                        ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
+                        : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                    </Text>
+                    <View style={styles.historyItemMeta}>
+                      <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
+                      <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
+                        {transfer.status}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Amount */}
+                  <Text style={[
+                    styles.historyItemAmount,
+                    { color: transfer.direction === 'sent' ? '#ef4444' : '#22c55e' }
+                  ]}>
+                    {transfer.direction === 'sent' ? '-' : '+'}${transfer.amount.toFixed(2)}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      </View>
+    );
+  }
+
   // Card Details Screen
   if (currentScreen === 'cardDetails' && selectedCard) {
     const cardColor = selectedCard.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
@@ -3811,5 +4322,379 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
     lineHeight: 20,
+  },
+  // Send Money styles
+  sendContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  sendHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  sendTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  sendScrollContent: {
+    flex: 1,
+    padding: 24,
+  },
+  sendSection: {
+    marginBottom: 24,
+  },
+  sendSectionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  sendRecipientRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  lookupButton: {
+    backgroundColor: '#1d4ed8',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: 8,
+  },
+  lookupButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  recipientInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fdf4',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#86efac',
+  },
+  recipientInfoCardError: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fca5a5',
+  },
+  recipientInfoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  recipientInfoDetails: {
+    flex: 1,
+  },
+  recipientInfoName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  recipientInfoBank: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  recipientInfoCheck: {
+    fontSize: 18,
+    color: '#22c55e',
+    fontWeight: '600',
+  },
+  recipientInfoError: {
+    flex: 1,
+    fontSize: 14,
+    color: '#dc2626',
+    textAlign: 'center',
+  },
+  amountInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+  },
+  amountCurrency: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 32,
+    fontWeight: '600',
+    color: '#111827',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+  },
+  amountCurrencyCode: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  accountOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  accountOptionSelected: {
+    borderColor: '#1d4ed8',
+    backgroundColor: '#eff6ff',
+  },
+  accountOptionInfo: {
+    flex: 1,
+  },
+  accountOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  accountOptionBank: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  accountOptionBalance: {
+    alignItems: 'flex-end',
+  },
+  accountOptionBalanceAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  accountOptionCheck: {
+    fontSize: 14,
+    color: '#1d4ed8',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  sendActions: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  // Send Confirm styles
+  sendConfirmCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sendConfirmRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+  },
+  sendConfirmLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  sendConfirmValue: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'right',
+  },
+  sendConfirmValueLarge: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  sendConfirmValueSub: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'right',
+    marginTop: 2,
+  },
+  sendConfirmDivider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+  },
+  sendConfirmDisclaimer: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginTop: 20,
+    lineHeight: 18,
+  },
+  // Send Success styles
+  sendSuccessContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  sendSuccessIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#dcfce7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  sendSuccessTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  sendSuccessAmount: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#22c55e',
+    marginBottom: 8,
+  },
+  sendSuccessRecipient: {
+    fontSize: 18,
+    color: '#6b7280',
+    marginBottom: 8,
+  },
+  sendSuccessNote: {
+    fontSize: 16,
+    color: '#6b7280',
+    fontStyle: 'italic',
+    marginBottom: 12,
+  },
+  sendSuccessStatus: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  // Transfer History styles
+  historyContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  historyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  historyFilterTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    marginBottom: 16,
+    gap: 8,
+  },
+  historyFilterTab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  historyFilterTabActive: {
+    backgroundColor: '#1d4ed8',
+  },
+  historyFilterTabText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  historyFilterTabTextActive: {
+    color: '#fff',
+  },
+  historyList: {
+    flex: 1,
+    paddingHorizontal: 24,
+  },
+  historyEmpty: {
+    alignItems: 'center',
+    paddingTop: 60,
+  },
+  historyEmptyIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  historyEmptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  historyEmptySubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  historyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  historyItemIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  historyItemDetails: {
+    flex: 1,
+  },
+  historyItemName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  historyItemMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  historyItemDate: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  historyItemStatus: {
+    fontSize: 11,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  historyItemAmount: {
+    fontSize: 18,
+    fontWeight: '700',
   },
 });
