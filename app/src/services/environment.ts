@@ -15,6 +15,7 @@ export type Environment = 'development' | 'production';
 interface EnvironmentConfig {
   apiUrl: string;
   authUrl: string;
+  transferSimUrl: string;
   name: string;
 }
 
@@ -22,11 +23,13 @@ const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
   development: {
     apiUrl: 'https://wsim-dev.banksim.ca/api',
     authUrl: 'https://wsim-auth-dev.banksim.ca',
+    transferSimUrl: 'https://transfersim-dev.banksim.ca',
     name: 'Development',
   },
   production: {
     apiUrl: 'https://wsim.banksim.ca/api',
     authUrl: 'https://wsim-auth.banksim.ca',
+    transferSimUrl: 'https://transfersim.banksim.ca',
     name: 'Production',
   },
 };
@@ -112,6 +115,13 @@ export function getApiUrl(): string {
  */
 export function getAuthUrl(): string {
   return getEnvironmentConfig().authUrl;
+}
+
+/**
+ * Gets the TransferSim URL for the current environment.
+ */
+export function getTransferSimUrl(): string {
+  return getEnvironmentConfig().transferSimUrl;
 }
 
 /**

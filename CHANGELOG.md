@@ -61,6 +61,7 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
   - X-API-Key authentication for orchestrator
   - Authorization header with userId:bsimId format
   - Enrollment, alias, transfer, and token endpoints
+  - Environment-aware URLs (dev/prod via iOS Settings)
 
 ### Technical
 - **New Types** (`src/types/index.ts`)
@@ -79,6 +80,12 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 - **Biometric Service** (`src/services/biometric.ts`)
   - `authenticateForTransfer()` - Transfer-specific auth prompt
+
+- **Environment Service** (`src/services/environment.ts`)
+  - Added `transferSimUrl` to environment config
+  - Added `getTransferSimUrl()` for P2P API calls
+  - Development: `https://transfersim-dev.banksim.ca`
+  - Production: `https://transfersim.banksim.ca`
 
 ## [1.3.0] - 2025-12-24 - Multi-Bank & P2P Support
 
