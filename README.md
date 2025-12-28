@@ -45,6 +45,25 @@ mwsim enables users to:
 - **Browser-Aware Return** - Returns user to the same browser they started from (Safari, Chrome, Firefox, Edge, etc.)
 - **Return to Store** - Seamless return to merchant checkout after approval
 
+### P2P Transfers (via TransferSim)
+- **P2P Enrollment** - One-tap enrollment using connected bank accounts
+- **Send Money** - Send funds by alias (username, email, phone) or QR scan
+  - Recipient lookup with preview
+  - Amount entry with currency formatting
+  - Optional note/memo
+  - Biometric authorization (Face ID/Touch ID) required
+- **Receive Money** - Generate QR codes for others to scan and pay you
+  - Share your alias via share sheet
+  - QR token expiration handling
+- **Alias Management** - Register and manage payment aliases
+  - Username (@handle), email, or phone number
+  - Set primary alias for receiving
+  - Delete aliases with confirmation
+- **Transfer History** - View sent and received transfers
+  - Filter by direction (All/Sent/Received)
+  - Detailed transfer view with status and timestamps
+- **QR Code Scanning** - Scan recipient QR codes to send money instantly
+
 ### Developer Tools
 - **Environment Switching** - Toggle between Dev/Production servers in iOS Settings
 - **Environment Indicator** - Orange badge shows current environment on home screen
@@ -69,7 +88,8 @@ mwsim/
 │   │   │   ├── api.ts      # Axios API client with JWT auth
 │   │   │   ├── biometric.ts # Biometric authentication
 │   │   │   ├── environment.ts # Environment config (reads iOS Settings)
-│   │   │   └── secureStorage.ts # Expo Secure Store wrapper
+│   │   │   ├── secureStorage.ts # Expo Secure Store wrapper
+│   │   │   └── transferSim.ts # TransferSim P2P API client
 │   │   ├── store/          # Zustand state management
 │   │   ├── types/          # TypeScript types
 │   │   └── config/         # App configuration
@@ -226,6 +246,19 @@ Configured in `app.json`:
 - [x] End-to-end checkout flow tested with Safari and Chrome (2025-12-15)
 - [ ] Transaction history
 - [ ] Push notifications
+
+### Phase 2.5: P2P Transfers (Complete - 2025-12-27)
+- [x] TransferSim API integration with environment-aware URLs
+- [x] P2P enrollment flow
+- [x] Alias management (create, delete, set primary)
+- [x] Send money by alias with recipient lookup
+- [x] Send money by QR scan
+- [x] Receive money with QR code generation
+- [x] Transfer history with filtering
+- [x] Transfer detail view
+- [x] Biometric authorization for transfers
+- [ ] Alias verification (email/SMS)
+- [ ] Push notifications for transfers
 
 ### Phase 3: OpenWallet Foundation
 - [ ] OID4VCI (Verifiable Credential Issuance)
