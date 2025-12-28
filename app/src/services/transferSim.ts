@@ -30,8 +30,16 @@ import type {
 // TransferSim API key (same key works for both environments)
 const TRANSFERSIM_API_KEY = 'tsim_1c34f53eabdeb18474b87ec27b093d5c481ff08a0b5e07267dcaf183d1ee52af';
 
-// Create TransferSim API client
-const createTransferSimClient = (): AxiosInstance => {
+// Lazy-initialized TransferSim API client
+// We don't create this at module load time because getTransferSimUrl()
+// needs React Native's native modules to be fully initialized
+let _transferSimClient: AxiosInstance | null = null;
+
+const getTransferSimClient = (): AxiosInstance => {
+  if (_transferSimClient) {
+    return _transferSimClient;
+  }
+
   const baseURL = getTransferSimUrl();
   console.log(`[TransferSim] Initializing client: ${baseURL}`);
 
@@ -68,10 +76,9 @@ const createTransferSimClient = (): AxiosInstance => {
     }
   );
 
+  _transferSimClient = client;
   return client;
 };
-
-const transferSimClient = createTransferSimClient();
 
 // API response types
 interface EnrollmentResponse {
@@ -113,7 +120,7 @@ export const transferSimApi = {
    */
   async checkEnrollment(): Promise<{ enrolled: boolean; enrollment?: P2PEnrollment }> {
     try {
-      const { data } = await transferSimClient.get('/api/v1/enrollments');
+      const { data } = await getTransferSimClient().get('/api/v1/enrollments');
       if (data.enrollments && data.enrollments.length > 0) {
         return { enrolled: true, enrollment: data.enrollments[0] };
       }
@@ -131,7 +138,7 @@ export const transferSimApi = {
    * Enroll user in P2P network
    */
   async enrollUser(userId: string, bsimId: string): Promise<P2PEnrollment> {
-    const { data } = await transferSimClient.post<EnrollmentResponse>('/api/v1/enrollments', {
+    const { data } = await getTransferSimClient().post<EnrollmentResponse>('/api/v1/enrollments', {
       userId,
       bsimId,
       consentScopes: ['p2p:send', 'p2p:receive', 'p2p:alias'],
@@ -153,7 +160,7 @@ export const transferSimApi = {
    * Get user's aliases
    */
   async getAliases(): Promise<Alias[]> {
-    const { data } = await transferSimClient.get<{ aliases: AliasResponse[] }>('/api/v1/aliases');
+    const { data } = await getTransferSimClient().get<{ aliases: AliasResponse[] }>('/api/v1/aliases');
     return data.aliases.map((a) => ({
       id: a.id,
       type: a.type,
@@ -168,7 +175,7 @@ export const transferSimApi = {
    * Register a new alias
    */
   async createAlias(type: AliasType, value: string): Promise<Alias> {
-    const { data } = await transferSimClient.post<AliasResponse>('/api/v1/aliases', {
+    const { data } = await getTransferSimClient().post<AliasResponse>('/api/v1/aliases', {
       type,
       value,
     });
@@ -186,21 +193,21 @@ export const transferSimApi = {
    * Delete an alias
    */
   async deleteAlias(aliasId: string): Promise<void> {
-    await transferSimClient.delete(`/api/v1/aliases/${aliasId}`);
+    await getTransferSimClient().delete(`/api/v1/aliases/${aliasId}`);
   },
 
   /**
    * Set alias as primary
    */
   async setPrimaryAlias(aliasId: string): Promise<void> {
-    await transferSimClient.put(`/api/v1/aliases/${aliasId}/primary`);
+    await getTransferSimClient().put(`/api/v1/aliases/${aliasId}/primary`);
   },
 
   /**
    * Verify alias (for email/phone)
    */
   async verifyAlias(aliasId: string, code: string): Promise<{ verified: boolean }> {
-    const { data } = await transferSimClient.post(`/api/v1/aliases/${aliasId}/verify`, { code });
+    const { data } = await getTransferSimClient().post(`/api/v1/aliases/${aliasId}/verify`, { code });
     return data;
   },
 
@@ -208,7 +215,7 @@ export const transferSimApi = {
    * Look up an alias (for sending)
    */
   async lookupAlias(alias: string): Promise<AliasLookupResult> {
-    const { data } = await transferSimClient.get<AliasLookupResult>('/api/v1/aliases/lookup', {
+    const { data } = await getTransferSimClient().get<AliasLookupResult>('/api/v1/aliases/lookup', {
       params: { alias },
     });
     return data;
@@ -227,7 +234,7 @@ export const transferSimApi = {
     sourceAccountId: string,
     description?: string
   ): Promise<{ transferId: string; status: string }> {
-    const { data } = await transferSimClient.post<TransferResponse>('/api/v1/transfers', {
+    const { data } = await getTransferSimClient().post<TransferResponse>('/api/v1/transfers', {
       recipientAlias,
       amount,
       currency: 'CAD',
@@ -244,7 +251,7 @@ export const transferSimApi = {
    * Get transfer details
    */
   async getTransfer(transferId: string): Promise<Transfer> {
-    const { data } = await transferSimClient.get<Transfer>(`/api/v1/transfers/${transferId}`);
+    const { data } = await getTransferSimClient().get<Transfer>(`/api/v1/transfers/${transferId}`);
     return data;
   },
 
@@ -256,7 +263,7 @@ export const transferSimApi = {
     limit: number = 20,
     offset: number = 0
   ): Promise<{ transfers: Transfer[]; total: number }> {
-    const { data } = await transferSimClient.get<TransferListResponse>('/api/v1/transfers', {
+    const { data } = await getTransferSimClient().get<TransferListResponse>('/api/v1/transfers', {
       params: { direction: direction || 'all', limit, offset },
     });
     return data;
@@ -266,7 +273,7 @@ export const transferSimApi = {
    * Cancel a pending transfer
    */
   async cancelTransfer(transferId: string): Promise<void> {
-    await transferSimClient.post(`/api/v1/transfers/${transferId}/cancel`);
+    await getTransferSimClient().post(`/api/v1/transfers/${transferId}/cancel`);
   },
 
   // ==================
@@ -277,7 +284,7 @@ export const transferSimApi = {
    * Generate a receive token (for QR code display)
    */
   async generateReceiveToken(amount?: number, description?: string): Promise<ReceiveToken> {
-    const { data } = await transferSimClient.post<ReceiveToken>('/api/v1/tokens/receive', {
+    const { data } = await getTransferSimClient().post<ReceiveToken>('/api/v1/tokens/receive', {
       amount,
       description,
       expiresInSeconds: 300, // 5 minutes
@@ -289,7 +296,7 @@ export const transferSimApi = {
    * Resolve a token (when scanning QR)
    */
   async resolveToken(tokenId: string): Promise<ResolvedToken> {
-    const { data } = await transferSimClient.get<ResolvedToken>(`/api/v1/tokens/${tokenId}`);
+    const { data } = await getTransferSimClient().get<ResolvedToken>(`/api/v1/tokens/${tokenId}`);
     return data;
   },
 

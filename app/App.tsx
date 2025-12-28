@@ -124,6 +124,42 @@ export default function App() {
   const [recentTransfers, setRecentTransfers] = useState<Transfer[]>([]);
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
 
+  // Alias Management screen state
+  const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
+  const [newAliasValue, setNewAliasValue] = useState('');
+  const [aliasLoading, setAliasLoading] = useState(false);
+  const [aliasError, setAliasError] = useState<string | null>(null);
+
+  // Receive Money screen state
+  const [receiveLoading, setReceiveLoading] = useState(false);
+  const [receiveToken, setReceiveToken] = useState<{ tokenId: string; qrPayload: string; expiresAt: string } | null>(null);
+
+  // Send Money screen state
+  const [sendStep, setSendStep] = useState<'input' | 'confirm' | 'success'>('input');
+  const [recipientAlias, setRecipientAlias] = useState('');
+  const [sendAmount, setSendAmount] = useState('');
+  const [sendNote, setSendNote] = useState('');
+  const [recipientInfo, setRecipientInfo] = useState<AliasLookupResult | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(null);
+  const [sendLoading, setSendLoading] = useState(false);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [completedTransfer, setCompletedTransfer] = useState<{ transferId: string; status: string } | null>(null);
+
+  // Transfer History screen state
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'received'>('all');
+  const [historyTransfers, setHistoryTransfers] = useState<Transfer[]>([]);
+
+  // P2P QR Scanner screen state
+  const [p2pQrScanned, setP2pQrScanned] = useState(false);
+  const [p2pTorchOn, setP2pTorchOn] = useState(false);
+  const [resolving, setResolving] = useState(false);
+  const [resolvedToken, setResolvedToken] = useState<ResolvedToken | null>(null);
+  const [p2pSendAmount, setP2pSendAmount] = useState('');
+  const [p2pSendNote, setP2pSendNote] = useState('');
+  const [p2pSelectedAccount, setP2pSelectedAccount] = useState<BankAccount | null>(null);
+  const [p2pSending, setP2pSending] = useState(false);
+
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
 
@@ -138,6 +174,44 @@ export default function App() {
       handleLoadBanks();
     }
   }, [currentScreen]);
+
+  // Initialize selected account when bank accounts are loaded
+  useEffect(() => {
+    if (bankAccounts.length > 0) {
+      if (!selectedAccount) {
+        setSelectedAccount(bankAccounts[0]);
+      }
+      if (!p2pSelectedAccount) {
+        setP2pSelectedAccount(bankAccounts[0]);
+      }
+    }
+  }, [bankAccounts]);
+
+  // Initialize history transfers from recent transfers
+  useEffect(() => {
+    setHistoryTransfers(recentTransfers);
+  }, [recentTransfers]);
+
+  // Function to load transfer history
+  const loadHistoryTransfers = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const result = await transferSimApi.getTransfers(historyFilter, 50, 0);
+      setHistoryTransfers(result.transfers);
+    } catch (e: any) {
+      console.error('[History] Load failed:', e);
+      Alert.alert('Error', 'Failed to load transfer history');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyFilter]);
+
+  // Load transfers when history filter changes (only when on transferHistory screen)
+  useEffect(() => {
+    if (currentScreen === 'transferHistory') {
+      loadHistoryTransfers();
+    }
+  }, [historyFilter, currentScreen, loadHistoryTransfers]);
 
   // Handle deep link for payment requests
   const handleDeepLink = useCallback(async (url: string) => {
@@ -1731,11 +1805,6 @@ export default function App() {
 
   // Alias Management Screen
   if (currentScreen === 'aliasManagement') {
-    const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
-    const [newAliasValue, setNewAliasValue] = useState('');
-    const [aliasLoading, setAliasLoading] = useState(false);
-    const [aliasError, setAliasError] = useState<string | null>(null);
-
     const handleCreateAlias = async () => {
       if (!newAliasValue.trim()) {
         setAliasError('Please enter an alias value');
@@ -1836,7 +1905,7 @@ export default function App() {
                       newAliasType === 'USERNAME' && styles.aliasTypeOptionTextActive,
                     ]}
                   >
-                    @username
+                    Username
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -1973,9 +2042,6 @@ export default function App() {
 
   // Receive Money Screen
   if (currentScreen === 'receiveMoney') {
-    const [receiveLoading, setReceiveLoading] = useState(false);
-    const [receiveToken, setReceiveToken] = useState<{ tokenId: string; qrPayload: string; expiresAt: string } | null>(null);
-
     const primaryAlias = aliases.find(a => a.isPrimary) || aliases[0];
 
     const handleGenerateQR = async () => {
@@ -2047,9 +2113,9 @@ export default function App() {
                 ) : (
                   <>
                     <Text style={styles.receiveQRIcon}>📱</Text>
-                    <Text style={styles.receiveQRText}>Generate a QR code</Text>
+                    <Text style={styles.receiveQRText}>Generate a QR Code</Text>
                     <Text style={styles.receiveQRSubtext}>
-                      Others can scan to send you money
+                      Let others scan to send you money instantly
                     </Text>
                   </>
                 )}
@@ -2118,18 +2184,6 @@ export default function App() {
 
   // Send Money Screen
   if (currentScreen === 'sendMoney') {
-    const [sendStep, setSendStep] = useState<'input' | 'confirm' | 'success'>('input');
-    const [recipientAlias, setRecipientAlias] = useState('');
-    const [sendAmount, setSendAmount] = useState('');
-    const [sendNote, setSendNote] = useState('');
-    const [recipientInfo, setRecipientInfo] = useState<AliasLookupResult | null>(null);
-    const [selectedAccount, setSelectedAccount] = useState<BankAccount | null>(
-      bankAccounts.length > 0 ? bankAccounts[0] : null
-    );
-    const [sendLoading, setSendLoading] = useState(false);
-    const [lookupLoading, setLookupLoading] = useState(false);
-    const [completedTransfer, setCompletedTransfer] = useState<{ transferId: string; status: string } | null>(null);
-
     const handleLookupRecipient = async () => {
       if (!recipientAlias.trim()) {
         Alert.alert('Error', 'Please enter a recipient alias');
@@ -2482,27 +2536,6 @@ export default function App() {
 
   // Transfer History Screen
   if (currentScreen === 'transferHistory') {
-    const [historyLoading, setHistoryLoading] = useState(false);
-    const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'received'>('all');
-    const [transfers, setTransfers] = useState<Transfer[]>(recentTransfers);
-
-    const loadTransfers = async () => {
-      setHistoryLoading(true);
-      try {
-        const result = await transferSimApi.getTransfers(historyFilter, 50, 0);
-        setTransfers(result.transfers);
-      } catch (e: any) {
-        console.error('[History] Load failed:', e);
-        Alert.alert('Error', 'Failed to load transfer history');
-      } finally {
-        setHistoryLoading(false);
-      }
-    };
-
-    useEffect(() => {
-      loadTransfers();
-    }, [historyFilter]);
-
     const getStatusColor = (status: string) => {
       switch (status) {
         case 'COMPLETED': return '#22c55e';
@@ -2579,11 +2612,11 @@ export default function App() {
             refreshControl={
               <RefreshControl
                 refreshing={historyLoading}
-                onRefresh={loadTransfers}
+                onRefresh={loadHistoryTransfers}
               />
             }
           >
-            {transfers.length === 0 ? (
+            {historyTransfers.length === 0 ? (
               <View style={styles.historyEmpty}>
                 <Text style={styles.historyEmptyIcon}>📋</Text>
                 <Text style={styles.historyEmptyText}>No transfers yet</Text>
@@ -2592,7 +2625,7 @@ export default function App() {
                 </Text>
               </View>
             ) : (
-              transfers.map((transfer) => (
+              historyTransfers.map((transfer) => (
                 <TouchableOpacity
                   key={transfer.transferId}
                   style={styles.historyItem}
@@ -2808,17 +2841,6 @@ export default function App() {
 
   // P2P QR Scanner Screen
   if (currentScreen === 'p2pQrScan') {
-    const [p2pQrScanned, setP2pQrScanned] = useState(false);
-    const [p2pTorchOn, setP2pTorchOn] = useState(false);
-    const [resolving, setResolving] = useState(false);
-    const [resolvedToken, setResolvedToken] = useState<ResolvedToken | null>(null);
-    const [p2pSendAmount, setP2pSendAmount] = useState('');
-    const [p2pSendNote, setP2pSendNote] = useState('');
-    const [p2pSelectedAccount, setP2pSelectedAccount] = useState<BankAccount | null>(
-      bankAccounts.length > 0 ? bankAccounts[0] : null
-    );
-    const [p2pSending, setP2pSending] = useState(false);
-
     const handleP2pQrScanned = async ({ data }: { type: string; data: string }) => {
       if (p2pQrScanned) return;
       setP2pQrScanned(true);
@@ -4784,6 +4806,7 @@ const styles = StyleSheet.create({
   receiveQRSubtext: {
     fontSize: 14,
     color: '#6b7280',
+    textAlign: 'center',
   },
   receiveOrSection: {
     flexDirection: 'row',
