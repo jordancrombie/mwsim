@@ -29,7 +29,7 @@ const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
   production: {
     apiUrl: 'https://wsim.banksim.ca/api',
     authUrl: 'https://wsim-auth.banksim.ca',
-    transferSimUrl: 'https://transfersim.banksim.ca',
+    transferSimUrl: 'https://transfer.banksim.ca',
     name: 'Production',
   },
 };
