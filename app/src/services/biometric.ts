@@ -109,4 +109,8 @@ export const biometricService = {
   async authenticateToEnroll(): Promise<{ success: boolean; error?: string }> {
     return this.authenticate('Authenticate to add this bank');
   },
+
+  async authenticateForTransfer(amount: string, recipientName: string): Promise<{ success: boolean; error?: string }> {
+    return this.authenticate(`Authenticate to send ${amount} to ${recipientName}`);
+  },
 };

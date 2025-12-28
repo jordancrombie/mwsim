@@ -2,6 +2,136 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.4.0] - 2025-12-27 - P2P Transfer Integration
+
+### Fixed (Build 19)
+- **Production TransferSim URL**
+  - Updated from `transfersim.banksim.ca` to `transfer.banksim.ca`
+  - Matches BSIM team production deployment
+
+### Fixed (Build 18)
+- **Critical: App Crash on P2P Screens**
+  - Moved useState hooks from inside conditional screen blocks to top level
+  - React hooks must be called in the same order on every render
+  - Affected screens: aliasManagement, receiveMoney, sendMoney, transferHistory, p2pQrScan
+
+- **Critical: App Hanging on Startup**
+  - Changed TransferSim client from eager to lazy initialization
+  - Client now created on first API call instead of module load time
+  - Prevents blocking when native modules aren't ready
+
+- **UI Improvements**
+  - Capitalized "Generate a QR Code" text on Receive screen
+  - Centered description text under QR code generation
+  - Fixed cramped "@username" button - now displays as "Username"
+
+### Added
+- **Bottom Tab Navigation**
+  - New tab bar with Cards and P2P tabs
+  - Seamless switching between wallet and P2P features
+  - Active tab indicator with blue highlight
+
+- **P2P Tab with Enrollment**
+  - P2P enrollment check on tab access
+  - "Enable P2P Transfers" prompt for unenrolled users
+  - One-tap enrollment using first connected bank
+  - P2P home screen with quick actions (Send, Receive, Aliases, Scan QR)
+
+- **Alias Management**
+  - Add new aliases (username, email, or phone)
+  - Type selector with @username, Email, Phone options
+  - View list of registered aliases
+  - Set alias as primary for receiving
+  - Delete existing aliases with confirmation
+
+- **Send Money**
+  - Send by alias with recipient lookup and preview
+  - Multi-step flow: input → confirm → success
+  - Amount entry with currency formatting
+  - Source account selection
+  - Optional note/description
+  - Biometric authentication (Face ID/Touch ID) before sending
+
+- **Send by QR Scan**
+  - Camera-based QR code scanner
+  - Token resolution to get recipient info
+  - Pre-filled amount and note when set by recipient
+  - Same confirmation and biometric flow as alias send
+
+- **Receive Money Screen**
+  - QR code generation via TransferSim token API
+  - Share alias via device share sheet
+  - Display primary alias prominently
+  - Token expiration display
+
+- **Transfer History**
+  - Full transfer list with sent/received filtering
+  - Direction icons and status colors
+  - Relative date formatting
+  - Pull-to-refresh functionality
+
+- **Transfer Detail View**
+  - Large amount display with direction indicator
+  - Status badge with human-readable text
+  - Counterparty info (name, alias, bank)
+  - Note/description with callout styling
+  - Transaction details (date, completion time, reference ID)
+
+- **TransferSim Service Integration**
+  - New `transferSim.ts` API client
+  - X-API-Key authentication for orchestrator
+  - Authorization header with userId:bsimId format
+  - Enrollment, alias, transfer, and token endpoints
+  - Environment-aware URLs (dev/prod via iOS Settings)
+
+### Technical
+- **New Types** (`src/types/index.ts`)
+  - `Alias`, `AliasType` - Alias management
+  - `Transfer`, `TransferStatus`, `TransferDirection` - P2P transfers
+  - `BankAccount` - Bank accounts for P2P (different from cards)
+  - `P2PEnrollment`, `P2PState` - Enrollment tracking
+  - `ReceiveToken`, `ResolvedToken` - QR token handling
+  - `AliasLookupResult` - Alias search results
+
+- **Secure Storage** (`src/services/secureStorage.ts`)
+  - `P2P_USER_CONTEXT` - userId and bsimId for TransferSim auth
+  - `P2P_LAST_ACCOUNT` - Remember last used account
+  - `P2P_ENROLLMENT` - Cached enrollment status
+  - All P2P data cleared on logout
+
+- **Biometric Service** (`src/services/biometric.ts`)
+  - `authenticateForTransfer()` - Transfer-specific auth prompt
+
+- **Environment Service** (`src/services/environment.ts`)
+  - Added `transferSimUrl` to environment config
+  - Added `getTransferSimUrl()` for P2P API calls
+  - Development: `https://transfersim-dev.banksim.ca`
+  - Production: `https://transfersim.banksim.ca`
+
+## [1.3.0] - 2025-12-24 - Multi-Bank & P2P Support
+
+### Added
+- **Bank Logo Display**
+  - Card component now displays bank logo (24x24) next to bank name
+  - Fallback to bank initials when logo unavailable or fails to load
+  - BankListItem component updated to use logoUrl
+
+- **P2P Transfers Planning**
+  - Added comprehensive P2P section to TODO.md
+  - Planned features: alias management, send/receive money, QR codes, transfer history
+
+### Changed
+- **Type Updates for Multi-Bank API**
+  - `Card.bankLogoUrl` - Bank logo URL (optional)
+  - `Bank.logoUrl` - Renamed from `logo` for API consistency
+  - `EnrolledBank.logoUrl` - Bank logo URL
+  - `EnrolledBank.credentialExpiry` - Credential expiration date
+  - `PaymentCard.bankLogoUrl` - Bank logo URL for payment selection
+
+### Documentation
+- Updated MWSIM_MULTI_BANK_PROPOSAL.md with implementation status
+- Updated MULTI_BANK_PROJECT_TRACKER.md with completed tasks
+
 ## [1.2.3] - 2025-12-19
 
 ### Fixed

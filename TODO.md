@@ -38,6 +38,69 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [ ] Transaction confirmation notifications
 - [ ] Security alerts
 
+## Multi-Bank Support
+
+### Bank Display
+- [x] Display bankName on card component
+- [x] Display bankName in wallet card list
+- [x] Display bankName in payment card selection
+- [x] Display bank logo with fallback (icon/initials if missing)
+
+### Connected Banks Management
+- [ ] "Connected Banks" section in profile/settings
+- [ ] Show enrolled banks with card counts
+- [ ] "Connect Another Bank" action
+
+## P2P Transfers (Complete - v1.4.0)
+
+Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
+
+### P2P Enrollment
+- [x] P2P enrollment check on login
+- [x] Auto-enrollment for logged-in users
+- [x] P2P home screen with quick actions
+- [x] Bottom tab navigation (Cards / P2P)
+
+### Alias Management
+- [x] Register email/phone/username alias
+- [x] View/manage aliases
+- [x] Set primary alias
+- [x] Delete alias
+- [ ] Alias verification flow (email/SMS)
+
+### Send Money
+- [x] Send by alias (email, phone, username)
+- [x] Send by QR code scan
+- [ ] Send by NFC tap (future)
+- [x] Amount entry with currency formatting
+- [x] Add memo/description
+- [x] Confirmation screen with recipient preview
+- [x] Biometric authorization for transfers
+
+### Receive Money
+- [x] Generate receive QR code (via TransferSim token API)
+- [x] Share alias (share sheet integration)
+- [ ] Request specific amount (optional)
+- [x] Receive QR expiration handling
+
+### Transfer History
+- [x] Transfer list view (sent/received)
+- [x] Filter by direction (All/Sent/Received)
+- [x] Transfer detail view
+- [ ] Filter by status, date
+- [ ] Search by alias/name
+
+### TransferSim Integration
+- [x] Environment-aware URLs (dev: transfersim-dev.banksim.ca, prod: transfer.banksim.ca)
+- [x] Lazy client initialization (prevents startup hang)
+- [x] API key authentication
+- [x] User context authorization headers
+
+### Notifications (Future)
+- [ ] Push notification for incoming transfer
+- [ ] Push notification for transfer complete
+- [ ] In-app notification center
+
 ## Phase 3: OpenWallet Foundation
 
 ### OID4VCI (Verifiable Credential Issuance)

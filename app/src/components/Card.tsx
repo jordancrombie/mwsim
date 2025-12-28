@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ViewStyle } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, ViewStyle, Image } from 'react-native';
 import type { Card as CardType } from '../types';
 
 interface CardProps {
@@ -8,6 +8,17 @@ interface CardProps {
   onLongPress?: () => void;
   showDefault?: boolean;
   style?: ViewStyle;
+}
+
+/**
+ * Get bank initials for fallback display when logo is unavailable
+ */
+function getBankInitials(bankName: string): string {
+  const words = bankName.trim().split(/\s+/);
+  if (words.length === 1) {
+    return words[0].substring(0, 2).toUpperCase();
+  }
+  return words.slice(0, 2).map(w => w[0]).join('').toUpperCase();
 }
 
 const CARD_COLORS: Record<string, { bg: string; text: string }> = {
@@ -28,6 +39,10 @@ const CARD_ICONS: Record<string, string> = {
 
 export function CardComponent({ card, onPress, onLongPress, showDefault = true, style }: CardProps) {
   const colors = CARD_COLORS[card.cardType] || CARD_COLORS.DEBIT;
+  const [logoError, setLogoError] = useState(false);
+
+  // Determine if we should show the logo or fallback
+  const showLogo = card.bankLogoUrl && !logoError;
 
   const content = (
     <View
@@ -47,11 +62,41 @@ export function CardComponent({ card, onPress, onLongPress, showDefault = true, 
         style,
       ]}
     >
-      {/* Top row: Bank name + Default badge */}
+      {/* Top row: Bank logo/name + Default badge */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <Text style={{ color: colors.text, fontSize: 14, opacity: 0.9 }}>
-          {card.bankName}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {showLogo ? (
+            <Image
+              source={{ uri: card.bankLogoUrl }}
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 4,
+                backgroundColor: 'rgba(255,255,255,0.2)',
+              }}
+              onError={() => setLogoError(true)}
+              resizeMode="contain"
+            />
+          ) : (
+            <View
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 4,
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: colors.text, fontSize: 10, fontWeight: '700' }}>
+                {getBankInitials(card.bankName)}
+              </Text>
+            </View>
+          )}
+          <Text style={{ color: colors.text, fontSize: 14, opacity: 0.9 }}>
+            {card.bankName}
+          </Text>
+        </View>
         {showDefault && card.isDefault && (
           <View
             style={{
