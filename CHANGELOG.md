@@ -4,6 +4,22 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.4.0] - 2025-12-27 - P2P Transfer Integration
 
+### Fixed (Build 18)
+- **Critical: App Crash on P2P Screens**
+  - Moved useState hooks from inside conditional screen blocks to top level
+  - React hooks must be called in the same order on every render
+  - Affected screens: aliasManagement, receiveMoney, sendMoney, transferHistory, p2pQrScan
+
+- **Critical: App Hanging on Startup**
+  - Changed TransferSim client from eager to lazy initialization
+  - Client now created on first API call instead of module load time
+  - Prevents blocking when native modules aren't ready
+
+- **UI Improvements**
+  - Capitalized "Generate a QR Code" text on Receive screen
+  - Centered description text under QR code generation
+  - Fixed cramped "@username" button - now displays as "Username"
+
 ### Added
 - **Bottom Tab Navigation**
   - New tab bar with Cards and P2P tabs
