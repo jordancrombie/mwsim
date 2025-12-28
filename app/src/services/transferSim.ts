@@ -24,7 +24,7 @@ import type {
 // TransferSim configuration
 // For development, use localhost. For production, use transfersim-dev.banksim.ca
 const TRANSFERSIM_URL = 'http://localhost:3010';
-const TRANSFERSIM_API_KEY = 'mwsim-p2p-api-key-dev-2024';
+const TRANSFERSIM_API_KEY = 'tsim_1c34f53eabdeb18474b87ec27b093d5c481ff08a0b5e07267dcaf183d1ee52af';
 
 // Create TransferSim API client
 const createTransferSimClient = (): AxiosInstance => {
