@@ -3,7 +3,7 @@
     "name": "mwsim",
     "slug": "mwsim",
     "scheme": "mwsim",
-    "version": "1.2.3",
+    "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.banksim.wsim",
-      "buildNumber": "13",
+      "buildNumber": "19",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes",

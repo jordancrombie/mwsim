@@ -13,7 +13,7 @@ export interface Card {
   lastFour: string;
   cardType: 'VISA' | 'MASTERCARD' | 'AMEX' | 'DISCOVER' | 'DEBIT';
   bankName: string;
-  bankLogo?: string;
+  bankLogoUrl?: string;  // Bank logo URL (null if not configured)
   isDefault: boolean;
   addedAt: string;
 }
@@ -22,15 +22,17 @@ export interface Card {
 export interface Bank {
   bsimId: string;
   name: string;
-  logo?: string;
+  logoUrl?: string;  // Bank logo URL
   description?: string;
 }
 
 export interface EnrolledBank {
   bsimId: string;
   name: string;
+  logoUrl?: string;  // Bank logo URL
   cardCount: number;
   enrolledAt: string;
+  credentialExpiry?: string;
 }
 
 // Auth types
@@ -134,6 +136,7 @@ export interface PaymentCard {
   expiryMonth?: number;
   expiryYear?: number;
   bankName: string;
+  bankLogoUrl?: string;  // Bank logo URL
   isDefault: boolean;
 }
 
@@ -146,6 +149,114 @@ export interface PendingPayment {
   orderId: string;
   createdAt: string;
   expiresAt: string;
+}
+
+// P2P Transfer types
+
+export type AliasType = 'EMAIL' | 'PHONE' | 'USERNAME' | 'RANDOM_KEY';
+
+export interface Alias {
+  id: string;
+  type: AliasType;
+  value: string;           // e.g., "user@email.com" or "@johndoe"
+  isPrimary: boolean;
+  isVerified: boolean;
+  createdAt: string;
+}
+
+export interface P2PEnrollment {
+  enrollmentId: string;
+  userId: string;
+  bsimId: string;
+  enrolledAt: string;
+  isActive: boolean;
+}
+
+export type TransferStatus =
+  | 'PENDING'
+  | 'RESOLVING'
+  | 'RECIPIENT_NOT_FOUND'
+  | 'DEBITING'
+  | 'DEBIT_FAILED'
+  | 'CREDITING'
+  | 'CREDIT_FAILED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'EXPIRED'
+  | 'REVERSED';
+
+export type TransferDirection = 'sent' | 'received';
+
+export interface Transfer {
+  transferId: string;
+  direction: TransferDirection;
+  amount: number;
+  currency: string;
+  description?: string;
+  status: TransferStatus;
+
+  // Sender info (for received transfers)
+  senderAlias?: string;
+  senderDisplayName?: string;
+  senderBankName?: string;
+
+  // Recipient info (for sent transfers)
+  recipientAlias?: string;
+  recipientDisplayName?: string;
+  recipientBankName?: string;
+
+  createdAt: string;
+  completedAt?: string;
+}
+
+export interface AliasLookupResult {
+  found: boolean;
+  displayName?: string;   // Partial name (e.g., "John D.")
+  bankName?: string;
+  aliasType?: AliasType;
+}
+
+export interface ReceiveToken {
+  tokenId: string;
+  qrPayload: string;       // Encode this in QR code
+  expiresAt: string;
+  amount?: number;
+  description?: string;
+}
+
+export interface ResolvedToken {
+  tokenId: string;
+  recipientAlias: string;
+  recipientDisplayName: string;
+  recipientBankName: string;
+  amount?: number;
+  description?: string;
+  expiresAt: string;
+}
+
+// Bank Account types (for P2P - different from Cards)
+export interface BankAccount {
+  accountId: string;
+  accountType: 'CHECKING' | 'SAVINGS';
+  displayName: string;     // e.g., "Chequing ****1234"
+  balance?: number;
+  currency: string;
+  bankName: string;
+  bankLogoUrl?: string;
+  bsimId: string;
+}
+
+// P2P State for the app
+export interface P2PState {
+  isEnrolled: boolean;
+  enrollmentLoading: boolean;
+  aliases: Alias[];
+  aliasesLoading: boolean;
+  accounts: BankAccount[];
+  accountsLoading: boolean;
+  recentTransfers: Transfer[];
+  transfersLoading: boolean;
+  lastUsedAccountId?: string;
 }
 
 // Navigation types

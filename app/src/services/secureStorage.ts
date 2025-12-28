@@ -9,7 +9,17 @@ const KEYS = {
   BIOMETRIC_ID: 'mwsim_biometric_id',
   USER_DATA: 'mwsim_user_data',
   CACHED_CARDS: 'mwsim_cached_cards',
+  // P2P Transfer keys
+  P2P_USER_CONTEXT: 'mwsim_p2p_user_context',
+  P2P_LAST_ACCOUNT: 'mwsim_p2p_last_account',
+  P2P_ENROLLMENT: 'mwsim_p2p_enrollment',
 } as const;
+
+// P2P User Context type
+export interface P2PUserContext {
+  userId: string;
+  bsimId: string;
+}
 
 export const secureStorage = {
   // Access Token
@@ -85,6 +95,43 @@ export const secureStorage = {
     return data ? JSON.parse(data) : null;
   },
 
+  // P2P User Context (userId and bsimId for TransferSim auth)
+  async setP2PUserContext(context: P2PUserContext): Promise<void> {
+    await SecureStore.setItemAsync(KEYS.P2P_USER_CONTEXT, JSON.stringify(context));
+  },
+
+  async getP2PUserContext(): Promise<P2PUserContext | null> {
+    const data = await SecureStore.getItemAsync(KEYS.P2P_USER_CONTEXT);
+    return data ? JSON.parse(data) : null;
+  },
+
+  async removeP2PUserContext(): Promise<void> {
+    await SecureStore.deleteItemAsync(KEYS.P2P_USER_CONTEXT);
+  },
+
+  // P2P Last Used Account (remember for convenience)
+  async setP2PLastAccount(accountId: string): Promise<void> {
+    await SecureStore.setItemAsync(KEYS.P2P_LAST_ACCOUNT, accountId);
+  },
+
+  async getP2PLastAccount(): Promise<string | null> {
+    return SecureStore.getItemAsync(KEYS.P2P_LAST_ACCOUNT);
+  },
+
+  // P2P Enrollment (cached enrollment status)
+  async setP2PEnrollment(enrollment: object): Promise<void> {
+    await SecureStore.setItemAsync(KEYS.P2P_ENROLLMENT, JSON.stringify(enrollment));
+  },
+
+  async getP2PEnrollment<T>(): Promise<T | null> {
+    const data = await SecureStore.getItemAsync(KEYS.P2P_ENROLLMENT);
+    return data ? JSON.parse(data) : null;
+  },
+
+  async removeP2PEnrollment(): Promise<void> {
+    await SecureStore.deleteItemAsync(KEYS.P2P_ENROLLMENT);
+  },
+
   // Clear all stored data (logout)
   async clearAll(): Promise<void> {
     await Promise.all([
@@ -94,6 +141,10 @@ export const secureStorage = {
       SecureStore.deleteItemAsync(KEYS.BIOMETRIC_ID),
       SecureStore.deleteItemAsync(KEYS.USER_DATA),
       SecureStore.deleteItemAsync(KEYS.CACHED_CARDS),
+      // P2P data
+      SecureStore.deleteItemAsync(KEYS.P2P_USER_CONTEXT),
+      SecureStore.deleteItemAsync(KEYS.P2P_LAST_ACCOUNT),
+      SecureStore.deleteItemAsync(KEYS.P2P_ENROLLMENT),
       // Note: We keep DEVICE_ID as it's permanent
     ]);
   },
