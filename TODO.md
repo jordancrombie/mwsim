@@ -51,7 +51,7 @@ Development roadmap and planned features for the mwsim mobile wallet application
 - [ ] Show enrolled banks with card counts
 - [ ] "Connect Another Bank" action
 
-## P2P Transfers (In Progress)
+## P2P Transfers (Complete - v1.4.0)
 
 Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 
@@ -59,6 +59,7 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 - [x] P2P enrollment check on login
 - [x] Auto-enrollment for logged-in users
 - [x] P2P home screen with quick actions
+- [x] Bottom tab navigation (Cards / P2P)
 
 ### Alias Management
 - [x] Register email/phone/username alias
@@ -70,7 +71,7 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 ### Send Money
 - [x] Send by alias (email, phone, username)
 - [x] Send by QR code scan
-- [ ] Send by NFC tap
+- [ ] Send by NFC tap (future)
 - [x] Amount entry with currency formatting
 - [x] Add memo/description
 - [x] Confirmation screen with recipient preview
@@ -78,9 +79,9 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 
 ### Receive Money
 - [x] Generate receive QR code (via TransferSim token API)
-- [ ] Share alias (copy, share sheet)
+- [x] Share alias (share sheet integration)
 - [ ] Request specific amount (optional)
-- [ ] Receive QR expiration handling
+- [x] Receive QR expiration handling
 
 ### Transfer History
 - [x] Transfer list view (sent/received)
@@ -89,7 +90,13 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 - [ ] Filter by status, date
 - [ ] Search by alias/name
 
-### Notifications
+### TransferSim Integration
+- [x] Environment-aware URLs (dev: transfersim-dev.banksim.ca, prod: transfer.banksim.ca)
+- [x] Lazy client initialization (prevents startup hang)
+- [x] API key authentication
+- [x] User context authorization headers
+
+### Notifications (Future)
 - [ ] Push notification for incoming transfer
 - [ ] Push notification for transfer complete
 - [ ] In-app notification center
