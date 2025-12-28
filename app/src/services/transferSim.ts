@@ -7,9 +7,15 @@
  * Authentication:
  * - X-API-Key: Orchestrator API key (mwsim is registered as an orchestrator)
  * - Authorization: Bearer userId:bsimId (identifies the user making the request)
+ *
+ * Environment:
+ * - Development: https://transfersim-dev.banksim.ca
+ * - Production: https://transfersim.banksim.ca
+ * - Controlled via iOS Settings > mwsim > Server
  */
 import axios, { AxiosInstance } from 'axios';
 import { secureStorage } from './secureStorage';
+import { getTransferSimUrl } from './environment';
 import type {
   Alias,
   AliasType,
@@ -21,17 +27,16 @@ import type {
   BankAccount,
 } from '../types';
 
-// TransferSim configuration
-// For development, use localhost. For production, use transfersim-dev.banksim.ca
-const TRANSFERSIM_URL = 'http://localhost:3010';
+// TransferSim API key (same key works for both environments)
 const TRANSFERSIM_API_KEY = 'tsim_1c34f53eabdeb18474b87ec27b093d5c481ff08a0b5e07267dcaf183d1ee52af';
 
 // Create TransferSim API client
 const createTransferSimClient = (): AxiosInstance => {
-  console.log(`[TransferSim] Initializing client: ${TRANSFERSIM_URL}`);
+  const baseURL = getTransferSimUrl();
+  console.log(`[TransferSim] Initializing client: ${baseURL}`);
 
   const client = axios.create({
-    baseURL: TRANSFERSIM_URL,
+    baseURL,
     timeout: 30000,
     headers: {
       'Content-Type': 'application/json',
