@@ -4,6 +4,11 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.4.0] - 2025-12-27 - P2P Transfer Integration
 
+### Fixed (Build 19)
+- **Production TransferSim URL**
+  - Updated from `transfersim.banksim.ca` to `transfer.banksim.ca`
+  - Matches BSIM team production deployment
+
 ### Fixed (Build 18)
 - **Critical: App Crash on P2P Screens**
   - Moved useState hooks from inside conditional screen blocks to top level
