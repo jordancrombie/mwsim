@@ -362,4 +362,18 @@ export const api = {
     const { data } = await apiClient.get('/mobile/payment/pending');
     return data;
   },
+
+  // ==================
+  // P2P Account Endpoints (via WSIM Proxy to BSIM Open Banking)
+  // ==================
+
+  /**
+   * Get user's bank accounts for P2P transfers.
+   * WSIM proxies this request to BSIM Open Banking API using stored OAuth tokens.
+   * Returns accounts from all enrolled banks.
+   */
+  async getAccounts(): Promise<{ accounts: Array<{ accountId: string; accountType: string; displayName: string; balance?: number; currency: string; bankName: string; bankLogoUrl?: string; bsimId: string }> }> {
+    const { data } = await apiClient.get('/mobile/accounts');
+    return data;
+  },
 };

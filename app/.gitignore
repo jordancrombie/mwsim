@@ -39,6 +39,9 @@ yarn-error.*
 # testing
 coverage/
 
+# Xcode export options
+ExportOptions.plist
+
 # generated native folders
 /ios
 /android
