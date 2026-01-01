@@ -6,33 +6,35 @@ Development roadmap and planned features for the mwsim mobile wallet application
 
 ### Creating Archives for TestFlight
 
-When building archives for TestFlight upload, **always use unique archive names** to avoid overwriting previous builds:
+When building archives for TestFlight upload, **always use unique archive names** to avoid overwriting previous builds.
+
+**Custom Archive Location:** `/Users/jcrombie/ai/AppBuilds/IOS/Archives/`
+(Configured in Xcode Preferences → Locations → Derived Data → Advanced)
 
 ```bash
 # From app/ios directory:
 cd /Users/jcrombie/ai/mwsim/app/ios
 
-# Build with version-specific name
+# Build with version-specific name (to project dir first, then move)
 LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 xcodebuild \
   -workspace mwsim.xcworkspace \
   -scheme mwsim \
   -configuration Release \
-  -destination generic/platform=iOS \
-  -archivePath ~/Library/Developer/Xcode/Archives/$(date +%Y-%m-%d)/mwsim_$(cat ../app.json | grep '"version"' | sed 's/.*: "\(.*\)".*/\1/')_$(cat ../app.json | grep '"buildNumber"' | sed 's/.*: "\(.*\)".*/\1/').xcarchive \
+  -destination "generic/platform=iOS" \
+  -archivePath /Users/jcrombie/ai/mwsim/app/mwsim_1.4.0_XX.xcarchive \
   archive
-```
 
-Or simpler, manually specify version:
-```bash
-xcodebuild ... -archivePath ~/Library/Developer/Xcode/Archives/2025-12-31/mwsim_1.4.0_22.xcarchive archive
+# Then move to custom Archives folder for Organizer to find it:
+mv /Users/jcrombie/ai/mwsim/app/mwsim_1.4.0_XX.xcarchive \
+   /Users/jcrombie/ai/AppBuilds/IOS/Archives/$(date +%Y-%m-%d)/
 ```
 
 ### Build Checklist
 
 1. **Bump build number** in `app.json` before each TestFlight upload
 2. **Run `npx expo prebuild --clean`** if any plugins or native config changed
-3. **Use unique archive names** (e.g., `mwsim_1.4.0_22.xcarchive`)
-4. **Move archive** to `~/Library/Developer/Xcode/Archives/YYYY-MM-DD/`
+3. **Use unique archive names** (e.g., `mwsim_1.4.0_24.xcarchive`)
+4. **Move archive** to `/Users/jcrombie/ai/AppBuilds/IOS/Archives/YYYY-MM-DD/`
 5. **Open in Xcode Organizer** to upload to App Store Connect
 
 ### Version Info in Settings

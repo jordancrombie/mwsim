@@ -2,7 +2,35 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-## [1.4.0] - 2025-12-27 - P2P Transfer Integration
+## [1.4.0] - 2025-12-27 - P2P Transfer Integration & Micro Merchants
+
+### Added (Build 20-24)
+- **Micro Merchant UI (Phase 1)**
+  - "Become a Merchant" enrollment flow with business name, category, and account selection
+  - P2P Tab Toggle: Personal/Business segmented control (purple/green accent colors)
+  - Merchant Dashboard with QR code display, today's revenue summary, and recent payments
+  - Merchant QR Code with green border, business name, and "Micro Merchant" badge
+  - Visual differentiation for sender: merchant recipients show green border and storefront icon
+  - Fee preview when sending to Micro Merchant (tiered: $0.25 < $200, $0.50 >= $200)
+  - Mode-aware transaction history (Personal vs Business)
+  - Merchant profile management UI (edit name, category, receiving account, deactivate)
+
+- **TransferSim Merchant API Integration**
+  - `enrollMerchant()`, `getMerchantProfile()`, `updateMerchantProfile()`
+  - `generateMerchantToken()`, `getMerchantTransfers()`
+  - `resolveTokenWithMerchantInfo()`, `calculateMerchantFee()`
+
+- **Build Improvements**
+  - New `withXcodeOptimizations` Expo config plugin for automatic Xcode project settings
+  - Removes deprecated ENABLE_BITCODE setting
+  - Updates LastUpgradeCheck to Xcode 16.2 (1620)
+  - Enables whole-module optimization for Release builds
+  - Updated TODO.md with custom archive location documentation
+
+### Technical (Build 20-24)
+- New types: `MerchantProfile`, `RecipientType`, `p2pMode`
+- New state: `isMicroMerchant`, `merchantProfile`, `p2pMode`
+- ExportOptions.plist configured for command-line TestFlight uploads
 
 ### Fixed (Build 19)
 - **Production TransferSim URL**
