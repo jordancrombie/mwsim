@@ -281,6 +281,43 @@ Extends P2P infrastructure to support small business payments with visual differ
 
 ## Bug Fixes & Polish
 
+### Startup White Screen Fix (Priority)
+Intermittent white screen hang on app startup caused by blocking network calls in `initializeApp()`.
+
+**Root Cause Analysis:**
+- `getWalletSummary()` blocks startup when user is logged in (validates token + fetches fresh data)
+- `registerDevice()` blocks startup even for new users before they sign up
+- If network is slow/unavailable, app hangs on white loading screen indefinitely
+
+**Proposed Fix:**
+1. **For logged-in users:**
+   - Check `accessToken` exists locally → assume logged in
+   - Load cached `USER_DATA` and `CACHED_CARDS` immediately
+   - Navigate to home screen instantly (no network wait)
+   - Refresh `getWalletSummary()` in background (non-blocking)
+   - If 401 → token expired → prompt re-login
+   - If network error → show "offline mode" indicator, use cached data
+
+2. **For new users:**
+   - No accessToken → go to welcome screen immediately
+   - Remove `registerDevice()` from startup entirely
+   - Call `registerDevice()` only when user taps "Create Account"
+
+3. **Additional improvements:**
+   - Change loading screen background from white (#ffffff) to splash blue (#E3F2FD)
+   - Add startup timeout failsafe (proceed after X seconds even if network hung)
+
+**Files to modify:**
+- `app/App.tsx` - `initializeApp()` function
+- `app/src/services/api.ts` - add non-blocking refresh method
+- `app/src/components/SplashScreen.tsx` - loading screen styling
+
+- [ ] Implement non-blocking startup with cached data
+- [ ] Move `registerDevice()` to account creation flow
+- [ ] Add background token validation with offline fallback
+- [ ] Change loading screen to blue (#E3F2FD) to match splash
+
+### Other Polish Items
 - [ ] Loading states for all API calls
 - [ ] Error boundary implementation
 - [ ] Accessibility improvements (VoiceOver/TalkBack)
