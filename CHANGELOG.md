@@ -4,6 +4,19 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.4.0] - 2026-01-01 - P2P Transfer Integration & Micro Merchants
 
+### Fixed (Build 32)
+- **App Crash on P2P Tab for Users with Transfers**
+  - Fixed: Defensive null checks for all transfer arrays (recentTransfers, historyTransfers, merchantTransfers)
+  - API responses may return null for `transfers` field; now defaults to empty array
+  - Added null safety to `loadP2PData()`, `loadHistoryTransfers()`, `loadMerchantTransfers()`
+  - Fixed `getStatusColor()` calls to handle undefined status
+  - Fixed `selectedTransfer.transferId.substring()` crash when transferId is undefined
+
+- **FROM ACCOUNT Not Showing After Initial P2P Enrollment**
+  - Fixed: `loadP2PData()` is now called immediately after P2P enrollment completes
+  - Previously, accounts were only loaded when switching tabs (not during initial enrollment flow)
+  - Users can now send money right after enrolling without needing to log out/in
+
 ### Fixed (Build 31)
 - **App Crash After P2P Transfer**
   - Fixed: Null safety checks added to all transfer rendering code
