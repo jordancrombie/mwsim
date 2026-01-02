@@ -82,8 +82,13 @@ export const secureStorage = {
   },
 
   async getUserData<T>(): Promise<T | null> {
-    const data = await SecureStore.getItemAsync(KEYS.USER_DATA);
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = await SecureStore.getItemAsync(KEYS.USER_DATA);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      console.error('[SecureStorage] Error getting UserData:', e);
+      return null;
+    }
   },
 
   // Cached Cards (for offline mode)
@@ -92,8 +97,13 @@ export const secureStorage = {
   },
 
   async getCachedCards<T>(): Promise<T[] | null> {
-    const data = await SecureStore.getItemAsync(KEYS.CACHED_CARDS);
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = await SecureStore.getItemAsync(KEYS.CACHED_CARDS);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      console.error('[SecureStorage] Error getting CachedCards:', e);
+      return null;
+    }
   },
 
   // P2P User Context (userId and bsimId for TransferSim auth)
@@ -102,8 +112,13 @@ export const secureStorage = {
   },
 
   async getP2PUserContext(): Promise<P2PUserContext | null> {
-    const data = await SecureStore.getItemAsync(KEYS.P2P_USER_CONTEXT);
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = await SecureStore.getItemAsync(KEYS.P2P_USER_CONTEXT);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      console.error('[SecureStorage] Error getting P2PUserContext:', e);
+      return null;
+    }
   },
 
   async removeP2PUserContext(): Promise<void> {
@@ -125,8 +140,13 @@ export const secureStorage = {
   },
 
   async getP2PEnrollment<T>(): Promise<T | null> {
-    const data = await SecureStore.getItemAsync(KEYS.P2P_ENROLLMENT);
-    return data ? JSON.parse(data) : null;
+    try {
+      const data = await SecureStore.getItemAsync(KEYS.P2P_ENROLLMENT);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      console.error('[SecureStorage] Error getting P2PEnrollment:', e);
+      return null;
+    }
   },
 
   async removeP2PEnrollment(): Promise<void> {

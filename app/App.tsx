@@ -221,7 +221,7 @@ export default function App() {
 
   // Initialize history transfers from recent transfers
   useEffect(() => {
-    setHistoryTransfers(recentTransfers);
+    setHistoryTransfers(recentTransfers || []);
   }, [recentTransfers]);
 
   // Function to load transfer history
@@ -1937,18 +1937,18 @@ export default function App() {
           <View style={styles.p2pSection}>
             <View style={styles.p2pSectionHeader}>
               <Text style={styles.sectionTitle}>Recent Transfers</Text>
-              {recentTransfers.length > 0 && (
+              {recentTransfers && recentTransfers.length > 0 && (
                 <TouchableOpacity onPress={() => setCurrentScreen('transferHistory')}>
                   <Text style={styles.p2pSeeAllText}>See All</Text>
                 </TouchableOpacity>
               )}
             </View>
-            {recentTransfers.length === 0 ? (
+            {(!recentTransfers || recentTransfers.length === 0) ? (
               <View style={styles.p2pEmptyTransfers}>
                 <Text style={styles.p2pEmptyTransfersText}>No transfers yet</Text>
               </View>
             ) : (
-              recentTransfers.slice(0, 5).map((transfer) => (
+              recentTransfers.filter(t => t != null).slice(0, 5).map((transfer) => (
                 <View key={transfer.transferId || Math.random().toString()} style={styles.p2pTransferItem}>
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
@@ -2088,7 +2088,7 @@ export default function App() {
                 <Text style={styles.p2pSeeAllText}>See All</Text>
               </TouchableOpacity>
             </View>
-            {merchantTransfers.length === 0 ? (
+            {(!merchantTransfers || merchantTransfers.length === 0) ? (
               <View style={styles.p2pEmptyTransfers}>
                 <Text style={styles.p2pEmptyTransfersText}>No payments received yet</Text>
                 <Text style={styles.merchantEmptyHint}>
@@ -2096,7 +2096,7 @@ export default function App() {
                 </Text>
               </View>
             ) : (
-              merchantTransfers.slice(0, 5).map((transfer) => (
+              merchantTransfers.filter(t => t != null).slice(0, 5).map((transfer) => (
                 <View key={transfer.transferId || Math.random().toString()} style={styles.merchantTransferItem}>
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
@@ -3130,7 +3130,7 @@ export default function App() {
               />
             }
           >
-            {historyTransfers.length === 0 ? (
+            {(!historyTransfers || historyTransfers.length === 0) ? (
               <View style={styles.historyEmpty}>
                 <Text style={styles.historyEmptyIcon}>📋</Text>
                 <Text style={styles.historyEmptyText}>No transfers yet</Text>
@@ -3139,7 +3139,7 @@ export default function App() {
                 </Text>
               </View>
             ) : (
-              historyTransfers.map((transfer) => (
+              historyTransfers.filter(t => t != null).map((transfer) => (
                 <TouchableOpacity
                   key={transfer.transferId || Math.random().toString()}
                   style={styles.historyItem}
