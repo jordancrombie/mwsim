@@ -281,8 +281,9 @@ export const api = {
 
   /**
    * List user's enrolled banks (JWT authenticated)
+   * Returns fiUserRef (BSIM internal user ID) needed for P2P transfers via TransferSim
    */
-  async getEnrolledBanks(): Promise<{ enrollments: Array<{ id: string; bsimId: string; bankName: string; enrolledAt: string }> }> {
+  async getEnrolledBanks(): Promise<{ enrollments: Array<{ id: string; bsimId: string; fiUserRef: string; bankName: string; enrolledAt: string }> }> {
     const { data } = await apiClient.get('/mobile/enrollment/list');
     return data;
   },

@@ -17,8 +17,9 @@ const KEYS = {
 
 // P2P User Context type
 export interface P2PUserContext {
-  userId: string;
-  bsimId: string;
+  userId: string;      // WSIM user ID (for local reference)
+  bsimId: string;      // Bank identifier (e.g., 'bsim-dev')
+  fiUserRef: string;   // BSIM internal user ID (for P2P transfers via TransferSim)
 }
 
 export const secureStorage = {
