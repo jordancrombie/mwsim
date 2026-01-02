@@ -2,9 +2,36 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-## [1.4.0] - 2025-12-27 - P2P Transfer Integration & Micro Merchants
+## [1.4.0] - 2026-01-01 - P2P Transfer Integration & Micro Merchants
 
-### Added (Build 20-24)
+### Fixed (Build 29)
+- **P2P Transfer User ID Mismatch**
+  - Fixed: P2P transfers now use BSIM's internal user ID (`fiUserRef`) instead of WSIM userId
+  - This resolves "account not owned by user" errors when sending P2P transfers
+  - TransferSim auth header now sends `fiUserRef:bsimId` for proper BSIM account ownership validation
+  - Updated `P2PUserContext` to include `fiUserRef` from bank enrollment
+  - WSIM now exposes `fiUserRef` in enrollment list endpoint
+
+### Fixed (Build 28)
+- **P2P Accounts Not Loading**
+  - Fixed: Bank accounts now refresh when switching to P2P tab (previously only loaded once after enrollment)
+  - P2P data (accounts, aliases, transfers) now reloads each time user navigates to P2P tab
+  - Enables proper "From Account" selection in Send Money flow
+
+- **Stale User Data After Logout**
+  - Fixed: All user-specific state is now cleared on logout
+  - Previously, P2P data (aliases, accounts, transfers) persisted between user sessions
+  - This caused user7 to see user6's aliases after logout/login
+  - Comprehensive state reset now includes:
+    - User & auth data
+    - Cards & banks
+    - P2P core (enrollment, aliases, accounts, transfers)
+    - P2P send/receive state
+    - Micro Merchant profile and settings
+    - Payment request data
+  - SecureStorage is also cleared on logout
+
+### Added (Build 20-27)
 - **Micro Merchant UI (Phase 1)**
   - "Become a Merchant" enrollment flow with business name, category, and account selection
   - P2P Tab Toggle: Personal/Business segmented control (purple/green accent colors)

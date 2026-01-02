@@ -6,11 +6,13 @@
  *
  * Authentication:
  * - X-API-Key: Orchestrator API key (mwsim is registered as an orchestrator)
- * - Authorization: Bearer userId:bsimId (identifies the user making the request)
+ * - Authorization: Bearer fiUserRef:bsimId (BSIM internal user ID + bank identifier)
+ *   The fiUserRef is the BSIM's internal user ID, not the WSIM userId.
+ *   This is required for BSIM to validate account ownership during P2P transfers.
  *
  * Environment:
  * - Development: https://transfersim-dev.banksim.ca
- * - Production: https://transfersim.banksim.ca
+ * - Production: https://transfer.banksim.ca
  * - Controlled via iOS Settings > mwsim > Server
  */
 import axios, { AxiosInstance } from 'axios';
@@ -60,9 +62,11 @@ const getTransferSimClient = (): AxiosInstance => {
   // Request interceptor - add user authorization
   client.interceptors.request.use(async (requestConfig) => {
     // Get user context for Authorization header
+    // Use fiUserRef (BSIM internal user ID) for P2P transfers - this is the ID that BSIM
+    // recognizes as the account owner, not the WSIM userId
     const userContext = await secureStorage.getP2PUserContext();
     if (userContext) {
-      requestConfig.headers.Authorization = `Bearer ${userContext.userId}:${userContext.bsimId}`;
+      requestConfig.headers.Authorization = `Bearer ${userContext.fiUserRef}:${userContext.bsimId}`;
     }
     return requestConfig;
   });

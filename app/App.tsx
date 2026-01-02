@@ -858,11 +858,80 @@ export default function App() {
           } catch (e) {
             // Continue anyway
           }
+
+          // Clear secure storage first
+          await secureStorage.clearAll();
+
+          // Reset ALL user-specific state
+          // User & Auth
           setUser(null);
-          setCards([]);
           setEmail('');
           setName('');
+          setPassword('');
           setVerificationCode('');
+          setError(null);
+
+          // Cards & Banks
+          setCards([]);
+          setBanks([]);
+          setSelectedBank(null);
+          setSelectedCard(null);
+
+          // P2P Core
+          setP2pEnrolled(false);
+          setP2pEnrollment(null);
+          setAliases([]);
+          setBankAccounts([]);
+          setRecentTransfers([]);
+          setSelectedTransfer(null);
+
+          // P2P Send
+          setSelectedAccount(null);
+          setP2pSelectedAccount(null);
+          setRecipientAlias('');
+          setSendAmount('');
+          setSendNote('');
+          setRecipientInfo(null);
+          setCompletedTransfer(null);
+          setSendStep('input');
+
+          // P2P Receive
+          setReceiveToken(null);
+
+          // P2P History
+          setHistoryTransfers([]);
+          setHistoryFilter('all');
+
+          // P2P QR
+          setResolvedToken(null);
+          setP2pSendAmount('');
+          setP2pSendNote('');
+          setP2pQrScanned(false);
+
+          // Micro Merchant
+          setIsMicroMerchant(false);
+          setMerchantProfile(null);
+          setP2pMode('personal');
+          setMerchantTransfers([]);
+          setMerchantQrToken(null);
+          setMerchantStats({ todayRevenue: 0, todayCount: 0 });
+          setMerchantBusinessName('');
+          setMerchantCategory('OTHER');
+          setMerchantReceivingAccount(null);
+          setAliasError(null);
+          setMerchantEnrollError(null);
+
+          // Payment
+          setPaymentRequest(null);
+          setSelectedPaymentCard(null);
+          setPendingRequestId(null);
+          setPaymentStatus('loading');
+          setPaymentError(null);
+          setSourceBrowser(null);
+          setPaymentReturnUrl(null);
+
+          // Reset to welcome screen and cards tab
+          setActiveHomeTab('cards');
           setCurrentScreen('welcome');
         },
       },
@@ -965,8 +1034,13 @@ export default function App() {
         // In production, user should select which bank to use for P2P
         const enrolledBanks = await api.getEnrolledBanks();
         if (enrolledBanks.enrollments.length > 0) {
-          const bsimId = enrolledBanks.enrollments[0].bsimId;
-          await secureStorage.setP2PUserContext({ userId: user.id, bsimId });
+          const enrollment = enrolledBanks.enrollments[0];
+          // Use fiUserRef (BSIM internal user ID) for P2P transfers
+          await secureStorage.setP2PUserContext({
+            userId: user.id,
+            bsimId: enrollment.bsimId,
+            fiUserRef: enrollment.fiUserRef,
+          });
         }
       }
 
@@ -1175,13 +1249,17 @@ export default function App() {
 
       // For now, use the first enrolled bank
       // TODO: Let user choose if multiple banks are enrolled
-      const bsimId = enrolledBanks.enrollments[0].bsimId;
+      const bankEnrollment = enrolledBanks.enrollments[0];
 
-      // Store P2P user context
-      await secureStorage.setP2PUserContext({ userId: user.id, bsimId });
+      // Store P2P user context with fiUserRef (BSIM internal user ID)
+      await secureStorage.setP2PUserContext({
+        userId: user.id,
+        bsimId: bankEnrollment.bsimId,
+        fiUserRef: bankEnrollment.fiUserRef,
+      });
 
       // Enroll in P2P network
-      const enrollment = await transferSimApi.enrollUser(user.id, bsimId);
+      const enrollment = await transferSimApi.enrollUser(user.id, bankEnrollment.bsimId);
 
       setP2pEnrolled(true);
       setP2pEnrollment(enrollment);
@@ -2146,6 +2224,9 @@ export default function App() {
                 // Check P2P enrollment when switching to tab
                 if (!p2pEnrolled && !p2pLoading) {
                   checkP2PEnrollment();
+                } else if (p2pEnrolled && !p2pLoading) {
+                  // Refresh P2P data (accounts, aliases, transfers) when switching to tab
+                  loadP2PData();
                 }
               }}
               activeOpacity={0.7}
