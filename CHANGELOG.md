@@ -4,6 +4,15 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.4.0] - 2026-01-01 - P2P Transfer Integration & Micro Merchants
 
+### Fixed (Build 33)
+- **TurboModule Crash on P2P Tab (Native Side)**
+  - Fixed: Added try-catch protection to all SecureStorage JSON.parse calls
+  - Crash was occurring in React Native TurboModule when accessing SecureStore
+  - Protected: `getUserData()`, `getCachedCards()`, `getP2PUserContext()`, `getP2PEnrollment()`
+  - Malformed or corrupted stored data no longer crashes the app
+  - Additional defensive null checks for transfer arrays in render code
+  - Added `.filter(t => t != null)` before mapping over transfer arrays
+
 ### Fixed (Build 32)
 - **App Crash on P2P Tab for Users with Transfers**
   - Fixed: Defensive null checks for all transfer arrays (recentTransfers, historyTransfers, merchantTransfers)
