@@ -4,6 +4,17 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.4.0] - 2026-01-01 - P2P Transfer Integration & Micro Merchants
 
+### Fixed (Build 30)
+- **P2P Transfer Status Display**
+  - Fixed: Success screen now shows user-friendly status ("Transfer Complete", "Processing...") instead of raw codes like "PENDING"
+  - Added: Polls TransferSim after 1 second to get confirmed final status (transfers complete in <1s)
+  - Status text now color-coded: green for complete, orange for processing, red for failed
+
+- **P2P Account Balance Not Updating After Transfer**
+  - Fixed: Account balances now refresh when user taps "Done" on success screen
+  - Calls `loadP2PData()` to fetch fresh balances from BSIM Open Banking API
+  - User sees updated balance immediately upon returning to P2P home
+
 ### Fixed (Build 29)
 - **P2P Transfer User ID Mismatch**
   - Fixed: P2P transfers now use BSIM's internal user ID (`fiUserRef`) instead of WSIM userId
