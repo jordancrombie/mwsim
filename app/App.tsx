@@ -1945,15 +1945,15 @@ export default function App() {
               </View>
             ) : (
               recentTransfers.slice(0, 5).map((transfer) => (
-                <View key={transfer.transferId} style={styles.p2pTransferItem}>
+                <View key={transfer.transferId || Math.random().toString()} style={styles.p2pTransferItem}>
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
                       {transfer.direction === 'sent'
-                        ? transfer.recipientDisplayName || transfer.recipientAlias
-                        : transfer.senderDisplayName || transfer.senderAlias}
+                        ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
+                        : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
                     </Text>
                     <Text style={styles.p2pTransferDate}>
-                      {new Date(transfer.createdAt).toLocaleDateString()}
+                      {transfer.createdAt ? new Date(transfer.createdAt).toLocaleDateString() : ''}
                     </Text>
                   </View>
                   <Text
@@ -1962,7 +1962,7 @@ export default function App() {
                       transfer.direction === 'received' && styles.p2pTransferAmountReceived,
                     ]}
                   >
-                    {transfer.direction === 'sent' ? '-' : '+'}${transfer.amount.toFixed(2)}
+                    {transfer.direction === 'sent' ? '-' : '+'}${(transfer.amount ?? 0).toFixed(2)}
                   </Text>
                 </View>
               ))
@@ -2093,20 +2093,20 @@ export default function App() {
               </View>
             ) : (
               merchantTransfers.slice(0, 5).map((transfer) => (
-                <View key={transfer.transferId} style={styles.merchantTransferItem}>
+                <View key={transfer.transferId || Math.random().toString()} style={styles.merchantTransferItem}>
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
-                      {transfer.senderDisplayName || transfer.senderAlias}
+                      {transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
                     </Text>
                     <Text style={styles.p2pTransferDate}>
-                      {new Date(transfer.createdAt).toLocaleDateString()}
+                      {transfer.createdAt ? new Date(transfer.createdAt).toLocaleDateString() : ''}
                     </Text>
                   </View>
                   <View style={styles.merchantTransferAmounts}>
                     <Text style={styles.merchantTransferGross}>
-                      +${transfer.grossAmount?.toFixed(2) || transfer.amount.toFixed(2)}
+                      +${(transfer.grossAmount ?? transfer.amount ?? 0).toFixed(2)}
                     </Text>
-                    {transfer.feeAmount && (
+                    {transfer.feeAmount != null && transfer.feeAmount > 0 && (
                       <Text style={styles.merchantTransferFee}>
                         Fee: ${transfer.feeAmount.toFixed(2)}
                       </Text>
@@ -2747,17 +2747,43 @@ export default function App() {
       }
     };
 
-    // Success Screen
+    // Success/Result Screen
     if (sendStep === 'success' && completedTransfer) {
       const statusDisplay = getStatusDisplay(completedTransfer.status);
+      const isProcessing = ['PENDING', 'RESOLVING', 'DEBITING', 'CREDITING'].includes(completedTransfer.status);
+      const isCompleted = completedTransfer.status === 'COMPLETED';
+      const isFailed = ['DEBIT_FAILED', 'CREDIT_FAILED', 'CANCELLED', 'EXPIRED', 'REVERSED', 'RECIPIENT_NOT_FOUND'].includes(completedTransfer.status);
+
+      // Determine icon and title based on status
+      const getIcon = () => {
+        if (isProcessing) return '⏳';
+        if (isCompleted) return '✓';
+        if (isFailed) return '✕';
+        return '✓'; // Default fallback
+      };
+
+      const getTitle = () => {
+        if (isProcessing) return 'Processing...';
+        if (isCompleted) return 'Money Sent!';
+        if (isFailed) return 'Transfer Failed';
+        return 'Money Sent!'; // Default fallback
+      };
+
+      const getIconStyle = () => {
+        if (isProcessing) return { backgroundColor: '#FFF3E0' }; // Orange background
+        if (isCompleted) return { backgroundColor: '#E8F5E9' }; // Green background
+        if (isFailed) return { backgroundColor: '#FFEBEE' }; // Red background
+        return { backgroundColor: '#E8F5E9' }; // Default green
+      };
+
       return (
         <View style={styles.container}>
           <StatusBar style="dark" />
           <View style={styles.sendSuccessContent}>
-            <View style={styles.sendSuccessIcon}>
-              <Text style={{ fontSize: 64 }}>✓</Text>
+            <View style={[styles.sendSuccessIcon, getIconStyle()]}>
+              <Text style={{ fontSize: 64 }}>{getIcon()}</Text>
             </View>
-            <Text style={styles.sendSuccessTitle}>Money Sent!</Text>
+            <Text style={styles.sendSuccessTitle}>{getTitle()}</Text>
             <Text style={styles.sendSuccessAmount}>
               ${parseFloat(sendAmount).toFixed(2)} CAD
             </Text>
@@ -3031,8 +3057,10 @@ export default function App() {
       }
     };
 
-    const formatDate = (dateString: string) => {
+    const formatDate = (dateString: string | undefined) => {
+      if (!dateString) return '';
       const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
       const now = new Date();
       const diff = now.getTime() - date.getTime();
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -3109,7 +3137,7 @@ export default function App() {
             ) : (
               historyTransfers.map((transfer) => (
                 <TouchableOpacity
-                  key={transfer.transferId}
+                  key={transfer.transferId || Math.random().toString()}
                   style={styles.historyItem}
                   activeOpacity={0.7}
                   onPress={() => {
@@ -3137,7 +3165,7 @@ export default function App() {
                     <View style={styles.historyItemMeta}>
                       <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
                       <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
-                        {transfer.status}
+                        {transfer.status || 'UNKNOWN'}
                       </Text>
                     </View>
                   </View>
@@ -3147,7 +3175,7 @@ export default function App() {
                     styles.historyItemAmount,
                     { color: transfer.direction === 'sent' ? '#ef4444' : '#22c55e' }
                   ]}>
-                    {transfer.direction === 'sent' ? '-' : '+'}${transfer.amount.toFixed(2)}
+                    {transfer.direction === 'sent' ? '-' : '+'}${(transfer.amount ?? 0).toFixed(2)}
                   </Text>
                 </TouchableOpacity>
               ))
@@ -3171,8 +3199,10 @@ export default function App() {
       ? selectedTransfer.recipientBankName
       : selectedTransfer.senderBankName;
 
-    const formatFullDate = (dateString: string) => {
+    const formatFullDate = (dateString: string | undefined) => {
+      if (!dateString) return '';
       const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
       return date.toLocaleDateString('en-US', {
         weekday: 'long',
         year: 'numeric',
@@ -3243,7 +3273,7 @@ export default function App() {
                 styles.transferDetailAmount,
                 { color: isSent ? '#dc2626' : '#16a34a' }
               ]}>
-                {isSent ? '-' : '+'}${selectedTransfer.amount.toFixed(2)} {selectedTransfer.currency}
+                {isSent ? '-' : '+'}${(selectedTransfer.amount ?? 0).toFixed(2)} {selectedTransfer.currency || 'CAD'}
               </Text>
               <View style={[
                 styles.transferDetailStatusBadge,

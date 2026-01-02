@@ -4,6 +4,20 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.4.0] - 2026-01-01 - P2P Transfer Integration & Micro Merchants
 
+### Fixed (Build 31)
+- **App Crash After P2P Transfer**
+  - Fixed: Null safety checks added to all transfer rendering code
+  - Transfer list items now handle undefined fields (amount, createdAt, transferId, aliases)
+  - `formatDate()` and `formatFullDate()` functions now gracefully handle undefined dates
+  - Prevents crash when navigating back to P2P screen after completing a transfer
+
+- **Success Animation Not Reflecting Actual Transfer Outcome**
+  - Fixed: Success screen now shows status-aware icons and titles based on actual transfer status
+  - Processing (⏳ orange): Shows while status is PENDING, RESOLVING, DEBITING, or CREDITING
+  - Success (✓ green): Shows when transfer status is COMPLETED
+  - Failed (✕ red): Shows for DEBIT_FAILED, CREDIT_FAILED, CANCELLED, EXPIRED, REVERSED, RECIPIENT_NOT_FOUND
+  - Previously always showed success icon regardless of actual outcome
+
 ### Fixed (Build 30)
 - **P2P Transfer Status Display**
   - Fixed: Success screen now shows user-friendly status ("Transfer Complete", "Processing...") instead of raw codes like "PENDING"
