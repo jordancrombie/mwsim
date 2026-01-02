@@ -2689,8 +2689,20 @@ export default function App() {
           selectedAccount.bsimId,
           sendNote.trim() || undefined
         );
-        setCompletedTransfer(result);
+        setCompletedTransfer({ transferId: result.transferId, status: result.status });
         setSendStep('success');
+
+        // Poll for final transfer status after 1 second (transfers complete in <1s)
+        setTimeout(async () => {
+          try {
+            const finalTransfer = await transferSimApi.getTransfer(result.transferId);
+            setCompletedTransfer({ transferId: finalTransfer.transferId, status: finalTransfer.status });
+            console.log('[Send] Final transfer status:', finalTransfer.status);
+          } catch (pollError) {
+            console.log('[Send] Could not poll final status:', pollError);
+            // Keep initial status - not critical
+          }
+        }, 1000);
       } catch (e: any) {
         console.error('[Send] Transfer failed:', e);
         Alert.alert('Transfer Failed', e.response?.data?.message || 'Failed to send money. Please try again.');
@@ -2699,9 +2711,11 @@ export default function App() {
       }
     };
 
-    const handleDone = () => {
+    const handleDone = async () => {
       setActiveHomeTab('p2p');
       setCurrentScreen('home');
+      // Refresh P2P data (accounts with updated balance, transfers)
+      loadP2PData();
       // Reset state
       setSendStep('input');
       setRecipientAlias('');
@@ -2711,8 +2725,31 @@ export default function App() {
       setCompletedTransfer(null);
     };
 
+    // Helper to format transfer status for display
+    const getStatusDisplay = (status: string): { text: string; color: string } => {
+      switch (status) {
+        case 'COMPLETED':
+          return { text: 'Transfer Complete', color: '#4CAF50' };
+        case 'PENDING':
+        case 'RESOLVING':
+          return { text: 'Processing...', color: '#FF9800' };
+        case 'DEBITING':
+          return { text: 'Debiting account...', color: '#FF9800' };
+        case 'CREDITING':
+          return { text: 'Crediting recipient...', color: '#FF9800' };
+        case 'DEBIT_FAILED':
+        case 'CREDIT_FAILED':
+          return { text: 'Transfer Failed', color: '#F44336' };
+        case 'CANCELLED':
+          return { text: 'Cancelled', color: '#9E9E9E' };
+        default:
+          return { text: status, color: '#666' };
+      }
+    };
+
     // Success Screen
     if (sendStep === 'success' && completedTransfer) {
+      const statusDisplay = getStatusDisplay(completedTransfer.status);
       return (
         <View style={styles.container}>
           <StatusBar style="dark" />
@@ -2730,8 +2767,8 @@ export default function App() {
             {sendNote ? (
               <Text style={styles.sendSuccessNote}>"{sendNote}"</Text>
             ) : null}
-            <Text style={styles.sendSuccessStatus}>
-              Status: {completedTransfer.status}
+            <Text style={[styles.sendSuccessStatus, { color: statusDisplay.color }]}>
+              {statusDisplay.text}
             </Text>
             <TouchableOpacity
               style={[styles.primaryButton, { marginTop: 32, width: '100%' }]}
