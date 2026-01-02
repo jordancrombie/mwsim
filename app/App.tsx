@@ -229,7 +229,7 @@ export default function App() {
     setHistoryLoading(true);
     try {
       const result = await transferSimApi.getTransfers(historyFilter, 50, 0);
-      setHistoryTransfers(result.transfers);
+      setHistoryTransfers(result?.transfers || []);
     } catch (e: any) {
       console.error('[History] Load failed:', e);
       Alert.alert('Error', 'Failed to load transfer history');
@@ -1070,9 +1070,9 @@ export default function App() {
         transferSimApi.getTransfers('all', 10).catch(() => ({ transfers: [], total: 0 })),
       ]);
 
-      setAliases(aliasesResult);
-      setBankAccounts(accountsResult);
-      setRecentTransfers(transfersResult.transfers);
+      setAliases(aliasesResult || []);
+      setBankAccounts(accountsResult || []);
+      setRecentTransfers(transfersResult?.transfers || []);
 
       // Also check if user is a Micro Merchant
       await loadMerchantData();
@@ -1190,7 +1190,7 @@ export default function App() {
     try {
       setHistoryLoading(true);
       const result = await transferSimApi.getMerchantTransfers(50, 0);
-      setMerchantTransfers(result.transfers);
+      setMerchantTransfers(result?.transfers || []);
     } catch (e) {
       console.log('[Merchant] Failed to load transfers:', e);
     } finally {
@@ -1264,6 +1264,10 @@ export default function App() {
       setP2pEnrolled(true);
       setP2pEnrollment(enrollment);
       await secureStorage.setP2PEnrollment(enrollment);
+
+      // Load P2P data (accounts, aliases, transfers) immediately after enrollment
+      // This ensures accounts are available when user tries to send money
+      await loadP2PData();
 
       // Now navigate to alias setup
       Alert.alert(
@@ -3164,7 +3168,7 @@ export default function App() {
                     </Text>
                     <View style={styles.historyItemMeta}>
                       <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
-                      <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
+                      <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status || 'UNKNOWN') }]}>
                         {transfer.status || 'UNKNOWN'}
                       </Text>
                     </View>
@@ -3277,13 +3281,13 @@ export default function App() {
               </Text>
               <View style={[
                 styles.transferDetailStatusBadge,
-                { backgroundColor: getStatusColor(selectedTransfer.status) + '20' }
+                { backgroundColor: getStatusColor(selectedTransfer.status || 'UNKNOWN') + '20' }
               ]}>
                 <Text style={[
                   styles.transferDetailStatusText,
-                  { color: getStatusColor(selectedTransfer.status) }
+                  { color: getStatusColor(selectedTransfer.status || 'UNKNOWN') }
                 ]}>
-                  {getStatusText(selectedTransfer.status)}
+                  {getStatusText(selectedTransfer.status || 'UNKNOWN')}
                 </Text>
               </View>
             </View>
@@ -3340,7 +3344,7 @@ export default function App() {
                 <View style={[styles.transferDetailRow, { borderBottomWidth: 0 }]}>
                   <Text style={styles.transferDetailLabel}>Reference</Text>
                   <Text style={styles.transferDetailValueMono}>
-                    {selectedTransfer.transferId.substring(0, 12)}...
+                    {selectedTransfer.transferId ? selectedTransfer.transferId.substring(0, 12) + '...' : 'N/A'}
                   </Text>
                 </View>
               </View>
