@@ -4,6 +4,19 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.4.0] - 2026-01-03 - P2P Transfer Integration & Micro Merchants
 
+### Improved (Build 53)
+- **Data Refresh Strategy**
+  - P2P enrollment check now runs in background after login (both password and verify code flows)
+  - P2P data (accounts, aliases, transfers) refreshes after bank enrollment completion
+  - `loadP2PData()` now called after P2P enrollment to immediately populate accounts
+  - Ensures "From Account" is available immediately after P2P enrollment without app restart
+
+- **Environment Configuration Cleanup**
+  - Restored proper iOS Settings.bundle reading for environment selection
+  - Environment now correctly reads from iOS Settings > mwsim > Server
+  - Removed debug logging from API interceptors (cleaner production logs)
+  - Cleaned up verbose `getAccounts()` and `getPaymentDetails()` debug output
+
 ### Investigation Complete (Build 52+)
 - **Root Cause of P2P Tab Crash Identified**
   - The crash was caused by `loadP2PData()` being called on EVERY P2P tab switch (added in Build 29)

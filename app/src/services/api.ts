@@ -16,7 +16,7 @@ import type {
 // Create axios instance with current environment config
 const createApiClient = (): AxiosInstance => {
   const config = getConfig();
-  console.log(`[API] Initializing with ${getEnvironmentName()} environment: ${config.apiUrl}`);
+  console.log(`[API] Initializing: ${getEnvironmentName()} (${config.apiUrl})`);
 
   const client = axios.create({
     baseURL: config.apiUrl,
@@ -28,13 +28,10 @@ const createApiClient = (): AxiosInstance => {
 
   // Request interceptor - add auth token
   client.interceptors.request.use(async (requestConfig) => {
-    console.log('[API Interceptor] Getting token for request...');
     const token = await secureStorage.getAccessToken();
-    console.log('[API Interceptor] Token retrieved:', token ? 'yes' : 'no');
     if (token) {
       requestConfig.headers.Authorization = `Bearer ${token}`;
     }
-    console.log('[API Interceptor] Request ready');
     return requestConfig;
   });
 
@@ -324,20 +321,8 @@ export const api = {
    * Called when user opens a payment deep link.
    */
   async getPaymentDetails(requestId: string): Promise<PaymentRequest> {
-    const url = `/mobile/payment/${requestId}`;
-    console.log(`[API] getPaymentDetails: Fetching from ${apiClient.defaults.baseURL}${url}`);
-    try {
-      const { data } = await apiClient.get(url);
-      console.log('[API] getPaymentDetails: Success');
-      return data;
-    } catch (error: any) {
-      console.log('[API] getPaymentDetails: Error', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-      });
-      throw error;
-    }
+    const { data } = await apiClient.get(`/mobile/payment/${requestId}`);
+    return data;
   },
 
   /**
@@ -376,24 +361,7 @@ export const api = {
    * Returns accounts from all enrolled banks.
    */
   async getAccounts(): Promise<{ accounts: Array<{ accountId: string; accountType: string; displayName: string; balance?: number; currency: string; bankName: string; bankLogoUrl?: string; bsimId: string }> }> {
-    console.log('[API] getAccounts - calling GET /mobile/accounts');
-    try {
-      const { data, status, config } = await apiClient.get('/mobile/accounts');
-      console.log('[API] getAccounts - response:', {
-        status,
-        url: config.baseURL + config.url,
-        accountCount: data?.accounts?.length || 0,
-        data: JSON.stringify(data).substring(0, 500),
-      });
-      return data;
-    } catch (error: any) {
-      console.error('[API] getAccounts - ERROR:', {
-        status: error.response?.status,
-        url: error.config?.baseURL + error.config?.url,
-        data: error.response?.data,
-        message: error.message,
-      });
-      throw error;
-    }
+    const { data } = await apiClient.get('/mobile/accounts');
+    return data;
   },
 };
