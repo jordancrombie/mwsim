@@ -634,8 +634,14 @@ export default function App() {
         console.log('[Login] Failed to load wallet, continuing anyway');
       }
 
-      // Go to home or handle pending payment
+      // Go to home
       setCurrentScreen('home');
+
+      // Check P2P enrollment in background after login
+      // This ensures P2P data is fresh when user switches to P2P tab
+      checkP2PEnrollment().catch((e) => {
+        console.log('[Login] P2P enrollment check failed:', e);
+      });
     } catch (e: any) {
       const message = e.response?.data?.message || e.message || 'Failed to login';
       setError(message);
@@ -675,6 +681,12 @@ export default function App() {
       }
 
       setCurrentScreen('home');
+
+      // Check P2P enrollment in background after login
+      // This ensures P2P data is fresh when user switches to P2P tab
+      checkP2PEnrollment().catch((e) => {
+        console.log('[VerifyCode] P2P enrollment check failed:', e);
+      });
     } catch (e: any) {
       const message = e.response?.data?.message || e.message || 'Invalid verification code';
       setError(message);
@@ -765,6 +777,8 @@ export default function App() {
           if (success === 'true') {
             Alert.alert('Success', 'Bank enrolled successfully! Your cards have been added.');
             await handleRefreshWallet();
+            // Also refresh P2P accounts in background (new bank = new accounts for P2P)
+            loadP2PData().catch((e) => console.log('[Enrollment] P2P refresh failed:', e));
             setCurrentScreen('home');
           } else if (success === 'false' || errorParam) {
             const errorMsg = urlObj.searchParams.get('message') || errorParam;
@@ -773,12 +787,15 @@ export default function App() {
             // No explicit success/error param - assume success if we got here
             Alert.alert('Success', 'Bank enrolled successfully! Your cards have been added.');
             await handleRefreshWallet();
+            // Also refresh P2P accounts in background
+            loadP2PData().catch((e) => console.log('[Enrollment] P2P refresh failed:', e));
             setCurrentScreen('home');
           }
         } catch (parseError) {
           console.error('[Enrollment] URL parse error:', parseError);
           // If URL parsing fails, assume success since we got a redirect
           await handleRefreshWallet();
+          loadP2PData().catch((e) => console.log('[Enrollment] P2P refresh failed:', e));
           setCurrentScreen('home');
         }
       } else if (result.type === 'cancel') {
@@ -1217,6 +1234,9 @@ export default function App() {
       setP2pEnrolled(true);
       setP2pEnrollment(enrollment);
       await secureStorage.setP2PEnrollment(enrollment);
+
+      // Load P2P data (accounts, aliases) after enrollment
+      loadP2PData().catch((e) => console.log('[P2P] Failed to load data after enrollment:', e));
 
       // Now navigate to alias setup
       Alert.alert(
@@ -2177,6 +2197,9 @@ export default function App() {
                 // Check P2P enrollment when switching to tab
                 if (!p2pEnrolled && !p2pLoading) {
                   checkP2PEnrollment();
+                } else if (p2pEnrolled && !p2pLoading) {
+                  // Refresh P2P data when switching to tab (now safe with sanitization)
+                  loadP2PData();
                 }
               }}
               activeOpacity={0.7}
@@ -2641,6 +2664,19 @@ export default function App() {
         );
         setCompletedTransfer(result);
         setSendStep('success');
+
+        // Poll for final status after 1 second (transfers typically complete in <1s)
+        setTimeout(async () => {
+          try {
+            const updatedTransfer = await transferSimApi.getTransfer(result.transferId);
+            setCompletedTransfer({ transferId: updatedTransfer.transferId, status: updatedTransfer.status });
+            // Also refresh P2P data in background to update balances and transfer list
+            loadP2PData();
+          } catch (e) {
+            console.log('[Send] Status poll failed:', e);
+            // Keep showing initial status if poll fails
+          }
+        }, 1000);
       } catch (e: any) {
         console.error('[Send] Transfer failed:', e);
         Alert.alert('Transfer Failed', e.response?.data?.message || 'Failed to send money. Please try again.');
@@ -2663,14 +2699,45 @@ export default function App() {
 
     // Success Screen
     if (sendStep === 'success' && completedTransfer) {
+      // Determine status category for display
+      const status = completedTransfer.status;
+      const isProcessing = ['PENDING', 'RESOLVING', 'DEBITING', 'CREDITING'].includes(status);
+      const isSuccess = status === 'COMPLETED';
+      const isFailed = ['DEBIT_FAILED', 'CREDIT_FAILED', 'CANCELLED', 'EXPIRED', 'REVERSED', 'RECIPIENT_NOT_FOUND'].includes(status);
+
+      // Status display config
+      const statusConfig = isSuccess
+        ? { icon: '✓', title: 'Transfer Complete!', color: '#22c55e', bgColor: '#dcfce7' }
+        : isFailed
+        ? { icon: '✕', title: 'Transfer Failed', color: '#ef4444', bgColor: '#fee2e2' }
+        : { icon: '⏳', title: 'Processing...', color: '#f59e0b', bgColor: '#fef3c7' };
+
+      // User-friendly status text
+      const getStatusText = () => {
+        switch (status) {
+          case 'COMPLETED': return 'Transfer complete';
+          case 'PENDING': return 'Initiating transfer...';
+          case 'RESOLVING': return 'Finding recipient...';
+          case 'DEBITING': return 'Debiting your account...';
+          case 'CREDITING': return 'Crediting recipient...';
+          case 'DEBIT_FAILED': return 'Failed to debit account';
+          case 'CREDIT_FAILED': return 'Failed to credit recipient';
+          case 'CANCELLED': return 'Transfer cancelled';
+          case 'EXPIRED': return 'Transfer expired';
+          case 'REVERSED': return 'Transfer reversed';
+          case 'RECIPIENT_NOT_FOUND': return 'Recipient not found';
+          default: return status;
+        }
+      };
+
       return (
         <View style={styles.container}>
           <StatusBar style="dark" />
           <View style={styles.sendSuccessContent}>
-            <View style={styles.sendSuccessIcon}>
-              <Text style={{ fontSize: 64 }}>✓</Text>
+            <View style={[styles.sendSuccessIcon, { backgroundColor: statusConfig.bgColor }]}>
+              <Text style={{ fontSize: 64, color: statusConfig.color }}>{statusConfig.icon}</Text>
             </View>
-            <Text style={styles.sendSuccessTitle}>Money Sent!</Text>
+            <Text style={styles.sendSuccessTitle}>{statusConfig.title}</Text>
             <Text style={styles.sendSuccessAmount}>
               ${parseFloat(sendAmount).toFixed(2)} CAD
             </Text>
@@ -2680,8 +2747,8 @@ export default function App() {
             {sendNote ? (
               <Text style={styles.sendSuccessNote}>"{sendNote}"</Text>
             ) : null}
-            <Text style={styles.sendSuccessStatus}>
-              Status: {completedTransfer.status}
+            <Text style={[styles.sendSuccessStatus, { color: statusConfig.color }]}>
+              {getStatusText()}
             </Text>
             <TouchableOpacity
               style={[styles.primaryButton, { marginTop: 32, width: '100%' }]}

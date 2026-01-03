@@ -78,9 +78,25 @@ function getSettingsValue(key: string): string | null {
  * Falls back to 'production' if not set or on non-iOS platforms.
  */
 export function getEnvironment(): Environment {
-  // DEBUG: Always force development for local testing
-  console.log('[Environment] DEBUG: Forcing development mode (ignoring settings)');
-  cachedEnvironment = 'development';
+  // Return cached value if available
+  if (cachedEnvironment) {
+    return cachedEnvironment;
+  }
+
+  // Read from iOS Settings.bundle
+  const settingValue = getSettingsValue('environment');
+
+  // Map setting value to environment
+  if (settingValue === 'development' || settingValue === 'dev') {
+    cachedEnvironment = 'development';
+  } else if (settingValue === 'production' || settingValue === 'prod') {
+    cachedEnvironment = 'production';
+  } else {
+    // Default to production if not set or unrecognized
+    cachedEnvironment = 'production';
+  }
+
+  console.log(`[Environment] Using ${cachedEnvironment} (from setting: ${settingValue})`);
   return cachedEnvironment;
 }
 
