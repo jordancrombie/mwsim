@@ -28,10 +28,13 @@ const createApiClient = (): AxiosInstance => {
 
   // Request interceptor - add auth token
   client.interceptors.request.use(async (requestConfig) => {
+    console.log('[API Interceptor] Getting token for request...');
     const token = await secureStorage.getAccessToken();
+    console.log('[API Interceptor] Token retrieved:', token ? 'yes' : 'no');
     if (token) {
       requestConfig.headers.Authorization = `Bearer ${token}`;
     }
+    console.log('[API Interceptor] Request ready');
     return requestConfig;
   });
 
@@ -281,9 +284,8 @@ export const api = {
 
   /**
    * List user's enrolled banks (JWT authenticated)
-   * Returns fiUserRef (BSIM internal user ID) needed for P2P transfers via TransferSim
    */
-  async getEnrolledBanks(): Promise<{ enrollments: Array<{ id: string; bsimId: string; fiUserRef: string; bankName: string; enrolledAt: string }> }> {
+  async getEnrolledBanks(): Promise<{ enrollments: Array<{ id: string; bsimId: string; bankName: string; enrolledAt: string }> }> {
     const { data } = await apiClient.get('/mobile/enrollment/list');
     return data;
   },

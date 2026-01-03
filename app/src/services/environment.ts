@@ -78,20 +78,9 @@ function getSettingsValue(key: string): string | null {
  * Falls back to 'production' if not set or on non-iOS platforms.
  */
 export function getEnvironment(): Environment {
-  if (cachedEnvironment) {
-    return cachedEnvironment;
-  }
-
-  const settings = getSettingsValue('environment');
-  if (settings === 'production' || settings === 'development') {
-    cachedEnvironment = settings;
-    console.log('[Environment] Loaded from iOS Settings:', settings);
-    return settings;
-  }
-
-  // Default to production (dev URL doesn't exist yet)
-  cachedEnvironment = 'production';
-  console.log('[Environment] Using default:', cachedEnvironment);
+  // DEBUG: Always force development for local testing
+  console.log('[Environment] DEBUG: Forcing development mode (ignoring settings)');
+  cachedEnvironment = 'development';
   return cachedEnvironment;
 }
 
