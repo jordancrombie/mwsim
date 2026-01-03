@@ -30,7 +30,74 @@ import type {
   MerchantEnrollmentRequest,
   ResolvedMerchantToken,
   TransferWithRecipientType,
+  TransferDirection,
+  TransferStatus,
 } from '../types';
+
+/**
+ * Sanitizes a transfer object from the API to ensure all required fields
+ * have safe default values. This prevents crashes from malformed data.
+ */
+function sanitizeTransfer(transfer: Partial<Transfer>): Transfer {
+  return {
+    transferId: transfer.transferId || `unknown-${Date.now()}`,
+    direction: (transfer.direction as TransferDirection) || 'sent',
+    amount: typeof transfer.amount === 'number' ? transfer.amount : Number(transfer.amount) || 0,
+    currency: transfer.currency || 'CAD',
+    status: (transfer.status as TransferStatus) || 'PENDING',
+    createdAt: transfer.createdAt || new Date().toISOString(),
+    // Optional fields - pass through as-is
+    description: transfer.description,
+    senderAlias: transfer.senderAlias,
+    senderDisplayName: transfer.senderDisplayName,
+    senderBankName: transfer.senderBankName,
+    recipientAlias: transfer.recipientAlias,
+    recipientDisplayName: transfer.recipientDisplayName,
+    recipientBankName: transfer.recipientBankName,
+    completedAt: transfer.completedAt,
+  };
+}
+
+/**
+ * Sanitizes an array of transfers, filtering out any that are completely invalid.
+ */
+function sanitizeTransfers(transfers: unknown): Transfer[] {
+  if (!Array.isArray(transfers)) {
+    console.warn('[TransferSim] Expected transfers array, got:', typeof transfers);
+    return [];
+  }
+  return transfers
+    .filter((t): t is Partial<Transfer> => t != null && typeof t === 'object')
+    .map(sanitizeTransfer);
+}
+
+/**
+ * Sanitizes a merchant transfer (TransferWithRecipientType).
+ */
+function sanitizeMerchantTransfer(transfer: Partial<TransferWithRecipientType>): TransferWithRecipientType {
+  const base = sanitizeTransfer(transfer);
+  return {
+    ...base,
+    recipientType: transfer.recipientType || 'individual',
+    merchantName: transfer.merchantName,
+    merchantCategory: transfer.merchantCategory,
+    feeAmount: typeof transfer.feeAmount === 'number' ? transfer.feeAmount : undefined,
+    grossAmount: typeof transfer.grossAmount === 'number' ? transfer.grossAmount : undefined,
+  };
+}
+
+/**
+ * Sanitizes an array of merchant transfers.
+ */
+function sanitizeMerchantTransfers(transfers: unknown): TransferWithRecipientType[] {
+  if (!Array.isArray(transfers)) {
+    console.warn('[TransferSim] Expected merchant transfers array, got:', typeof transfers);
+    return [];
+  }
+  return transfers
+    .filter((t): t is Partial<TransferWithRecipientType> => t != null && typeof t === 'object')
+    .map(sanitizeMerchantTransfer);
+}
 
 // TransferSim API key (same key works for both environments)
 const TRANSFERSIM_API_KEY = 'tsim_1c34f53eabdeb18474b87ec27b093d5c481ff08a0b5e07267dcaf183d1ee52af';
@@ -260,7 +327,7 @@ export const transferSimApi = {
    */
   async getTransfer(transferId: string): Promise<Transfer> {
     const { data } = await getTransferSimClient().get<Transfer>(`/api/v1/transfers/${transferId}`);
-    return data;
+    return sanitizeTransfer(data);
   },
 
   /**
@@ -274,7 +341,10 @@ export const transferSimApi = {
     const { data } = await getTransferSimClient().get<TransferListResponse>('/api/v1/transfers', {
       params: { direction: direction || 'all', limit, offset },
     });
-    return data;
+    return {
+      transfers: sanitizeTransfers(data.transfers),
+      total: data.total || 0,
+    };
   },
 
   /**
@@ -436,7 +506,10 @@ export const transferSimApi = {
       '/api/v1/micro-merchants/me/transactions',
       { params: { limit, offset } }
     );
-    return data;
+    return {
+      transfers: sanitizeMerchantTransfers(data.transfers),
+      total: data.total || 0,
+    };
   },
 
   /**

@@ -2,7 +2,21 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-## [1.4.0] - 2026-01-01 - P2P Transfer Integration & Micro Merchants
+## [1.4.0] - 2026-01-03 - P2P Transfer Integration & Micro Merchants
+
+### Investigation Complete (Build 52+)
+- **Root Cause of P2P Tab Crash Identified**
+  - The crash was caused by `loadP2PData()` being called on EVERY P2P tab switch (added in Build 29)
+  - When transfers existed, the race between API fetch and React render caused native TurboModule crash
+  - Empty transfer array = no crash; transfers present = crash during render
+  - Solution: Removed aggressive tab-switch refreshing; use pull-to-refresh instead
+
+- **Transfer Data Sanitization Added**
+  - Added `sanitizeTransfer()` and `sanitizeTransfers()` functions in transferSim.ts
+  - All transfers from API are now validated with safe defaults for required fields
+  - Prevents crashes from malformed API data (null amount, missing createdAt, etc.)
+  - Safe defaults: `amount=0`, `direction='sent'`, `status='PENDING'`, `createdAt=now`
+  - Also added `sanitizeMerchantTransfer()` for Micro Merchant transactions
 
 ### Fixed (Build 33)
 - **TurboModule Crash on P2P Tab (Native Side)**
