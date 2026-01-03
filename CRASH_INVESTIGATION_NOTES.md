@@ -149,3 +149,40 @@ Build 22 code (Build 49) works but can't authenticate properly with current back
 WSIM backend returns `fiUserRef` (BSIM internal user ID) in `/mobile/enrollment/list`.
 TransferSim requires `fiUserRef:bsimId` for auth, not `userId:bsimId`.
 Without this, existing P2P enrolled users can't authenticate and appear unenrolled.
+
+---
+
+## ROOT CAUSE IDENTIFIED (Jan 3, 2026)
+
+### The Smoking Gun
+In Build 29 (`9ccde07`), the following code was added to the P2P tab button press handler:
+
+```typescript
+} else if (p2pEnrolled && !p2pLoading) {
+  // Refresh P2P data (accounts, aliases, transfers) when switching to tab
+  loadP2PData();
+}
+```
+
+**This causes `loadP2PData()` to be called EVERY TIME the user switches to the P2P tab** when already enrolled.
+
+### Why This Causes a Crash
+
+1. User completes a P2P transfer (now has transfer history)
+2. User taps "Done" which calls `setActiveHomeTab('p2p')` and `setCurrentScreen('home')`
+3. The P2P tab button's `onPress` handler fires (because we're setting it active)
+4. Since `p2pEnrolled === true` and `!p2pLoading`, it calls `loadP2PData()`
+5. `loadP2PData()` calls `setRecentTransfers(transfersResult.transfers || [])`
+6. React attempts to render the transfer list while data is still being fetched/processed
+7. The render accesses properties like `transfer.direction`, `transfer.createdAt`, `transfer.amount`
+8. If any of these are undefined/malformed during the state transition, React Native's TurboModule bridge crashes
+
+### Why It Only Crashes When Transfers Exist
+- Empty array = `.map()` produces nothing = no property access = no crash
+- Array with transfers = `.map()` iterates = property access on potentially malformed data = crash
+
+### The Fix
+Remove the problematic `loadP2PData()` call on tab switch. The data was already loaded when checking enrollment and can be refreshed via pull-to-refresh if needed.
+
+The massive 40+ state variable reset on logout is fine to keep (prevents stale data).
+The fiUserRef auth changes are required for API compatibility.
