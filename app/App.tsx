@@ -70,6 +70,8 @@ type Screen =
 type HomeTab = 'cards' | 'p2p';
 
 export default function App() {
+  console.log('[App] Component rendering - START');
+
   // Navigation state
   const [currentScreen, setCurrentScreen] = useState<Screen>('loading');
 
@@ -221,7 +223,7 @@ export default function App() {
 
   // Initialize history transfers from recent transfers
   useEffect(() => {
-    setHistoryTransfers(recentTransfers || []);
+    setHistoryTransfers(recentTransfers);
   }, [recentTransfers]);
 
   // Function to load transfer history
@@ -229,7 +231,7 @@ export default function App() {
     setHistoryLoading(true);
     try {
       const result = await transferSimApi.getTransfers(historyFilter, 50, 0);
-      setHistoryTransfers(result?.transfers || []);
+      setHistoryTransfers(result.transfers);
     } catch (e: any) {
       console.error('[History] Load failed:', e);
       Alert.alert('Error', 'Failed to load transfer history');
@@ -479,9 +481,12 @@ export default function App() {
   };
 
   const initializeApp = async () => {
+    console.log('[initializeApp] Starting...');
     try {
       // Get or create device ID
+      console.log('[initializeApp] Getting device ID...');
       let storedDeviceId = await secureStorage.getDeviceId();
+      console.log('[initializeApp] Device ID:', storedDeviceId ? 'exists' : 'creating new');
       if (!storedDeviceId) {
         storedDeviceId = uuidv4();
         await secureStorage.setDeviceId(storedDeviceId);
@@ -489,19 +494,33 @@ export default function App() {
       setDeviceId(storedDeviceId);
 
       // Check biometric capabilities
+      console.log('[initializeApp] Checking biometrics...');
       const capabilities = await biometricService.getCapabilities();
       setBiometricType(biometricService.getBiometricName(capabilities.biometricType));
+      console.log('[initializeApp] Biometrics done');
 
       // Check for existing session
+      console.log('[initializeApp] Getting access token...');
       const accessToken = await secureStorage.getAccessToken();
+      console.log('[initializeApp] Token:', accessToken ? 'exists' : 'none');
       if (accessToken) {
         try {
-          const summary = await api.getWalletSummary();
+          console.log('[initializeApp] Calling getWalletSummary...');
+          // Add a 10 second timeout to prevent hanging on debug builds
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('API timeout')), 10000)
+          );
+          const summary = await Promise.race([
+            api.getWalletSummary(),
+            timeoutPromise
+          ]) as { user: User; cards: Card[] };
+          console.log('[initializeApp] Got wallet summary');
           setUser(summary.user);
           setCards(summary.cards || []);
           setCurrentScreen('home');
         } catch (e) {
-          // Token invalid, clear and show welcome
+          // Token invalid or timeout, clear and show welcome
+          console.log('[initializeApp] getWalletSummary failed:', e);
           await secureStorage.clearAll();
           setCurrentScreen('welcome');
         }
@@ -526,8 +545,10 @@ export default function App() {
       setCurrentScreen('welcome');
     } finally {
       // Mark app as ready and hide native splash
+      console.log('[initializeApp] Finally block - hiding splash...');
       setAppIsReady(true);
       await ExpoSplashScreen.hideAsync();
+      console.log('[initializeApp] Splash hidden, done!');
     }
   };
 
@@ -858,80 +879,11 @@ export default function App() {
           } catch (e) {
             // Continue anyway
           }
-
-          // Clear secure storage first
-          await secureStorage.clearAll();
-
-          // Reset ALL user-specific state
-          // User & Auth
           setUser(null);
+          setCards([]);
           setEmail('');
           setName('');
-          setPassword('');
           setVerificationCode('');
-          setError(null);
-
-          // Cards & Banks
-          setCards([]);
-          setBanks([]);
-          setSelectedBank(null);
-          setSelectedCard(null);
-
-          // P2P Core
-          setP2pEnrolled(false);
-          setP2pEnrollment(null);
-          setAliases([]);
-          setBankAccounts([]);
-          setRecentTransfers([]);
-          setSelectedTransfer(null);
-
-          // P2P Send
-          setSelectedAccount(null);
-          setP2pSelectedAccount(null);
-          setRecipientAlias('');
-          setSendAmount('');
-          setSendNote('');
-          setRecipientInfo(null);
-          setCompletedTransfer(null);
-          setSendStep('input');
-
-          // P2P Receive
-          setReceiveToken(null);
-
-          // P2P History
-          setHistoryTransfers([]);
-          setHistoryFilter('all');
-
-          // P2P QR
-          setResolvedToken(null);
-          setP2pSendAmount('');
-          setP2pSendNote('');
-          setP2pQrScanned(false);
-
-          // Micro Merchant
-          setIsMicroMerchant(false);
-          setMerchantProfile(null);
-          setP2pMode('personal');
-          setMerchantTransfers([]);
-          setMerchantQrToken(null);
-          setMerchantStats({ todayRevenue: 0, todayCount: 0 });
-          setMerchantBusinessName('');
-          setMerchantCategory('OTHER');
-          setMerchantReceivingAccount(null);
-          setAliasError(null);
-          setMerchantEnrollError(null);
-
-          // Payment
-          setPaymentRequest(null);
-          setSelectedPaymentCard(null);
-          setPendingRequestId(null);
-          setPaymentStatus('loading');
-          setPaymentError(null);
-          setSourceBrowser(null);
-          setPaymentReturnUrl(null);
-
-          // Reset to welcome screen and cards tab
-          setActiveHomeTab('cards');
           setCurrentScreen('welcome');
         },
       },
@@ -1028,19 +980,17 @@ export default function App() {
       setP2pLoading(true);
 
       // Set up P2P user context for TransferSim auth
-      // Get userId from user state
+      // Use fiUserRef (BSIM internal user ID) instead of userId
       if (user?.id) {
-        // For now, use the first enrolled bank's bsimId
+        // For now, use the first enrolled bank
         // In production, user should select which bank to use for P2P
         const enrolledBanks = await api.getEnrolledBanks();
         if (enrolledBanks.enrollments.length > 0) {
-          const enrollment = enrolledBanks.enrollments[0];
-          // Use fiUserRef (BSIM internal user ID) for P2P transfers
-          await secureStorage.setP2PUserContext({
-            userId: user.id,
-            bsimId: enrollment.bsimId,
-            fiUserRef: enrollment.fiUserRef,
-          });
+          const enrollment = enrolledBanks.enrollments[0] as any;
+          const bsimId = enrollment.bsimId;
+          // Use fiUserRef if available, otherwise fall back to userId
+          const authId = enrollment.fiUserRef || user.id;
+          await secureStorage.setP2PUserContext({ userId: authId, bsimId });
         }
       }
 
@@ -1070,9 +1020,9 @@ export default function App() {
         transferSimApi.getTransfers('all', 10).catch(() => ({ transfers: [], total: 0 })),
       ]);
 
-      setAliases(aliasesResult || []);
-      setBankAccounts(accountsResult || []);
-      setRecentTransfers(transfersResult?.transfers || []);
+      setAliases(aliasesResult);
+      setBankAccounts(accountsResult);
+      setRecentTransfers(transfersResult.transfers);
 
       // Also check if user is a Micro Merchant
       await loadMerchantData();
@@ -1190,7 +1140,7 @@ export default function App() {
     try {
       setHistoryLoading(true);
       const result = await transferSimApi.getMerchantTransfers(50, 0);
-      setMerchantTransfers(result?.transfers || []);
+      setMerchantTransfers(result.transfers);
     } catch (e) {
       console.log('[Merchant] Failed to load transfers:', e);
     } finally {
@@ -1249,25 +1199,20 @@ export default function App() {
 
       // For now, use the first enrolled bank
       // TODO: Let user choose if multiple banks are enrolled
-      const bankEnrollment = enrolledBanks.enrollments[0];
+      const bankEnrollment = enrolledBanks.enrollments[0] as any;
+      const bsimId = bankEnrollment.bsimId;
+      // Use fiUserRef if available, otherwise fall back to userId
+      const authId = bankEnrollment.fiUserRef || user.id;
 
-      // Store P2P user context with fiUserRef (BSIM internal user ID)
-      await secureStorage.setP2PUserContext({
-        userId: user.id,
-        bsimId: bankEnrollment.bsimId,
-        fiUserRef: bankEnrollment.fiUserRef,
-      });
+      // Store P2P user context (using fiUserRef as userId for auth)
+      await secureStorage.setP2PUserContext({ userId: authId, bsimId });
 
       // Enroll in P2P network
-      const enrollment = await transferSimApi.enrollUser(user.id, bankEnrollment.bsimId);
+      const enrollment = await transferSimApi.enrollUser(user.id, bsimId);
 
       setP2pEnrolled(true);
       setP2pEnrollment(enrollment);
       await secureStorage.setP2PEnrollment(enrollment);
-
-      // Load P2P data (accounts, aliases, transfers) immediately after enrollment
-      // This ensures accounts are available when user tries to send money
-      await loadP2PData();
 
       // Now navigate to alias setup
       Alert.alert(
@@ -1937,27 +1882,27 @@ export default function App() {
           <View style={styles.p2pSection}>
             <View style={styles.p2pSectionHeader}>
               <Text style={styles.sectionTitle}>Recent Transfers</Text>
-              {recentTransfers && recentTransfers.length > 0 && (
+              {recentTransfers.length > 0 && (
                 <TouchableOpacity onPress={() => setCurrentScreen('transferHistory')}>
                   <Text style={styles.p2pSeeAllText}>See All</Text>
                 </TouchableOpacity>
               )}
             </View>
-            {(!recentTransfers || recentTransfers.length === 0) ? (
+            {recentTransfers.length === 0 ? (
               <View style={styles.p2pEmptyTransfers}>
                 <Text style={styles.p2pEmptyTransfersText}>No transfers yet</Text>
               </View>
             ) : (
-              recentTransfers.filter(t => t != null).slice(0, 5).map((transfer) => (
-                <View key={transfer.transferId || Math.random().toString()} style={styles.p2pTransferItem}>
+              recentTransfers.slice(0, 5).map((transfer) => (
+                <View key={transfer.transferId} style={styles.p2pTransferItem}>
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
                       {transfer.direction === 'sent'
-                        ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
-                        : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                        ? transfer.recipientDisplayName || transfer.recipientAlias
+                        : transfer.senderDisplayName || transfer.senderAlias}
                     </Text>
                     <Text style={styles.p2pTransferDate}>
-                      {transfer.createdAt ? new Date(transfer.createdAt).toLocaleDateString() : ''}
+                      {new Date(transfer.createdAt).toLocaleDateString()}
                     </Text>
                   </View>
                   <Text
@@ -1966,7 +1911,7 @@ export default function App() {
                       transfer.direction === 'received' && styles.p2pTransferAmountReceived,
                     ]}
                   >
-                    {transfer.direction === 'sent' ? '-' : '+'}${(transfer.amount ?? 0).toFixed(2)}
+                    {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
                   </Text>
                 </View>
               ))
@@ -2088,7 +2033,7 @@ export default function App() {
                 <Text style={styles.p2pSeeAllText}>See All</Text>
               </TouchableOpacity>
             </View>
-            {(!merchantTransfers || merchantTransfers.length === 0) ? (
+            {merchantTransfers.length === 0 ? (
               <View style={styles.p2pEmptyTransfers}>
                 <Text style={styles.p2pEmptyTransfersText}>No payments received yet</Text>
                 <Text style={styles.merchantEmptyHint}>
@@ -2096,21 +2041,21 @@ export default function App() {
                 </Text>
               </View>
             ) : (
-              merchantTransfers.filter(t => t != null).slice(0, 5).map((transfer) => (
-                <View key={transfer.transferId || Math.random().toString()} style={styles.merchantTransferItem}>
+              merchantTransfers.slice(0, 5).map((transfer) => (
+                <View key={transfer.transferId} style={styles.merchantTransferItem}>
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
-                      {transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                      {transfer.senderDisplayName || transfer.senderAlias}
                     </Text>
                     <Text style={styles.p2pTransferDate}>
-                      {transfer.createdAt ? new Date(transfer.createdAt).toLocaleDateString() : ''}
+                      {new Date(transfer.createdAt).toLocaleDateString()}
                     </Text>
                   </View>
                   <View style={styles.merchantTransferAmounts}>
                     <Text style={styles.merchantTransferGross}>
-                      +${(transfer.grossAmount ?? transfer.amount ?? 0).toFixed(2)}
+                      +${Number(transfer.grossAmount || transfer.amount || 0).toFixed(2)}
                     </Text>
-                    {transfer.feeAmount != null && transfer.feeAmount > 0 && (
+                    {transfer.feeAmount && (
                       <Text style={styles.merchantTransferFee}>
                         Fee: ${transfer.feeAmount.toFixed(2)}
                       </Text>
@@ -2228,9 +2173,6 @@ export default function App() {
                 // Check P2P enrollment when switching to tab
                 if (!p2pEnrolled && !p2pLoading) {
                   checkP2PEnrollment();
-                } else if (p2pEnrolled && !p2pLoading) {
-                  // Refresh P2P data (accounts, aliases, transfers) when switching to tab
-                  loadP2PData();
                 }
               }}
               activeOpacity={0.7}
@@ -2693,20 +2635,8 @@ export default function App() {
           selectedAccount.bsimId,
           sendNote.trim() || undefined
         );
-        setCompletedTransfer({ transferId: result.transferId, status: result.status });
+        setCompletedTransfer(result);
         setSendStep('success');
-
-        // Poll for final transfer status after 1 second (transfers complete in <1s)
-        setTimeout(async () => {
-          try {
-            const finalTransfer = await transferSimApi.getTransfer(result.transferId);
-            setCompletedTransfer({ transferId: finalTransfer.transferId, status: finalTransfer.status });
-            console.log('[Send] Final transfer status:', finalTransfer.status);
-          } catch (pollError) {
-            console.log('[Send] Could not poll final status:', pollError);
-            // Keep initial status - not critical
-          }
-        }, 1000);
       } catch (e: any) {
         console.error('[Send] Transfer failed:', e);
         Alert.alert('Transfer Failed', e.response?.data?.message || 'Failed to send money. Please try again.');
@@ -2715,11 +2645,9 @@ export default function App() {
       }
     };
 
-    const handleDone = async () => {
+    const handleDone = () => {
       setActiveHomeTab('p2p');
       setCurrentScreen('home');
-      // Refresh P2P data (accounts with updated balance, transfers)
-      loadP2PData();
       // Reset state
       setSendStep('input');
       setRecipientAlias('');
@@ -2729,65 +2657,16 @@ export default function App() {
       setCompletedTransfer(null);
     };
 
-    // Helper to format transfer status for display
-    const getStatusDisplay = (status: string): { text: string; color: string } => {
-      switch (status) {
-        case 'COMPLETED':
-          return { text: 'Transfer Complete', color: '#4CAF50' };
-        case 'PENDING':
-        case 'RESOLVING':
-          return { text: 'Processing...', color: '#FF9800' };
-        case 'DEBITING':
-          return { text: 'Debiting account...', color: '#FF9800' };
-        case 'CREDITING':
-          return { text: 'Crediting recipient...', color: '#FF9800' };
-        case 'DEBIT_FAILED':
-        case 'CREDIT_FAILED':
-          return { text: 'Transfer Failed', color: '#F44336' };
-        case 'CANCELLED':
-          return { text: 'Cancelled', color: '#9E9E9E' };
-        default:
-          return { text: status, color: '#666' };
-      }
-    };
-
-    // Success/Result Screen
+    // Success Screen
     if (sendStep === 'success' && completedTransfer) {
-      const statusDisplay = getStatusDisplay(completedTransfer.status);
-      const isProcessing = ['PENDING', 'RESOLVING', 'DEBITING', 'CREDITING'].includes(completedTransfer.status);
-      const isCompleted = completedTransfer.status === 'COMPLETED';
-      const isFailed = ['DEBIT_FAILED', 'CREDIT_FAILED', 'CANCELLED', 'EXPIRED', 'REVERSED', 'RECIPIENT_NOT_FOUND'].includes(completedTransfer.status);
-
-      // Determine icon and title based on status
-      const getIcon = () => {
-        if (isProcessing) return '⏳';
-        if (isCompleted) return '✓';
-        if (isFailed) return '✕';
-        return '✓'; // Default fallback
-      };
-
-      const getTitle = () => {
-        if (isProcessing) return 'Processing...';
-        if (isCompleted) return 'Money Sent!';
-        if (isFailed) return 'Transfer Failed';
-        return 'Money Sent!'; // Default fallback
-      };
-
-      const getIconStyle = () => {
-        if (isProcessing) return { backgroundColor: '#FFF3E0' }; // Orange background
-        if (isCompleted) return { backgroundColor: '#E8F5E9' }; // Green background
-        if (isFailed) return { backgroundColor: '#FFEBEE' }; // Red background
-        return { backgroundColor: '#E8F5E9' }; // Default green
-      };
-
       return (
         <View style={styles.container}>
           <StatusBar style="dark" />
           <View style={styles.sendSuccessContent}>
-            <View style={[styles.sendSuccessIcon, getIconStyle()]}>
-              <Text style={{ fontSize: 64 }}>{getIcon()}</Text>
+            <View style={styles.sendSuccessIcon}>
+              <Text style={{ fontSize: 64 }}>✓</Text>
             </View>
-            <Text style={styles.sendSuccessTitle}>{getTitle()}</Text>
+            <Text style={styles.sendSuccessTitle}>Money Sent!</Text>
             <Text style={styles.sendSuccessAmount}>
               ${parseFloat(sendAmount).toFixed(2)} CAD
             </Text>
@@ -2797,8 +2676,8 @@ export default function App() {
             {sendNote ? (
               <Text style={styles.sendSuccessNote}>"{sendNote}"</Text>
             ) : null}
-            <Text style={[styles.sendSuccessStatus, { color: statusDisplay.color }]}>
-              {statusDisplay.text}
+            <Text style={styles.sendSuccessStatus}>
+              Status: {completedTransfer.status}
             </Text>
             <TouchableOpacity
               style={[styles.primaryButton, { marginTop: 32, width: '100%' }]}
@@ -3061,10 +2940,8 @@ export default function App() {
       }
     };
 
-    const formatDate = (dateString: string | undefined) => {
-      if (!dateString) return '';
+    const formatDate = (dateString: string) => {
       const date = new Date(dateString);
-      if (isNaN(date.getTime())) return '';
       const now = new Date();
       const diff = now.getTime() - date.getTime();
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -3130,7 +3007,7 @@ export default function App() {
               />
             }
           >
-            {(!historyTransfers || historyTransfers.length === 0) ? (
+            {historyTransfers.length === 0 ? (
               <View style={styles.historyEmpty}>
                 <Text style={styles.historyEmptyIcon}>📋</Text>
                 <Text style={styles.historyEmptyText}>No transfers yet</Text>
@@ -3139,9 +3016,9 @@ export default function App() {
                 </Text>
               </View>
             ) : (
-              historyTransfers.filter(t => t != null).map((transfer) => (
+              historyTransfers.map((transfer) => (
                 <TouchableOpacity
-                  key={transfer.transferId || Math.random().toString()}
+                  key={transfer.transferId}
                   style={styles.historyItem}
                   activeOpacity={0.7}
                   onPress={() => {
@@ -3168,8 +3045,8 @@ export default function App() {
                     </Text>
                     <View style={styles.historyItemMeta}>
                       <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
-                      <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status || 'UNKNOWN') }]}>
-                        {transfer.status || 'UNKNOWN'}
+                      <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
+                        {transfer.status}
                       </Text>
                     </View>
                   </View>
@@ -3179,7 +3056,7 @@ export default function App() {
                     styles.historyItemAmount,
                     { color: transfer.direction === 'sent' ? '#ef4444' : '#22c55e' }
                   ]}>
-                    {transfer.direction === 'sent' ? '-' : '+'}${(transfer.amount ?? 0).toFixed(2)}
+                    {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
                   </Text>
                 </TouchableOpacity>
               ))
@@ -3203,10 +3080,8 @@ export default function App() {
       ? selectedTransfer.recipientBankName
       : selectedTransfer.senderBankName;
 
-    const formatFullDate = (dateString: string | undefined) => {
-      if (!dateString) return '';
+    const formatFullDate = (dateString: string) => {
       const date = new Date(dateString);
-      if (isNaN(date.getTime())) return '';
       return date.toLocaleDateString('en-US', {
         weekday: 'long',
         year: 'numeric',
@@ -3277,17 +3152,17 @@ export default function App() {
                 styles.transferDetailAmount,
                 { color: isSent ? '#dc2626' : '#16a34a' }
               ]}>
-                {isSent ? '-' : '+'}${(selectedTransfer.amount ?? 0).toFixed(2)} {selectedTransfer.currency || 'CAD'}
+                {isSent ? '-' : '+'}${Number(selectedTransfer.amount || 0).toFixed(2)} {selectedTransfer.currency}
               </Text>
               <View style={[
                 styles.transferDetailStatusBadge,
-                { backgroundColor: getStatusColor(selectedTransfer.status || 'UNKNOWN') + '20' }
+                { backgroundColor: getStatusColor(selectedTransfer.status) + '20' }
               ]}>
                 <Text style={[
                   styles.transferDetailStatusText,
-                  { color: getStatusColor(selectedTransfer.status || 'UNKNOWN') }
+                  { color: getStatusColor(selectedTransfer.status) }
                 ]}>
-                  {getStatusText(selectedTransfer.status || 'UNKNOWN')}
+                  {getStatusText(selectedTransfer.status)}
                 </Text>
               </View>
             </View>
@@ -3344,7 +3219,7 @@ export default function App() {
                 <View style={[styles.transferDetailRow, { borderBottomWidth: 0 }]}>
                   <Text style={styles.transferDetailLabel}>Reference</Text>
                   <Text style={styles.transferDetailValueMono}>
-                    {selectedTransfer.transferId ? selectedTransfer.transferId.substring(0, 12) + '...' : 'N/A'}
+                    {selectedTransfer.transferId.substring(0, 12)}...
                   </Text>
                 </View>
               </View>
