@@ -376,7 +376,24 @@ export const api = {
    * Returns accounts from all enrolled banks.
    */
   async getAccounts(): Promise<{ accounts: Array<{ accountId: string; accountType: string; displayName: string; balance?: number; currency: string; bankName: string; bankLogoUrl?: string; bsimId: string }> }> {
-    const { data } = await apiClient.get('/mobile/accounts');
-    return data;
+    console.log('[API] getAccounts - calling GET /mobile/accounts');
+    try {
+      const { data, status, config } = await apiClient.get('/mobile/accounts');
+      console.log('[API] getAccounts - response:', {
+        status,
+        url: config.baseURL + config.url,
+        accountCount: data?.accounts?.length || 0,
+        data: JSON.stringify(data).substring(0, 500),
+      });
+      return data;
+    } catch (error: any) {
+      console.error('[API] getAccounts - ERROR:', {
+        status: error.response?.status,
+        url: error.config?.baseURL + error.config?.url,
+        data: error.response?.data,
+        message: error.message,
+      });
+      throw error;
+    }
   },
 };

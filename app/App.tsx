@@ -211,7 +211,9 @@ export default function App() {
 
   // Initialize selected account when bank accounts are loaded
   useEffect(() => {
+    console.log('[useEffect bankAccounts] bankAccounts.length:', bankAccounts.length);
     if (bankAccounts.length > 0) {
+      console.log('[useEffect bankAccounts] Setting selected accounts from:', bankAccounts[0]?.displayName);
       if (!selectedAccount) {
         setSelectedAccount(bankAccounts[0]);
       }
@@ -1012,17 +1014,19 @@ export default function App() {
   };
 
   const loadP2PData = async () => {
+    console.log('[loadP2PData] Starting...');
     try {
       // Load aliases, accounts, and recent transfers in parallel
       const [aliasesResult, accountsResult, transfersResult] = await Promise.all([
-        transferSimApi.getAliases().catch(() => []),
-        transferSimApi.getAccounts().catch(() => []),
-        transferSimApi.getTransfers('all', 10).catch(() => ({ transfers: [], total: 0 })),
+        transferSimApi.getAliases().catch((e) => { console.log('[loadP2PData] getAliases error:', e); return []; }),
+        transferSimApi.getAccounts().catch((e) => { console.log('[loadP2PData] getAccounts error:', e); return []; }),
+        transferSimApi.getTransfers('all', 10).catch((e) => { console.log('[loadP2PData] getTransfers error:', e); return { transfers: [], total: 0 }; }),
       ]);
 
+      console.log('[loadP2PData] Results - aliases:', aliasesResult.length, 'accounts:', accountsResult.length, 'transfers:', transfersResult.transfers?.length || 0);
       setAliases(aliasesResult);
       setBankAccounts(accountsResult);
-      setRecentTransfers(transfersResult.transfers);
+      setRecentTransfers(transfersResult.transfers || []);
 
       // Also check if user is a Micro Merchant
       await loadMerchantData();
