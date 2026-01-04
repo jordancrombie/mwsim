@@ -290,6 +290,7 @@ export const transferSimApi = {
     const { data } = await getTransferSimClient().get<AliasLookupResult>('/api/v1/aliases/lookup', {
       params: { alias },
     });
+    console.log('[TransferSim] lookupAlias response:', JSON.stringify(data, null, 2));
     return data;
   },
 
@@ -338,9 +339,11 @@ export const transferSimApi = {
     limit: number = 20,
     offset: number = 0
   ): Promise<{ transfers: Transfer[]; total: number }> {
+    console.log('[TransferSim] getTransfers - direction:', direction, 'limit:', limit);
     const { data } = await getTransferSimClient().get<TransferListResponse>('/api/v1/transfers', {
       params: { direction: direction || 'all', limit, offset },
     });
+    console.log('[TransferSim] getTransfers response:', JSON.stringify(data, null, 2));
     return {
       transfers: sanitizeTransfers(data.transfers),
       total: data.total || 0,
