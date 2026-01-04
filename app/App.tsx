@@ -1004,12 +1004,16 @@ export default function App() {
         // For now, use the first enrolled bank
         // In production, user should select which bank to use for P2P
         const enrolledBanks = await api.getEnrolledBanks();
+        console.log('[checkP2PEnrollment] getEnrolledBanks response:', JSON.stringify(enrolledBanks, null, 2));
         if (enrolledBanks.enrollments.length > 0) {
           const enrollment = enrolledBanks.enrollments[0] as any;
           const bsimId = enrollment.bsimId;
           // Use fiUserRef if available, otherwise fall back to userId
           const authId = enrollment.fiUserRef || user.id;
+          console.log('[checkP2PEnrollment] Setting P2P context:', { userId: authId, bsimId, fiUserRef: enrollment.fiUserRef });
           await secureStorage.setP2PUserContext({ userId: authId, bsimId });
+        } else {
+          console.log('[checkP2PEnrollment] No enrollments found - P2P context NOT set');
         }
       }
 

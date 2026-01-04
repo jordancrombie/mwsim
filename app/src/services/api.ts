@@ -361,7 +361,9 @@ export const api = {
    * Returns accounts from all enrolled banks.
    */
   async getAccounts(): Promise<{ accounts: Array<{ accountId: string; accountType: string; displayName: string; balance?: number; currency: string; bankName: string; bankLogoUrl?: string; bsimId: string }> }> {
+    console.log('[API] getAccounts - fetching...');
     const { data } = await apiClient.get('/mobile/accounts');
+    console.log('[API] getAccounts - response:', JSON.stringify(data, null, 2));
     return data;
   },
 };
