@@ -351,6 +351,23 @@ export const transferSimApi = {
   },
 
   /**
+   * Get a specific transfer by ID
+   * Used for deep linking from push notifications (per M4)
+   *
+   * @param transferId The transfer ID to fetch
+   * @returns Transfer details
+   * @note User must be sender or recipient to view
+   */
+  async getTransferById(transferId: string): Promise<Transfer> {
+    console.log('[TransferSim] getTransferById:', transferId);
+    const { data } = await getTransferSimClient().get<Transfer>(`/api/v1/transfers/${transferId}`);
+    console.log('[TransferSim] getTransferById response:', JSON.stringify(data, null, 2));
+    // Sanitize the single transfer
+    const sanitized = sanitizeTransfers([data]);
+    return sanitized[0];
+  },
+
+  /**
    * Cancel a pending transfer
    */
   async cancelTransfer(transferId: string): Promise<void> {
