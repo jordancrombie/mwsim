@@ -16,7 +16,7 @@ import type {
 // Create axios instance with current environment config
 const createApiClient = (): AxiosInstance => {
   const config = getConfig();
-  console.log(`[API] Initializing with ${getEnvironmentName()} environment: ${config.apiUrl}`);
+  console.log(`[API] Initializing: ${getEnvironmentName()} (${config.apiUrl})`);
 
   const client = axios.create({
     baseURL: config.apiUrl,
@@ -321,20 +321,8 @@ export const api = {
    * Called when user opens a payment deep link.
    */
   async getPaymentDetails(requestId: string): Promise<PaymentRequest> {
-    const url = `/mobile/payment/${requestId}`;
-    console.log(`[API] getPaymentDetails: Fetching from ${apiClient.defaults.baseURL}${url}`);
-    try {
-      const { data } = await apiClient.get(url);
-      console.log('[API] getPaymentDetails: Success');
-      return data;
-    } catch (error: any) {
-      console.log('[API] getPaymentDetails: Error', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message,
-      });
-      throw error;
-    }
+    const { data } = await apiClient.get(`/mobile/payment/${requestId}`);
+    return data;
   },
 
   /**
@@ -360,6 +348,22 @@ export const api = {
    */
   async getPendingPayments(): Promise<{ requests: PendingPayment[] }> {
     const { data } = await apiClient.get('/mobile/payment/pending');
+    return data;
+  },
+
+  // ==================
+  // P2P Account Endpoints (via WSIM Proxy to BSIM Open Banking)
+  // ==================
+
+  /**
+   * Get user's bank accounts for P2P transfers.
+   * WSIM proxies this request to BSIM Open Banking API using stored OAuth tokens.
+   * Returns accounts from all enrolled banks.
+   */
+  async getAccounts(): Promise<{ accounts: Array<{ accountId: string; accountType: string; displayName: string; balance?: number; currency: string; bankName: string; bankLogoUrl?: string; bsimId: string }> }> {
+    console.log('[API] getAccounts - fetching...');
+    const { data } = await apiClient.get('/mobile/accounts');
+    console.log('[API] getAccounts - response:', JSON.stringify(data, null, 2));
     return data;
   },
 };

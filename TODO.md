@@ -2,6 +2,46 @@
 
 Development roadmap and planned features for the mwsim mobile wallet application.
 
+## Build & Release Guidelines
+
+### Creating Archives for TestFlight
+
+When building archives for TestFlight upload, **always use unique archive names** to avoid overwriting previous builds.
+
+**Custom Archive Location:** `/Users/jcrombie/ai/AppBuilds/IOS/Archives/`
+(Configured in Xcode Preferences → Locations → Derived Data → Advanced)
+
+```bash
+# From app/ios directory:
+cd /Users/jcrombie/ai/mwsim/app/ios
+
+# Build with version-specific name (to project dir first, then move)
+LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 xcodebuild \
+  -workspace mwsim.xcworkspace \
+  -scheme mwsim \
+  -configuration Release \
+  -destination "generic/platform=iOS" \
+  -archivePath /Users/jcrombie/ai/mwsim/app/mwsim_1.4.0_XX.xcarchive \
+  archive
+
+# Then move to custom Archives folder for Organizer to find it:
+mv /Users/jcrombie/ai/mwsim/app/mwsim_1.4.0_XX.xcarchive \
+   /Users/jcrombie/ai/AppBuilds/IOS/Archives/$(date +%Y-%m-%d)/
+```
+
+### Build Checklist
+
+1. **Bump build number** in `app.json` before each TestFlight upload
+2. **Run `npx expo prebuild --clean`** if any plugins or native config changed
+3. **Use unique archive names** (e.g., `mwsim_1.4.0_24.xcarchive`)
+4. **Move archive** to `/Users/jcrombie/ai/AppBuilds/IOS/Archives/YYYY-MM-DD/`
+5. **Open in Xcode Organizer** to upload to App Store Connect
+
+### Version Info in Settings
+
+The app displays version and build info in iOS Settings > mwsim > App Info.
+This is populated at runtime from `Info.plist` via the `withSettingsDefaults` plugin.
+
 ## Phase 2: Wallet Management & Payments
 
 ### Card Management
@@ -101,6 +141,87 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 - [ ] Push notification for transfer complete
 - [ ] In-app notification center
 
+## Micro Merchants (Phase 1 UI Complete - v1.4.0 build 20)
+
+Reference: `transferSim/LOCAL_DEPLOYMENT_PLANS/MICRO_MERCHANT_PROPOSAL.md`
+
+Extends P2P infrastructure to support small business payments with visual differentiation and fee handling.
+
+### Core Concept
+- **Two recipient types:** Individual (P2P) and Micro Merchant (business)
+- **Color scheme:** Purple (#7C3AED) for Individual, Green (#10B981) for Micro Merchant
+- **Fee structure:** Tiered flat ($0.25 < $200, $0.50 >= $200) - display only in Phase 1, collected in Phase 3
+
+### Merchant Enrollment
+- [x] "Become a Merchant" CTA in P2P Personal mode
+- [x] Merchant enrollment screen (business name, category, account selection)
+- [ ] Merchant profile creation via TransferSim API (awaiting backend)
+- [x] Store merchant profile in state and SecureStorage
+
+### P2P Tab Toggle (Personal/Business)
+- [x] Segmented control: "Personal" | "Business"
+- [x] Toggle only visible if user is enrolled as Micro Merchant
+- [x] Persist selected mode in AsyncStorage
+- [x] Purple accent for Personal, Green accent for Business
+- [x] Status indicator on Business tab (enrolled vs "Setup →")
+
+### Merchant Dashboard (Business Mode)
+- [x] Prominent merchant QR code display
+- [x] Business name and alias header
+- [x] Today's revenue summary
+- [x] Recent payments list (received as merchant)
+- [x] "Full History" link to merchant transaction view
+
+### Merchant QR Code
+- [x] Green border (vs purple for personal)
+- [x] Business name display above QR
+- [x] Primary alias below QR
+- [x] "Micro Merchant" badge
+- [x] Share QR action
+- [ ] Print QR action (PDF export for counter display)
+- [x] Full-screen mode for easy scanning
+
+### Visual Differentiation (Sender View)
+- [x] Recipient card styling based on type
+  - Individual: Purple border, person icon
+  - Merchant: Green border, storefront icon
+- [x] Fee preview when sending to Micro Merchant
+- [x] Fee disclaimer on confirmation screen
+- [ ] Transaction receipt shows gross amount and fee (needs API)
+
+### Transaction History (Mode-Aware)
+- [x] Personal mode: Show personal P2P transfers (sent/received)
+- [x] Business mode: Show merchant receipts only
+- [x] Transaction cards show fee deducted (merchant payments)
+- [x] Green/purple visual differentiation in history
+
+### Merchant Profile Management
+- [x] Edit business name (UI ready)
+- [x] Edit business category (UI ready)
+- [x] View/change receiving account (UI ready)
+- [x] Deactivate merchant account (UI ready)
+
+### Types & State (src/types/index.ts, App.tsx)
+- [x] Add `MerchantProfile` type
+- [x] Add `RecipientType: 'individual' | 'merchant'`
+- [x] Add `p2pMode: 'personal' | 'business'` state
+- [x] Add `isMicroMerchant` boolean state
+- [x] Add `merchantProfile` state
+
+### TransferSim API Integration (src/services/transferSim.ts)
+- [x] `enrollMerchant()` - Create merchant profile
+- [x] `getMerchantProfile()` - Get current user's merchant profile
+- [x] `updateMerchantProfile()` - Update business name/category
+- [x] `generateMerchantToken()` - Generate merchant-specific QR token
+- [x] `getMerchantTransfers()` - Get merchant transaction history
+- [x] `resolveTokenWithMerchantInfo()` - Resolve token with recipientType
+- [x] `calculateMerchantFee()` - Fee calculation utility
+
+### Phase Dependencies
+- **Phase 1 (UI Only):** ✅ Complete - All UI/UX changes, fee display only (no actual collection)
+- **Phase 2 (Testing):** Awaiting TransferSim backend APIs
+- **Phase 3 (Fee Collection):** BSIM fee API integration, actual fee deduction
+
 ## Phase 3: OpenWallet Foundation
 
 ### OID4VCI (Verifiable Credential Issuance)
@@ -160,6 +281,43 @@ Reference: `wsim/LOCAL_DEPLOYMENT_PLANS/P2P_TRANSFER_NETWORK_PLAN.md`
 
 ## Bug Fixes & Polish
 
+### Startup White Screen Fix (Priority)
+Intermittent white screen hang on app startup caused by blocking network calls in `initializeApp()`.
+
+**Root Cause Analysis:**
+- `getWalletSummary()` blocks startup when user is logged in (validates token + fetches fresh data)
+- `registerDevice()` blocks startup even for new users before they sign up
+- If network is slow/unavailable, app hangs on white loading screen indefinitely
+
+**Proposed Fix:**
+1. **For logged-in users:**
+   - Check `accessToken` exists locally → assume logged in
+   - Load cached `USER_DATA` and `CACHED_CARDS` immediately
+   - Navigate to home screen instantly (no network wait)
+   - Refresh `getWalletSummary()` in background (non-blocking)
+   - If 401 → token expired → prompt re-login
+   - If network error → show "offline mode" indicator, use cached data
+
+2. **For new users:**
+   - No accessToken → go to welcome screen immediately
+   - Remove `registerDevice()` from startup entirely
+   - Call `registerDevice()` only when user taps "Create Account"
+
+3. **Additional improvements:**
+   - Change loading screen background from white (#ffffff) to splash blue (#E3F2FD)
+   - Add startup timeout failsafe (proceed after X seconds even if network hung)
+
+**Files to modify:**
+- `app/App.tsx` - `initializeApp()` function
+- `app/src/services/api.ts` - add non-blocking refresh method
+- `app/src/components/SplashScreen.tsx` - loading screen styling
+
+- [ ] Implement non-blocking startup with cached data
+- [ ] Move `registerDevice()` to account creation flow
+- [ ] Add background token validation with offline fallback
+- [ ] Change loading screen to blue (#E3F2FD) to match splash
+
+### Other Polish Items
 - [ ] Loading states for all API calls
 - [ ] Error boundary implementation
 - [ ] Accessibility improvements (VoiceOver/TalkBack)

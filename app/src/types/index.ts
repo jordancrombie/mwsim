@@ -259,6 +259,108 @@ export interface P2PState {
   lastUsedAccountId?: string;
 }
 
+// ===========================
+// Micro Merchant Types
+// ===========================
+
+/**
+ * P2P mode for the toggle between Personal and Business views
+ */
+export type P2PMode = 'personal' | 'business';
+
+/**
+ * Recipient type for visual differentiation
+ */
+export type RecipientType = 'individual' | 'merchant';
+
+/**
+ * Business category for Micro Merchants
+ */
+export type MerchantCategory =
+  | 'FOOD_BEVERAGE'      // Restaurants, cafes, food trucks
+  | 'RETAIL'             // Shops, vendors
+  | 'SERVICES'           // Tutoring, consulting, freelance
+  | 'HEALTH_BEAUTY'      // Salons, wellness
+  | 'ENTERTAINMENT'      // Events, performances
+  | 'CRAFTS_ARTISAN'     // Handmade goods, art
+  | 'OTHER';             // General/uncategorized
+
+/**
+ * Micro Merchant profile
+ */
+export interface MerchantProfile {
+  merchantId: string;
+  businessName: string;
+  category: MerchantCategory;
+  primaryAlias: string;              // e.g., "@javajoes"
+  receivingAccountId: string;        // Bank account for receiving payments
+  receivingBankName: string;
+  isActive: boolean;
+  createdAt: string;
+  // Stats (optional, for dashboard)
+  todayRevenue?: number;
+  todayTransactionCount?: number;
+}
+
+/**
+ * Extended transfer info with recipient type for Micro Merchant differentiation
+ */
+export interface TransferWithRecipientType extends Transfer {
+  recipientType?: RecipientType;     // 'individual' or 'merchant'
+  merchantName?: string;             // Business name if merchant
+  merchantCategory?: MerchantCategory;
+  feeAmount?: number;                // Fee deducted (for merchant payments)
+  grossAmount?: number;              // Amount before fee
+}
+
+/**
+ * Resolved token with merchant info (extended for QR scanning)
+ */
+export interface ResolvedMerchantToken extends ResolvedToken {
+  recipientType: RecipientType;
+  merchantName?: string;
+  merchantCategory?: MerchantCategory;
+  feeAmount?: number;                // Calculated fee for display
+}
+
+/**
+ * Merchant enrollment request
+ */
+export interface MerchantEnrollmentRequest {
+  businessName: string;
+  category: MerchantCategory;
+  receivingAccountId: string;
+}
+
+/**
+ * Category display info for UI
+ */
+export const MERCHANT_CATEGORIES: Record<MerchantCategory, { label: string; icon: string }> = {
+  FOOD_BEVERAGE: { label: 'Food & Beverage', icon: '☕' },
+  RETAIL: { label: 'Retail & Shopping', icon: '🛍️' },
+  SERVICES: { label: 'Services', icon: '💼' },
+  HEALTH_BEAUTY: { label: 'Health & Beauty', icon: '💆' },
+  ENTERTAINMENT: { label: 'Entertainment', icon: '🎭' },
+  CRAFTS_ARTISAN: { label: 'Crafts & Artisan', icon: '🎨' },
+  OTHER: { label: 'Other', icon: '🏪' },
+};
+
+/**
+ * Theme colors for P2P modes
+ */
+export const P2P_THEME_COLORS = {
+  individual: {
+    primary: '#7C3AED',      // Purple
+    light: '#EDE9FE',        // Purple-50
+    icon: '👤',
+  },
+  merchant: {
+    primary: '#10B981',      // Green
+    light: '#D1FAE5',        // Green-50
+    icon: '🏪',
+  },
+};
+
 // Navigation types
 export type RootStackParamList = {
   Welcome: undefined;
