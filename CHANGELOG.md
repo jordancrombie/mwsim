@@ -2,7 +2,136 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
-## [1.4.0] - 2025-12-27 - P2P Transfer Integration
+## [1.4.0] - 2026-01-03 - P2P Transfer Integration & Micro Merchants
+
+### Improved (Build 53)
+- **Data Refresh Strategy**
+  - P2P enrollment check now runs in background after login (both password and verify code flows)
+  - P2P data (accounts, aliases, transfers) refreshes after bank enrollment completion
+  - `loadP2PData()` now called after P2P enrollment to immediately populate accounts
+  - Ensures "From Account" is available immediately after P2P enrollment without app restart
+
+- **Environment Configuration Cleanup**
+  - Restored proper iOS Settings.bundle reading for environment selection
+  - Environment now correctly reads from iOS Settings > mwsim > Server
+  - Removed debug logging from API interceptors (cleaner production logs)
+  - Cleaned up verbose `getAccounts()` and `getPaymentDetails()` debug output
+
+### Investigation Complete (Build 52+)
+- **Root Cause of P2P Tab Crash Identified**
+  - The crash was caused by `loadP2PData()` being called on EVERY P2P tab switch (added in Build 29)
+  - When transfers existed, the race between API fetch and React render caused native TurboModule crash
+  - Empty transfer array = no crash; transfers present = crash during render
+  - Solution: Removed aggressive tab-switch refreshing; use pull-to-refresh instead
+
+- **Transfer Data Sanitization Added**
+  - Added `sanitizeTransfer()` and `sanitizeTransfers()` functions in transferSim.ts
+  - All transfers from API are now validated with safe defaults for required fields
+  - Prevents crashes from malformed API data (null amount, missing createdAt, etc.)
+  - Safe defaults: `amount=0`, `direction='sent'`, `status='PENDING'`, `createdAt=now`
+  - Also added `sanitizeMerchantTransfer()` for Micro Merchant transactions
+
+### Fixed (Build 33)
+- **TurboModule Crash on P2P Tab (Native Side)**
+  - Fixed: Added try-catch protection to all SecureStorage JSON.parse calls
+  - Crash was occurring in React Native TurboModule when accessing SecureStore
+  - Protected: `getUserData()`, `getCachedCards()`, `getP2PUserContext()`, `getP2PEnrollment()`
+  - Malformed or corrupted stored data no longer crashes the app
+  - Additional defensive null checks for transfer arrays in render code
+  - Added `.filter(t => t != null)` before mapping over transfer arrays
+
+### Fixed (Build 32)
+- **App Crash on P2P Tab for Users with Transfers**
+  - Fixed: Defensive null checks for all transfer arrays (recentTransfers, historyTransfers, merchantTransfers)
+  - API responses may return null for `transfers` field; now defaults to empty array
+  - Added null safety to `loadP2PData()`, `loadHistoryTransfers()`, `loadMerchantTransfers()`
+  - Fixed `getStatusColor()` calls to handle undefined status
+  - Fixed `selectedTransfer.transferId.substring()` crash when transferId is undefined
+
+- **FROM ACCOUNT Not Showing After Initial P2P Enrollment**
+  - Fixed: `loadP2PData()` is now called immediately after P2P enrollment completes
+  - Previously, accounts were only loaded when switching tabs (not during initial enrollment flow)
+  - Users can now send money right after enrolling without needing to log out/in
+
+### Fixed (Build 31)
+- **App Crash After P2P Transfer**
+  - Fixed: Null safety checks added to all transfer rendering code
+  - Transfer list items now handle undefined fields (amount, createdAt, transferId, aliases)
+  - `formatDate()` and `formatFullDate()` functions now gracefully handle undefined dates
+  - Prevents crash when navigating back to P2P screen after completing a transfer
+
+- **Success Animation Not Reflecting Actual Transfer Outcome**
+  - Fixed: Success screen now shows status-aware icons and titles based on actual transfer status
+  - Processing (⏳ orange): Shows while status is PENDING, RESOLVING, DEBITING, or CREDITING
+  - Success (✓ green): Shows when transfer status is COMPLETED
+  - Failed (✕ red): Shows for DEBIT_FAILED, CREDIT_FAILED, CANCELLED, EXPIRED, REVERSED, RECIPIENT_NOT_FOUND
+  - Previously always showed success icon regardless of actual outcome
+
+### Fixed (Build 30)
+- **P2P Transfer Status Display**
+  - Fixed: Success screen now shows user-friendly status ("Transfer Complete", "Processing...") instead of raw codes like "PENDING"
+  - Added: Polls TransferSim after 1 second to get confirmed final status (transfers complete in <1s)
+  - Status text now color-coded: green for complete, orange for processing, red for failed
+
+- **P2P Account Balance Not Updating After Transfer**
+  - Fixed: Account balances now refresh when user taps "Done" on success screen
+  - Calls `loadP2PData()` to fetch fresh balances from BSIM Open Banking API
+  - User sees updated balance immediately upon returning to P2P home
+
+### Fixed (Build 29)
+- **P2P Transfer User ID Mismatch**
+  - Fixed: P2P transfers now use BSIM's internal user ID (`fiUserRef`) instead of WSIM userId
+  - This resolves "account not owned by user" errors when sending P2P transfers
+  - TransferSim auth header now sends `fiUserRef:bsimId` for proper BSIM account ownership validation
+  - Updated `P2PUserContext` to include `fiUserRef` from bank enrollment
+  - WSIM now exposes `fiUserRef` in enrollment list endpoint
+
+### Fixed (Build 28)
+- **P2P Accounts Not Loading**
+  - Fixed: Bank accounts now refresh when switching to P2P tab (previously only loaded once after enrollment)
+  - P2P data (accounts, aliases, transfers) now reloads each time user navigates to P2P tab
+  - Enables proper "From Account" selection in Send Money flow
+
+- **Stale User Data After Logout**
+  - Fixed: All user-specific state is now cleared on logout
+  - Previously, P2P data (aliases, accounts, transfers) persisted between user sessions
+  - This caused user7 to see user6's aliases after logout/login
+  - Comprehensive state reset now includes:
+    - User & auth data
+    - Cards & banks
+    - P2P core (enrollment, aliases, accounts, transfers)
+    - P2P send/receive state
+    - Micro Merchant profile and settings
+    - Payment request data
+  - SecureStorage is also cleared on logout
+
+### Added (Build 20-27)
+- **Micro Merchant UI (Phase 1)**
+  - "Become a Merchant" enrollment flow with business name, category, and account selection
+  - P2P Tab Toggle: Personal/Business segmented control (purple/green accent colors)
+  - Merchant Dashboard with QR code display, today's revenue summary, and recent payments
+  - Merchant QR Code with green border, business name, and "Micro Merchant" badge
+  - Visual differentiation for sender: merchant recipients show green border and storefront icon
+  - Fee preview when sending to Micro Merchant (tiered: $0.25 < $200, $0.50 >= $200)
+  - Mode-aware transaction history (Personal vs Business)
+  - Merchant profile management UI (edit name, category, receiving account, deactivate)
+
+- **TransferSim Merchant API Integration**
+  - `enrollMerchant()`, `getMerchantProfile()`, `updateMerchantProfile()`
+  - `generateMerchantToken()`, `getMerchantTransfers()`
+  - `resolveTokenWithMerchantInfo()`, `calculateMerchantFee()`
+
+- **Build Improvements**
+  - New `withXcodeOptimizations` Expo config plugin for automatic Xcode project settings
+  - Removes deprecated ENABLE_BITCODE setting
+  - Updates LastUpgradeCheck to Xcode 16.2 (1620)
+  - Enables whole-module optimization for Release builds
+  - Updated TODO.md with custom archive location documentation
+
+### Technical (Build 20-24)
+- New types: `MerchantProfile`, `RecipientType`, `p2pMode`
+- New state: `isMicroMerchant`, `merchantProfile`, `p2pMode`
+- ExportOptions.plist configured for command-line TestFlight uploads
 
 ### Fixed (Build 19)
 - **Production TransferSim URL**

@@ -25,7 +25,79 @@ import type {
   ReceiveToken,
   ResolvedToken,
   BankAccount,
+  MerchantProfile,
+  MerchantCategory,
+  MerchantEnrollmentRequest,
+  ResolvedMerchantToken,
+  TransferWithRecipientType,
+  TransferDirection,
+  TransferStatus,
 } from '../types';
+
+/**
+ * Sanitizes a transfer object from the API to ensure all required fields
+ * have safe default values. This prevents crashes from malformed data.
+ */
+function sanitizeTransfer(transfer: Partial<Transfer>): Transfer {
+  return {
+    transferId: transfer.transferId || `unknown-${Date.now()}`,
+    direction: (transfer.direction as TransferDirection) || 'sent',
+    amount: typeof transfer.amount === 'number' ? transfer.amount : Number(transfer.amount) || 0,
+    currency: transfer.currency || 'CAD',
+    status: (transfer.status as TransferStatus) || 'PENDING',
+    createdAt: transfer.createdAt || new Date().toISOString(),
+    // Optional fields - pass through as-is
+    description: transfer.description,
+    senderAlias: transfer.senderAlias,
+    senderDisplayName: transfer.senderDisplayName,
+    senderBankName: transfer.senderBankName,
+    recipientAlias: transfer.recipientAlias,
+    recipientDisplayName: transfer.recipientDisplayName,
+    recipientBankName: transfer.recipientBankName,
+    completedAt: transfer.completedAt,
+  };
+}
+
+/**
+ * Sanitizes an array of transfers, filtering out any that are completely invalid.
+ */
+function sanitizeTransfers(transfers: unknown): Transfer[] {
+  if (!Array.isArray(transfers)) {
+    console.warn('[TransferSim] Expected transfers array, got:', typeof transfers);
+    return [];
+  }
+  return transfers
+    .filter((t): t is Partial<Transfer> => t != null && typeof t === 'object')
+    .map(sanitizeTransfer);
+}
+
+/**
+ * Sanitizes a merchant transfer (TransferWithRecipientType).
+ */
+function sanitizeMerchantTransfer(transfer: Partial<TransferWithRecipientType>): TransferWithRecipientType {
+  const base = sanitizeTransfer(transfer);
+  return {
+    ...base,
+    recipientType: transfer.recipientType || 'individual',
+    merchantName: transfer.merchantName,
+    merchantCategory: transfer.merchantCategory,
+    feeAmount: typeof transfer.feeAmount === 'number' ? transfer.feeAmount : undefined,
+    grossAmount: typeof transfer.grossAmount === 'number' ? transfer.grossAmount : undefined,
+  };
+}
+
+/**
+ * Sanitizes an array of merchant transfers.
+ */
+function sanitizeMerchantTransfers(transfers: unknown): TransferWithRecipientType[] {
+  if (!Array.isArray(transfers)) {
+    console.warn('[TransferSim] Expected merchant transfers array, got:', typeof transfers);
+    return [];
+  }
+  return transfers
+    .filter((t): t is Partial<TransferWithRecipientType> => t != null && typeof t === 'object')
+    .map(sanitizeMerchantTransfer);
+}
 
 // TransferSim API key (same key works for both environments)
 const TRANSFERSIM_API_KEY = 'tsim_1c34f53eabdeb18474b87ec27b093d5c481ff08a0b5e07267dcaf183d1ee52af';
@@ -227,11 +299,13 @@ export const transferSimApi = {
 
   /**
    * Initiate a P2P transfer
+   * @param senderBsimId - Required for multi-bank support. Identifies which bank to debit.
    */
   async sendMoney(
     recipientAlias: string,
     amount: number,
     sourceAccountId: string,
+    senderBsimId: string,
     description?: string
   ): Promise<{ transferId: string; status: string }> {
     const { data } = await getTransferSimClient().post<TransferResponse>('/api/v1/transfers', {
@@ -239,6 +313,7 @@ export const transferSimApi = {
       amount,
       currency: 'CAD',
       sourceAccountId,
+      senderBsimId,
       description,
     });
     return {
@@ -252,7 +327,7 @@ export const transferSimApi = {
    */
   async getTransfer(transferId: string): Promise<Transfer> {
     const { data } = await getTransferSimClient().get<Transfer>(`/api/v1/transfers/${transferId}`);
-    return data;
+    return sanitizeTransfer(data);
   },
 
   /**
@@ -266,7 +341,10 @@ export const transferSimApi = {
     const { data } = await getTransferSimClient().get<TransferListResponse>('/api/v1/transfers', {
       params: { direction: direction || 'all', limit, offset },
     });
-    return data;
+    return {
+      transfers: sanitizeTransfers(data.transfers),
+      total: data.total || 0,
+    };
   },
 
   /**
@@ -306,31 +384,151 @@ export const transferSimApi = {
 
   /**
    * Get user's bank accounts for P2P transfers
-   * Note: This calls WSIM/BSIM Open Banking API, not TransferSim
+   * Calls WSIM proxy endpoint which fetches accounts from BSIM Open Banking API
+   * using the user's stored OAuth tokens.
    */
   async getAccounts(): Promise<BankAccount[]> {
-    // TODO: Implement via WSIM Open Banking API
-    // For now, return mock data for development
-    console.log('[TransferSim] getAccounts - returning mock data for development');
-    return [
-      {
-        accountId: 'acc_mock_checking_001',
-        accountType: 'CHECKING',
-        displayName: 'Chequing ****1234',
-        balance: 1500.00,
-        currency: 'CAD',
-        bankName: 'Bank Simulator',
-        bsimId: 'bsim-dev-001',
-      },
-      {
-        accountId: 'acc_mock_savings_001',
-        accountType: 'SAVINGS',
-        displayName: 'Savings ****5678',
-        balance: 5000.00,
-        currency: 'CAD',
-        bankName: 'Bank Simulator',
-        bsimId: 'bsim-dev-001',
-      },
-    ];
+    console.log('[TransferSim] getAccounts - fetching from WSIM proxy');
+    try {
+      // Import api dynamically to avoid circular dependency
+      const { api } = await import('./api');
+      const { accounts } = await api.getAccounts();
+
+      console.log(`[TransferSim] getAccounts - received ${accounts.length} accounts from WSIM`);
+
+      // Map WSIM response to BankAccount type
+      return accounts.map((account) => ({
+        accountId: account.accountId,
+        accountType: account.accountType as 'CHECKING' | 'SAVINGS',
+        displayName: account.displayName,
+        balance: account.balance,
+        currency: account.currency,
+        bankName: account.bankName,
+        bankLogoUrl: account.bankLogoUrl,
+        bsimId: account.bsimId,
+      }));
+    } catch (error: any) {
+      console.error('[TransferSim] getAccounts error:', error.message);
+      // Return empty array on error - UI will show appropriate message
+      return [];
+    }
+  },
+
+  // ==================
+  // Micro Merchant
+  // ==================
+
+  /**
+   * Check if user is enrolled as a Micro Merchant
+   * GET /api/v1/micro-merchants/me
+   */
+  async getMerchantProfile(): Promise<MerchantProfile | null> {
+    try {
+      const { data } = await getTransferSimClient().get<MerchantProfile>('/api/v1/micro-merchants/me');
+      return data;
+    } catch (error: any) {
+      // 404 means not enrolled as merchant
+      if (error.response?.status === 404) {
+        return null;
+      }
+      throw error;
+    }
+  },
+
+  /**
+   * Enroll as a Micro Merchant
+   * POST /api/v1/micro-merchants
+   */
+  async enrollMerchant(request: MerchantEnrollmentRequest): Promise<MerchantProfile> {
+    const { data } = await getTransferSimClient().post<MerchantProfile>('/api/v1/micro-merchants', request);
+    return data;
+  },
+
+  /**
+   * Update Micro Merchant profile
+   * PUT /api/v1/micro-merchants/me
+   */
+  async updateMerchantProfile(updates: {
+    businessName?: string;
+    category?: MerchantCategory;
+    receivingAccountId?: string;
+  }): Promise<MerchantProfile> {
+    const { data } = await getTransferSimClient().put<MerchantProfile>('/api/v1/micro-merchants/me', updates);
+    return data;
+  },
+
+  /**
+   * Deactivate Micro Merchant account
+   * DELETE /api/v1/micro-merchants/me (or POST with isActive: false)
+   */
+  async deactivateMerchant(): Promise<void> {
+    await getTransferSimClient().put('/api/v1/micro-merchants/me', { isActive: false });
+  },
+
+  /**
+   * Generate a merchant receive token (for QR code display)
+   * Uses the standard token endpoint with asMerchant: true
+   * POST /api/v1/tokens/receive
+   */
+  async generateMerchantToken(amount?: number, description?: string): Promise<ReceiveToken> {
+    const { data } = await getTransferSimClient().post<ReceiveToken>('/api/v1/tokens/receive', {
+      amount,
+      description,
+      asMerchant: true,  // Key flag to generate merchant token
+      expiresInSeconds: 300, // 5 minutes
+    });
+    return data;
+  },
+
+  /**
+   * Resolve a token (when scanning QR)
+   * Returns recipientType and merchant info automatically
+   * GET /api/v1/tokens/:tokenId
+   */
+  async resolveTokenWithMerchantInfo(tokenId: string): Promise<ResolvedMerchantToken> {
+    const { data } = await getTransferSimClient().get<ResolvedMerchantToken>(`/api/v1/tokens/${tokenId}`);
+    // Ensure we have a recipientType, default to 'individual' if not provided
+    return {
+      ...data,
+      recipientType: data.recipientType || 'individual',
+    };
+  },
+
+  /**
+   * Get merchant transaction history (received payments as merchant)
+   * GET /api/v1/micro-merchants/me/transactions
+   */
+  async getMerchantTransfers(
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<{ transfers: TransferWithRecipientType[]; total: number }> {
+    const { data } = await getTransferSimClient().get<{ transfers: TransferWithRecipientType[]; total: number }>(
+      '/api/v1/micro-merchants/me/transactions',
+      { params: { limit, offset } }
+    );
+    return {
+      transfers: sanitizeMerchantTransfers(data.transfers),
+      total: data.total || 0,
+    };
+  },
+
+  /**
+   * Get merchant dashboard stats (today's revenue, transaction count)
+   * GET /api/v1/micro-merchants/me/dashboard
+   */
+  async getMerchantStats(): Promise<{ todayRevenue: number; todayTransactionCount: number; weekRevenue: number }> {
+    const { data } = await getTransferSimClient().get('/api/v1/micro-merchants/me/dashboard');
+    return data;
+  },
+
+  /**
+   * Calculate fee for a given amount (for display purposes)
+   * Fee structure: $0.25 for amounts < $200, $0.50 for amounts >= $200
+   */
+  calculateMerchantFee(amount: number): number {
+    if (amount < 200) {
+      return 0.25;
+    }
+    return 0.50;
   },
 };

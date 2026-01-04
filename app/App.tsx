@@ -31,7 +31,9 @@ import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './sr
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
-import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken } from './src/types';
+import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
+import { MERCHANT_CATEGORIES, P2P_THEME_COLORS } from './src/types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Keep the splash screen visible while we fetch resources
 ExpoSplashScreen.preventAutoHideAsync();
@@ -57,12 +59,19 @@ type Screen =
   | 'receiveMoney'
   | 'transferHistory'
   | 'transferDetail'
-  | 'p2pQrScan';
+  | 'p2pQrScan'
+  // Micro Merchant screens
+  | 'merchantEnrollment'
+  | 'merchantDashboard'
+  | 'merchantHistory'
+  | 'merchantProfile';
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
 
 export default function App() {
+  console.log('[App] Component rendering - START');
+
   // Navigation state
   const [currentScreen, setCurrentScreen] = useState<Screen>('loading');
 
@@ -154,11 +163,36 @@ export default function App() {
   const [p2pQrScanned, setP2pQrScanned] = useState(false);
   const [p2pTorchOn, setP2pTorchOn] = useState(false);
   const [resolving, setResolving] = useState(false);
-  const [resolvedToken, setResolvedToken] = useState<ResolvedToken | null>(null);
+  const [resolvedToken, setResolvedToken] = useState<ResolvedMerchantToken | null>(null);
   const [p2pSendAmount, setP2pSendAmount] = useState('');
   const [p2pSendNote, setP2pSendNote] = useState('');
   const [p2pSelectedAccount, setP2pSelectedAccount] = useState<BankAccount | null>(null);
   const [p2pSending, setP2pSending] = useState(false);
+
+  // Micro Merchant state
+  const [p2pMode, setP2pMode] = useState<P2PMode>('personal');
+  const [isMicroMerchant, setIsMicroMerchant] = useState(false);
+  const [merchantProfile, setMerchantProfile] = useState<MerchantProfile | null>(null);
+  const [merchantLoading, setMerchantLoading] = useState(false);
+  const [merchantTransfers, setMerchantTransfers] = useState<TransferWithRecipientType[]>([]);
+
+  // Merchant enrollment form state
+  const [merchantBusinessName, setMerchantBusinessName] = useState('');
+  const [merchantCategory, setMerchantCategory] = useState<MerchantCategory>('OTHER');
+  const [merchantReceivingAccount, setMerchantReceivingAccount] = useState<BankAccount | null>(null);
+  const [merchantEnrollLoading, setMerchantEnrollLoading] = useState(false);
+  const [merchantEnrollError, setMerchantEnrollError] = useState<string | null>(null);
+
+  // Merchant QR state
+  const [merchantQrToken, setMerchantQrToken] = useState<{ tokenId: string; qrPayload: string; expiresAt: string } | null>(null);
+  const [merchantQrLoading, setMerchantQrLoading] = useState(false);
+
+  // Merchant dashboard stats (from /me/dashboard endpoint)
+  const [merchantStats, setMerchantStats] = useState<{
+    todayRevenue: number;
+    todayTransactionCount: number;
+    weekRevenue: number;
+  } | null>(null);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -177,7 +211,9 @@ export default function App() {
 
   // Initialize selected account when bank accounts are loaded
   useEffect(() => {
+    console.log('[useEffect bankAccounts] bankAccounts.length:', bankAccounts.length);
     if (bankAccounts.length > 0) {
+      console.log('[useEffect bankAccounts] Setting selected accounts from:', bankAccounts[0]?.displayName);
       if (!selectedAccount) {
         setSelectedAccount(bankAccounts[0]);
       }
@@ -447,9 +483,12 @@ export default function App() {
   };
 
   const initializeApp = async () => {
+    console.log('[initializeApp] Starting...');
     try {
       // Get or create device ID
+      console.log('[initializeApp] Getting device ID...');
       let storedDeviceId = await secureStorage.getDeviceId();
+      console.log('[initializeApp] Device ID:', storedDeviceId ? 'exists' : 'creating new');
       if (!storedDeviceId) {
         storedDeviceId = uuidv4();
         await secureStorage.setDeviceId(storedDeviceId);
@@ -457,19 +496,33 @@ export default function App() {
       setDeviceId(storedDeviceId);
 
       // Check biometric capabilities
+      console.log('[initializeApp] Checking biometrics...');
       const capabilities = await biometricService.getCapabilities();
       setBiometricType(biometricService.getBiometricName(capabilities.biometricType));
+      console.log('[initializeApp] Biometrics done');
 
       // Check for existing session
+      console.log('[initializeApp] Getting access token...');
       const accessToken = await secureStorage.getAccessToken();
+      console.log('[initializeApp] Token:', accessToken ? 'exists' : 'none');
       if (accessToken) {
         try {
-          const summary = await api.getWalletSummary();
+          console.log('[initializeApp] Calling getWalletSummary...');
+          // Add a 10 second timeout to prevent hanging on debug builds
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('API timeout')), 10000)
+          );
+          const summary = await Promise.race([
+            api.getWalletSummary(),
+            timeoutPromise
+          ]) as { user: User; cards: Card[] };
+          console.log('[initializeApp] Got wallet summary');
           setUser(summary.user);
           setCards(summary.cards || []);
           setCurrentScreen('home');
         } catch (e) {
-          // Token invalid, clear and show welcome
+          // Token invalid or timeout, clear and show welcome
+          console.log('[initializeApp] getWalletSummary failed:', e);
           await secureStorage.clearAll();
           setCurrentScreen('welcome');
         }
@@ -494,8 +547,10 @@ export default function App() {
       setCurrentScreen('welcome');
     } finally {
       // Mark app as ready and hide native splash
+      console.log('[initializeApp] Finally block - hiding splash...');
       setAppIsReady(true);
       await ExpoSplashScreen.hideAsync();
+      console.log('[initializeApp] Splash hidden, done!');
     }
   };
 
@@ -579,8 +634,14 @@ export default function App() {
         console.log('[Login] Failed to load wallet, continuing anyway');
       }
 
-      // Go to home or handle pending payment
+      // Go to home
       setCurrentScreen('home');
+
+      // Check P2P enrollment in background after login
+      // This ensures P2P data is fresh when user switches to P2P tab
+      checkP2PEnrollment().catch((e) => {
+        console.log('[Login] P2P enrollment check failed:', e);
+      });
     } catch (e: any) {
       const message = e.response?.data?.message || e.message || 'Failed to login';
       setError(message);
@@ -620,6 +681,12 @@ export default function App() {
       }
 
       setCurrentScreen('home');
+
+      // Check P2P enrollment in background after login
+      // This ensures P2P data is fresh when user switches to P2P tab
+      checkP2PEnrollment().catch((e) => {
+        console.log('[VerifyCode] P2P enrollment check failed:', e);
+      });
     } catch (e: any) {
       const message = e.response?.data?.message || e.message || 'Invalid verification code';
       setError(message);
@@ -710,6 +777,8 @@ export default function App() {
           if (success === 'true') {
             Alert.alert('Success', 'Bank enrolled successfully! Your cards have been added.');
             await handleRefreshWallet();
+            // Also refresh P2P accounts in background (new bank = new accounts for P2P)
+            loadP2PData().catch((e) => console.log('[Enrollment] P2P refresh failed:', e));
             setCurrentScreen('home');
           } else if (success === 'false' || errorParam) {
             const errorMsg = urlObj.searchParams.get('message') || errorParam;
@@ -718,12 +787,15 @@ export default function App() {
             // No explicit success/error param - assume success if we got here
             Alert.alert('Success', 'Bank enrolled successfully! Your cards have been added.');
             await handleRefreshWallet();
+            // Also refresh P2P accounts in background
+            loadP2PData().catch((e) => console.log('[Enrollment] P2P refresh failed:', e));
             setCurrentScreen('home');
           }
         } catch (parseError) {
           console.error('[Enrollment] URL parse error:', parseError);
           // If URL parsing fails, assume success since we got a redirect
           await handleRefreshWallet();
+          loadP2PData().catch((e) => console.log('[Enrollment] P2P refresh failed:', e));
           setCurrentScreen('home');
         }
       } else if (result.type === 'cancel') {
@@ -927,14 +999,21 @@ export default function App() {
       setP2pLoading(true);
 
       // Set up P2P user context for TransferSim auth
-      // Get userId from user state
+      // Use fiUserRef (BSIM internal user ID) instead of userId
       if (user?.id) {
-        // For now, use the first enrolled bank's bsimId
+        // For now, use the first enrolled bank
         // In production, user should select which bank to use for P2P
         const enrolledBanks = await api.getEnrolledBanks();
+        console.log('[checkP2PEnrollment] getEnrolledBanks response:', JSON.stringify(enrolledBanks, null, 2));
         if (enrolledBanks.enrollments.length > 0) {
-          const bsimId = enrolledBanks.enrollments[0].bsimId;
-          await secureStorage.setP2PUserContext({ userId: user.id, bsimId });
+          const enrollment = enrolledBanks.enrollments[0] as any;
+          const bsimId = enrollment.bsimId;
+          // Use fiUserRef if available, otherwise fall back to userId
+          const authId = enrollment.fiUserRef || user.id;
+          console.log('[checkP2PEnrollment] Setting P2P context:', { userId: authId, bsimId, fiUserRef: enrollment.fiUserRef });
+          await secureStorage.setP2PUserContext({ userId: authId, bsimId });
+        } else {
+          console.log('[checkP2PEnrollment] No enrollments found - P2P context NOT set');
         }
       }
 
@@ -956,19 +1035,161 @@ export default function App() {
   };
 
   const loadP2PData = async () => {
+    console.log('[loadP2PData] Starting...');
     try {
       // Load aliases, accounts, and recent transfers in parallel
       const [aliasesResult, accountsResult, transfersResult] = await Promise.all([
-        transferSimApi.getAliases().catch(() => []),
-        transferSimApi.getAccounts().catch(() => []),
-        transferSimApi.getTransfers('all', 10).catch(() => ({ transfers: [], total: 0 })),
+        transferSimApi.getAliases().catch((e) => { console.log('[loadP2PData] getAliases error:', e); return []; }),
+        transferSimApi.getAccounts().catch((e) => { console.log('[loadP2PData] getAccounts error:', e); return []; }),
+        transferSimApi.getTransfers('all', 10).catch((e) => { console.log('[loadP2PData] getTransfers error:', e); return { transfers: [], total: 0 }; }),
       ]);
 
+      console.log('[loadP2PData] Results - aliases:', aliasesResult.length, 'accounts:', accountsResult.length, 'transfers:', transfersResult.transfers?.length || 0);
       setAliases(aliasesResult);
       setBankAccounts(accountsResult);
-      setRecentTransfers(transfersResult.transfers);
+      setRecentTransfers(transfersResult.transfers || []);
+
+      // Also check if user is a Micro Merchant
+      await loadMerchantData();
     } catch (e) {
       console.log('[P2P] Failed to load P2P data:', e);
+    }
+  };
+
+  // Load Micro Merchant data
+  const loadMerchantData = async () => {
+    try {
+      setMerchantLoading(true);
+      const profile = await transferSimApi.getMerchantProfile();
+      if (profile) {
+        setIsMicroMerchant(true);
+        setMerchantProfile(profile);
+        console.log('[Merchant] Profile loaded:', profile.businessName);
+
+        // Load saved p2pMode preference
+        const savedMode = await AsyncStorage.getItem('p2pMode');
+        if (savedMode === 'business') {
+          setP2pMode('business');
+          // Load dashboard data for business mode
+          loadMerchantDashboard();
+        }
+      } else {
+        setIsMicroMerchant(false);
+        setMerchantProfile(null);
+        setMerchantStats(null);
+      }
+    } catch (e) {
+      console.log('[Merchant] Failed to load merchant data:', e);
+      setIsMicroMerchant(false);
+    } finally {
+      setMerchantLoading(false);
+    }
+  };
+
+  // Handle P2P mode toggle
+  const handleP2PModeChange = async (mode: P2PMode) => {
+    setP2pMode(mode);
+    await AsyncStorage.setItem('p2pMode', mode);
+    console.log('[P2P] Mode changed to:', mode);
+
+    // Load dashboard data when switching to business mode
+    if (mode === 'business' && isMicroMerchant) {
+      loadMerchantDashboard();
+    }
+  };
+
+  // Handle Micro Merchant enrollment
+  const handleMerchantEnrollment = async () => {
+    if (!merchantBusinessName.trim()) {
+      setMerchantEnrollError('Please enter a business name');
+      return;
+    }
+    if (!merchantReceivingAccount) {
+      setMerchantEnrollError('Please select a receiving account');
+      return;
+    }
+
+    try {
+      setMerchantEnrollLoading(true);
+      setMerchantEnrollError(null);
+
+      const profile = await transferSimApi.enrollMerchant({
+        businessName: merchantBusinessName.trim(),
+        category: merchantCategory,
+        receivingAccountId: merchantReceivingAccount.accountId,
+      });
+
+      setMerchantProfile(profile);
+      setIsMicroMerchant(true);
+      setP2pMode('business');
+      await AsyncStorage.setItem('p2pMode', 'business');
+
+      // Clear form
+      setMerchantBusinessName('');
+      setMerchantCategory('OTHER');
+      setMerchantReceivingAccount(null);
+
+      Alert.alert(
+        'Welcome, Merchant!',
+        `Your business "${profile.businessName}" is now set up to receive payments.`,
+        [{ text: 'Get Started', onPress: () => setCurrentScreen('home') }]
+      );
+    } catch (e: any) {
+      console.log('[Merchant] Enrollment failed:', e);
+      setMerchantEnrollError(e.response?.data?.message || 'Failed to enroll as merchant');
+    } finally {
+      setMerchantEnrollLoading(false);
+    }
+  };
+
+  // Generate Merchant QR code
+  const generateMerchantQR = async () => {
+    try {
+      setMerchantQrLoading(true);
+      const token = await transferSimApi.generateMerchantToken();
+      setMerchantQrToken({
+        tokenId: token.tokenId,
+        qrPayload: token.qrPayload,
+        expiresAt: token.expiresAt,
+      });
+    } catch (e) {
+      console.log('[Merchant] Failed to generate QR:', e);
+      Alert.alert('Error', 'Failed to generate payment QR code');
+    } finally {
+      setMerchantQrLoading(false);
+    }
+  };
+
+  // Load merchant transfers (business history)
+  const loadMerchantTransfers = async () => {
+    try {
+      setHistoryLoading(true);
+      const result = await transferSimApi.getMerchantTransfers(50, 0);
+      setMerchantTransfers(result.transfers);
+    } catch (e) {
+      console.log('[Merchant] Failed to load transfers:', e);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Load merchant dashboard data (stats + recent transactions)
+  const loadMerchantDashboard = async () => {
+    try {
+      console.log('[Merchant] Loading dashboard data...');
+      // Load stats and transactions in parallel
+      const [stats, transactions] = await Promise.all([
+        transferSimApi.getMerchantStats(),
+        transferSimApi.getMerchantTransfers(5, 0),
+      ]);
+      setMerchantStats(stats);
+      setMerchantTransfers(transactions.transfers);
+      console.log('[Merchant] Dashboard loaded:', {
+        todayRevenue: stats.todayRevenue,
+        transactions: transactions.transfers.length,
+      });
+    } catch (e) {
+      console.log('[Merchant] Failed to load dashboard:', e);
     }
   };
 
@@ -1003,10 +1224,13 @@ export default function App() {
 
       // For now, use the first enrolled bank
       // TODO: Let user choose if multiple banks are enrolled
-      const bsimId = enrolledBanks.enrollments[0].bsimId;
+      const bankEnrollment = enrolledBanks.enrollments[0] as any;
+      const bsimId = bankEnrollment.bsimId;
+      // Use fiUserRef if available, otherwise fall back to userId
+      const authId = bankEnrollment.fiUserRef || user.id;
 
-      // Store P2P user context
-      await secureStorage.setP2PUserContext({ userId: user.id, bsimId });
+      // Store P2P user context (using fiUserRef as userId for auth)
+      await secureStorage.setP2PUserContext({ userId: authId, bsimId });
 
       // Enroll in P2P network
       const enrollment = await transferSimApi.enrollUser(user.id, bsimId);
@@ -1014,6 +1238,9 @@ export default function App() {
       setP2pEnrolled(true);
       setP2pEnrollment(enrollment);
       await secureStorage.setP2PEnrollment(enrollment);
+
+      // Load P2P data (accounts, aliases) after enrollment
+      loadP2PData().catch((e) => console.log('[P2P] Failed to load data after enrollment:', e));
 
       // Now navigate to alias setup
       Alert.alert(
@@ -1601,13 +1828,9 @@ export default function App() {
       }
 
       // Enrolled state - show P2P home
-      return (
-        <ScrollView
-          style={styles.p2pContent}
-          refreshControl={
-            <RefreshControl refreshing={p2pLoading} onRefresh={loadP2PData} />
-          }
-        >
+      // Render Personal mode content (current P2P)
+      const renderPersonalMode = () => (
+        <>
           {/* Quick Actions */}
           <View style={styles.p2pQuickActions}>
             <TouchableOpacity
@@ -1716,16 +1939,214 @@ export default function App() {
                       transfer.direction === 'received' && styles.p2pTransferAmountReceived,
                     ]}
                   >
-                    {transfer.direction === 'sent' ? '-' : '+'}${transfer.amount.toFixed(2)}
+                    {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
                   </Text>
                 </View>
               ))
             )}
           </View>
+
+          {/* Become a Merchant CTA - only show if not already a merchant */}
+          {!isMicroMerchant && (
+            <View style={styles.p2pSection}>
+              <TouchableOpacity
+                style={styles.merchantCTACard}
+                onPress={() => setCurrentScreen('merchantEnrollment')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.merchantCTAIcon}>
+                  <Text style={{ fontSize: 28 }}>🏪</Text>
+                </View>
+                <View style={styles.merchantCTAContent}>
+                  <Text style={styles.merchantCTATitle}>Accept Business Payments</Text>
+                  <Text style={styles.merchantCTASubtitle}>
+                    Set up as a Micro Merchant to receive payments with a professional profile
+                  </Text>
+                </View>
+                <Text style={styles.merchantCTAArrow}>→</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
+      );
+
+      // Render Business mode content (Merchant Dashboard)
+      const renderBusinessMode = () => (
+        <>
+          {/* Merchant Header */}
+          <View style={styles.merchantDashboardHeader}>
+            <Text style={styles.merchantBusinessName}>
+              {merchantProfile?.businessName || 'My Business'}
+            </Text>
+            <Text style={styles.merchantAlias}>
+              {aliases.find(a => a.isPrimary)?.value || '@business'}
+            </Text>
+            <View style={styles.merchantBadge}>
+              <Text style={styles.merchantBadgeText}>Micro Merchant</Text>
+            </View>
+          </View>
+
+          {/* Merchant QR Code */}
+          <View style={styles.merchantQRSection}>
+            <Text style={styles.merchantQRTitle}>Payment QR Code</Text>
+            <View style={styles.merchantQRContainer}>
+              {merchantQrLoading ? (
+                <ActivityIndicator size="large" color="#10B981" />
+              ) : merchantQrToken ? (
+                <View style={styles.merchantQRCode}>
+                  <Text style={styles.merchantQRPlaceholder}>
+                    {/* QR Code would go here - using placeholder for now */}
+                    📱
+                  </Text>
+                  <Text style={styles.merchantQRHint}>
+                    Token: {merchantQrToken.tokenId.slice(0, 8)}...
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.merchantGenerateQRButton}
+                  onPress={generateMerchantQR}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.merchantGenerateQRText}>Generate QR Code</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {merchantQrToken && (
+              <View style={styles.merchantQRActions}>
+                <TouchableOpacity style={styles.merchantQRAction} activeOpacity={0.7}>
+                  <Text style={styles.merchantQRActionText}>Share</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.merchantQRAction}
+                  onPress={generateMerchantQR}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.merchantQRActionText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Today's Stats */}
+          <View style={styles.merchantStatsSection}>
+            <View style={styles.merchantStatCard}>
+              <Text style={styles.merchantStatValue}>
+                ${merchantStats?.todayRevenue?.toFixed(2) || '0.00'}
+              </Text>
+              <Text style={styles.merchantStatLabel}>Today</Text>
+            </View>
+            <View style={styles.merchantStatCard}>
+              <Text style={styles.merchantStatValue}>
+                ${merchantStats?.weekRevenue?.toFixed(2) || '0.00'}
+              </Text>
+              <Text style={styles.merchantStatLabel}>This Week</Text>
+            </View>
+            <View style={styles.merchantStatCard}>
+              <Text style={styles.merchantStatValue}>
+                {merchantStats?.todayTransactionCount || 0}
+              </Text>
+              <Text style={styles.merchantStatLabel}>Transactions</Text>
+            </View>
+          </View>
+
+          {/* Recent Business Payments */}
+          <View style={styles.p2pSection}>
+            <View style={styles.p2pSectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Payments</Text>
+              <TouchableOpacity onPress={() => {
+                loadMerchantTransfers();
+                setCurrentScreen('transferHistory');
+              }}>
+                <Text style={styles.p2pSeeAllText}>See All</Text>
+              </TouchableOpacity>
+            </View>
+            {merchantTransfers.length === 0 ? (
+              <View style={styles.p2pEmptyTransfers}>
+                <Text style={styles.p2pEmptyTransfersText}>No payments received yet</Text>
+                <Text style={styles.merchantEmptyHint}>
+                  Share your QR code to start accepting payments
+                </Text>
+              </View>
+            ) : (
+              merchantTransfers.slice(0, 5).map((transfer) => (
+                <View key={transfer.transferId} style={styles.merchantTransferItem}>
+                  <View style={styles.p2pTransferInfo}>
+                    <Text style={styles.p2pTransferName}>
+                      {transfer.senderDisplayName || transfer.senderAlias}
+                    </Text>
+                    <Text style={styles.p2pTransferDate}>
+                      {new Date(transfer.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <View style={styles.merchantTransferAmounts}>
+                    <Text style={styles.merchantTransferGross}>
+                      +${Number(transfer.grossAmount || transfer.amount || 0).toFixed(2)}
+                    </Text>
+                    {transfer.feeAmount && (
+                      <Text style={styles.merchantTransferFee}>
+                        Fee: ${transfer.feeAmount.toFixed(2)}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        </>
+      );
+
+      return (
+        <ScrollView
+          style={styles.p2pContent}
+          refreshControl={
+            <RefreshControl refreshing={p2pLoading} onRefresh={loadP2PData} />
+          }
+        >
+          {/* Personal/Business Toggle - only show if user is a Micro Merchant */}
+          {isMicroMerchant && (
+            <View style={styles.p2pModeToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.p2pModeButton,
+                  p2pMode === 'personal' && styles.p2pModeButtonActive,
+                ]}
+                onPress={() => handleP2PModeChange('personal')}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.p2pModeButtonText,
+                  p2pMode === 'personal' && styles.p2pModeButtonTextActive,
+                ]}>
+                  Personal
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.p2pModeButton,
+                  styles.p2pModeButtonBusiness,
+                  p2pMode === 'business' && styles.p2pModeButtonBusinessActive,
+                ]}
+                onPress={() => handleP2PModeChange('business')}
+                activeOpacity={0.7}
+              >
+                <Text style={[
+                  styles.p2pModeButtonText,
+                  p2pMode === 'business' && styles.p2pModeButtonTextActive,
+                ]}>
+                  Business
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Render content based on mode */}
+          {p2pMode === 'personal' ? renderPersonalMode() : renderBusinessMode()}
         </ScrollView>
       );
     };
 
+    // Home screen main return
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
@@ -1754,11 +2175,9 @@ export default function App() {
           </View>
 
           {/* Tab Content */}
-          <View style={styles.tabContent}>
-            {activeHomeTab === 'cards' ? renderCardsTab() : renderP2PTab()}
-          </View>
+          {activeHomeTab === 'cards' ? renderCardsTab() : renderP2PTab()}
 
-          {/* Bottom Tab Bar */}
+          {/* Bottom Tabs */}
           <View style={styles.bottomTabBar}>
             <TouchableOpacity
               style={[styles.bottomTab, activeHomeTab === 'cards' && styles.bottomTabActive]}
@@ -1775,7 +2194,6 @@ export default function App() {
                 Cards
               </Text>
             </TouchableOpacity>
-
             <TouchableOpacity
               style={[styles.bottomTab, activeHomeTab === 'p2p' && styles.bottomTabActive]}
               onPress={() => {
@@ -1783,6 +2201,9 @@ export default function App() {
                 // Check P2P enrollment when switching to tab
                 if (!p2pEnrolled && !p2pLoading) {
                   checkP2PEnrollment();
+                } else if (p2pEnrolled && !p2pLoading) {
+                  // Refresh P2P data when switching to tab (now safe with sanitization)
+                  loadP2PData();
                 }
               }}
               activeOpacity={0.7}
@@ -2242,10 +2663,24 @@ export default function App() {
           recipientAlias.trim(),
           parseFloat(sendAmount),
           selectedAccount.accountId,
+          selectedAccount.bsimId,
           sendNote.trim() || undefined
         );
         setCompletedTransfer(result);
         setSendStep('success');
+
+        // Poll for final status after 1 second (transfers typically complete in <1s)
+        setTimeout(async () => {
+          try {
+            const updatedTransfer = await transferSimApi.getTransfer(result.transferId);
+            setCompletedTransfer({ transferId: updatedTransfer.transferId, status: updatedTransfer.status });
+            // Also refresh P2P data in background to update balances and transfer list
+            loadP2PData();
+          } catch (e) {
+            console.log('[Send] Status poll failed:', e);
+            // Keep showing initial status if poll fails
+          }
+        }, 1000);
       } catch (e: any) {
         console.error('[Send] Transfer failed:', e);
         Alert.alert('Transfer Failed', e.response?.data?.message || 'Failed to send money. Please try again.');
@@ -2268,14 +2703,45 @@ export default function App() {
 
     // Success Screen
     if (sendStep === 'success' && completedTransfer) {
+      // Determine status category for display
+      const status = completedTransfer.status;
+      const isProcessing = ['PENDING', 'RESOLVING', 'DEBITING', 'CREDITING'].includes(status);
+      const isSuccess = status === 'COMPLETED';
+      const isFailed = ['DEBIT_FAILED', 'CREDIT_FAILED', 'CANCELLED', 'EXPIRED', 'REVERSED', 'RECIPIENT_NOT_FOUND'].includes(status);
+
+      // Status display config
+      const statusConfig = isSuccess
+        ? { icon: '✓', title: 'Transfer Complete!', color: '#22c55e', bgColor: '#dcfce7' }
+        : isFailed
+        ? { icon: '✕', title: 'Transfer Failed', color: '#ef4444', bgColor: '#fee2e2' }
+        : { icon: '⏳', title: 'Processing...', color: '#f59e0b', bgColor: '#fef3c7' };
+
+      // User-friendly status text
+      const getStatusText = () => {
+        switch (status) {
+          case 'COMPLETED': return 'Transfer complete';
+          case 'PENDING': return 'Initiating transfer...';
+          case 'RESOLVING': return 'Finding recipient...';
+          case 'DEBITING': return 'Debiting your account...';
+          case 'CREDITING': return 'Crediting recipient...';
+          case 'DEBIT_FAILED': return 'Failed to debit account';
+          case 'CREDIT_FAILED': return 'Failed to credit recipient';
+          case 'CANCELLED': return 'Transfer cancelled';
+          case 'EXPIRED': return 'Transfer expired';
+          case 'REVERSED': return 'Transfer reversed';
+          case 'RECIPIENT_NOT_FOUND': return 'Recipient not found';
+          default: return status;
+        }
+      };
+
       return (
         <View style={styles.container}>
           <StatusBar style="dark" />
           <View style={styles.sendSuccessContent}>
-            <View style={styles.sendSuccessIcon}>
-              <Text style={{ fontSize: 64 }}>✓</Text>
+            <View style={[styles.sendSuccessIcon, { backgroundColor: statusConfig.bgColor }]}>
+              <Text style={{ fontSize: 64, color: statusConfig.color }}>{statusConfig.icon}</Text>
             </View>
-            <Text style={styles.sendSuccessTitle}>Money Sent!</Text>
+            <Text style={styles.sendSuccessTitle}>{statusConfig.title}</Text>
             <Text style={styles.sendSuccessAmount}>
               ${parseFloat(sendAmount).toFixed(2)} CAD
             </Text>
@@ -2285,8 +2751,8 @@ export default function App() {
             {sendNote ? (
               <Text style={styles.sendSuccessNote}>"{sendNote}"</Text>
             ) : null}
-            <Text style={styles.sendSuccessStatus}>
-              Status: {completedTransfer.status}
+            <Text style={[styles.sendSuccessStatus, { color: statusConfig.color }]}>
+              {getStatusText()}
             </Text>
             <TouchableOpacity
               style={[styles.primaryButton, { marginTop: 32, width: '100%' }]}
@@ -2665,7 +3131,7 @@ export default function App() {
                     styles.historyItemAmount,
                     { color: transfer.direction === 'sent' ? '#ef4444' : '#22c55e' }
                   ]}>
-                    {transfer.direction === 'sent' ? '-' : '+'}${transfer.amount.toFixed(2)}
+                    {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
                   </Text>
                 </TouchableOpacity>
               ))
@@ -2761,7 +3227,7 @@ export default function App() {
                 styles.transferDetailAmount,
                 { color: isSent ? '#dc2626' : '#16a34a' }
               ]}>
-                {isSent ? '-' : '+'}${selectedTransfer.amount.toFixed(2)} {selectedTransfer.currency}
+                {isSent ? '-' : '+'}${Number(selectedTransfer.amount || 0).toFixed(2)} {selectedTransfer.currency}
               </Text>
               <View style={[
                 styles.transferDetailStatusBadge,
@@ -2857,7 +3323,8 @@ export default function App() {
           tokenId = tokenMatch[1];
         }
 
-        const resolved = await transferSimApi.resolveToken(tokenId);
+        // Use merchant-aware token resolution to get recipientType
+        const resolved = await transferSimApi.resolveTokenWithMerchantInfo(tokenId);
         setResolvedToken(resolved);
 
         // Pre-fill amount if specified in token
@@ -2908,6 +3375,7 @@ export default function App() {
           resolvedToken.recipientAlias,
           amount,
           p2pSelectedAccount.accountId,
+          p2pSelectedAccount.bsimId,
           p2pSendNote.trim() || undefined
         );
 
@@ -2958,14 +3426,36 @@ export default function App() {
             </View>
 
             <ScrollView style={styles.p2pQrConfirmScroll} showsVerticalScrollIndicator={false}>
-              {/* Recipient Card */}
-              <View style={styles.p2pQrRecipientCard}>
-                <View style={styles.p2pQrRecipientIcon}>
-                  <Text style={{ fontSize: 32 }}>👤</Text>
+              {/* Recipient Card - Visual differentiation based on recipientType */}
+              <View style={[
+                styles.p2pQrRecipientCard,
+                resolvedToken.recipientType === 'merchant' && styles.p2pQrRecipientCardMerchant
+              ]}>
+                <View style={[
+                  styles.p2pQrRecipientIcon,
+                  resolvedToken.recipientType === 'merchant' && styles.p2pQrRecipientIconMerchant
+                ]}>
+                  <Text style={{ fontSize: 32 }}>
+                    {resolvedToken.recipientType === 'merchant' ? '🏪' : '👤'}
+                  </Text>
                 </View>
-                <Text style={styles.p2pQrRecipientName}>{resolvedToken.recipientDisplayName}</Text>
+                {/* Show merchant badge if applicable */}
+                {resolvedToken.recipientType === 'merchant' && (
+                  <View style={styles.p2pMerchantBadge}>
+                    <Text style={styles.p2pMerchantBadgeText}>Micro Merchant</Text>
+                  </View>
+                )}
+                <Text style={styles.p2pQrRecipientName}>
+                  {resolvedToken.merchantName || resolvedToken.recipientDisplayName}
+                </Text>
                 <Text style={styles.p2pQrRecipientAlias}>{resolvedToken.recipientAlias}</Text>
                 <Text style={styles.p2pQrRecipientBank}>{resolvedToken.recipientBankName}</Text>
+                {/* Fee notice for merchant payments */}
+                {resolvedToken.recipientType === 'merchant' && (
+                  <Text style={styles.p2pMerchantFeeNote}>
+                    Merchant pays a small fee • You pay the full amount
+                  </Text>
+                )}
               </View>
 
               {/* Amount Input */}
@@ -3143,6 +3633,155 @@ export default function App() {
                 </TouchableOpacity>
               </>
             )}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // Merchant Enrollment Screen
+  if (currentScreen === 'merchantEnrollment') {
+    return (
+      <View style={styles.container}>
+        <StatusBar style="dark" />
+        <View style={styles.merchantEnrollContent}>
+          {/* Header */}
+          <View style={styles.merchantEnrollHeader}>
+            <TouchableOpacity
+              onPress={() => {
+                setCurrentScreen('home');
+                setActiveHomeTab('p2p');
+              }}
+            >
+              <Text style={styles.backButton}>← Back</Text>
+            </TouchableOpacity>
+            <Text style={styles.merchantEnrollTitle}>Become a Merchant</Text>
+            <View style={{ width: 50 }} />
+          </View>
+
+          <ScrollView style={styles.merchantEnrollScroll} showsVerticalScrollIndicator={false}>
+            {/* Hero */}
+            <View style={styles.merchantEnrollHero}>
+              <Text style={{ fontSize: 48 }}>🏪</Text>
+              <Text style={styles.merchantEnrollHeroTitle}>Accept Business Payments</Text>
+              <Text style={styles.merchantEnrollHeroSubtitle}>
+                Set up a Micro Merchant profile to receive payments with a professional identity
+              </Text>
+            </View>
+
+            {/* Fee Info */}
+            <View style={styles.merchantEnrollFeeCard}>
+              <Text style={styles.merchantEnrollFeeTitle}>Simple, Transparent Fees</Text>
+              <View style={styles.merchantEnrollFeeRow}>
+                <Text style={styles.merchantEnrollFeeLabel}>Under $200</Text>
+                <Text style={styles.merchantEnrollFeeValue}>$0.25/transaction</Text>
+              </View>
+              <View style={styles.merchantEnrollFeeRow}>
+                <Text style={styles.merchantEnrollFeeLabel}>$200 or more</Text>
+                <Text style={styles.merchantEnrollFeeValue}>$0.50/transaction</Text>
+              </View>
+              <Text style={styles.merchantEnrollFeeNote}>
+                Fees are deducted automatically. No monthly fees or minimums.
+              </Text>
+            </View>
+
+            {/* Business Name */}
+            <View style={styles.merchantEnrollSection}>
+              <Text style={styles.merchantEnrollLabel}>Business Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="e.g., Java Joe's Coffee"
+                value={merchantBusinessName}
+                onChangeText={setMerchantBusinessName}
+                maxLength={50}
+              />
+            </View>
+
+            {/* Category */}
+            <View style={styles.merchantEnrollSection}>
+              <Text style={styles.merchantEnrollLabel}>Business Category</Text>
+              <View style={styles.merchantCategoryGrid}>
+                {(Object.entries(MERCHANT_CATEGORIES) as [MerchantCategory, { label: string; icon: string }][]).map(
+                  ([key, { label, icon }]) => (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.merchantCategoryOption,
+                        merchantCategory === key && styles.merchantCategoryOptionActive,
+                      ]}
+                      onPress={() => setMerchantCategory(key)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.merchantCategoryIcon}>{icon}</Text>
+                      <Text
+                        style={[
+                          styles.merchantCategoryLabel,
+                          merchantCategory === key && styles.merchantCategoryLabelActive,
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                )}
+              </View>
+            </View>
+
+            {/* Receiving Account */}
+            <View style={styles.merchantEnrollSection}>
+              <Text style={styles.merchantEnrollLabel}>Receiving Account</Text>
+              <Text style={styles.merchantEnrollHint}>
+                Payments will be deposited to this account
+              </Text>
+              {bankAccounts.map((account) => (
+                <TouchableOpacity
+                  key={account.accountId}
+                  style={[
+                    styles.accountOption,
+                    merchantReceivingAccount?.accountId === account.accountId &&
+                      styles.accountOptionSelected,
+                  ]}
+                  onPress={() => setMerchantReceivingAccount(account)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.accountOptionInfo}>
+                    <Text style={styles.accountOptionName}>{account.displayName}</Text>
+                    <Text style={styles.accountOptionBank}>{account.bankName}</Text>
+                  </View>
+                  {merchantReceivingAccount?.accountId === account.accountId && (
+                    <Text style={styles.accountOptionCheck}>✓</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Error */}
+            {merchantEnrollError && (
+              <Text style={styles.errorText}>{merchantEnrollError}</Text>
+            )}
+          </ScrollView>
+
+          {/* Enroll Button */}
+          <View style={styles.merchantEnrollActions}>
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                styles.merchantEnrollButton,
+                (!merchantBusinessName.trim() || !merchantReceivingAccount) && styles.buttonDisabled,
+              ]}
+              onPress={handleMerchantEnrollment}
+              disabled={!merchantBusinessName.trim() || !merchantReceivingAccount || merchantEnrollLoading}
+              activeOpacity={0.7}
+            >
+              {merchantEnrollLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>Start Accepting Payments</Text>
+              )}
+            </TouchableOpacity>
+            <Text style={styles.merchantEnrollDisclaimer}>
+              By enrolling, you agree to the Micro Merchant terms and fee structure
+            </Text>
           </View>
         </View>
       </View>
@@ -5402,12 +6041,16 @@ const styles = StyleSheet.create({
   },
   p2pQrRecipientCard: {
     alignItems: 'center',
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#EDE9FE',  // Purple tint for individual
     padding: 24,
     borderRadius: 16,
     marginBottom: 24,
-    borderWidth: 1,
-    borderColor: '#86efac',
+    borderWidth: 2,
+    borderColor: '#7C3AED',  // Purple for individual
+  },
+  p2pQrRecipientCardMerchant: {
+    backgroundColor: '#D1FAE5',  // Green tint for merchant
+    borderColor: '#10B981',  // Green for merchant
   },
   p2pQrRecipientIcon: {
     width: 64,
@@ -5417,6 +6060,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+    borderWidth: 2,
+    borderColor: '#7C3AED',  // Purple for individual
+  },
+  p2pQrRecipientIconMerchant: {
+    borderColor: '#10B981',  // Green for merchant
+  },
+  p2pMerchantBadge: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  p2pMerchantBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   p2pQrRecipientName: {
     fontSize: 20,
@@ -5426,7 +6086,7 @@ const styles = StyleSheet.create({
   },
   p2pQrRecipientAlias: {
     fontSize: 14,
-    color: '#16a34a',
+    color: '#7C3AED',  // Purple for individual
     fontWeight: '500',
     marginBottom: 4,
   },
@@ -5434,10 +6094,391 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
   },
+  p2pMerchantFeeNote: {
+    fontSize: 12,
+    color: '#059669',  // Green
+    fontStyle: 'italic',
+    marginTop: 8,
+    textAlign: 'center',
+  },
   p2pQrFixedAmountNote: {
     fontSize: 12,
     color: '#6b7280',
     fontStyle: 'italic',
     marginTop: 4,
+  },
+  // P2P Mode Toggle styles
+  p2pModeToggle: {
+    flexDirection: 'row',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 24,
+  },
+  p2pModeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  p2pModeButtonActive: {
+    backgroundColor: '#7C3AED',
+    shadowColor: '#7C3AED',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  p2pModeButtonBusiness: {
+    // Base styles for business button (inactive)
+  },
+  p2pModeButtonBusinessActive: {
+    backgroundColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  p2pModeButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  p2pModeButtonTextActive: {
+    color: '#ffffff',
+  },
+  // Merchant CTA Card styles
+  merchantCTACard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+  },
+  merchantCTAIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  merchantCTAContent: {
+    flex: 1,
+  },
+  merchantCTATitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#065F46',
+    marginBottom: 4,
+  },
+  merchantCTASubtitle: {
+    fontSize: 13,
+    color: '#047857',
+    lineHeight: 18,
+  },
+  merchantCTAArrow: {
+    fontSize: 20,
+    color: '#10B981',
+    fontWeight: '600',
+  },
+  // Merchant Dashboard styles
+  merchantDashboardHeader: {
+    alignItems: 'center',
+    backgroundColor: '#D1FAE5',
+    borderRadius: 16,
+    padding: 24,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#6EE7B7',
+  },
+  merchantBusinessName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#065F46',
+    marginBottom: 4,
+  },
+  merchantAlias: {
+    fontSize: 16,
+    color: '#047857',
+    marginBottom: 12,
+  },
+  merchantBadge: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  merchantBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  // Merchant QR Section styles
+  merchantQRSection: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    alignItems: 'center',
+  },
+  merchantQRTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 16,
+  },
+  merchantQRContainer: {
+    width: 200,
+    height: 200,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  merchantQRCode: {
+    alignItems: 'center',
+  },
+  merchantQRPlaceholder: {
+    fontSize: 64,
+    marginBottom: 8,
+  },
+  merchantQRHint: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
+  },
+  merchantGenerateQRButton: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 10,
+  },
+  merchantGenerateQRText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  merchantQRActions: {
+    flexDirection: 'row',
+    marginTop: 16,
+    gap: 12,
+  },
+  merchantQRAction: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#D1FAE5',
+  },
+  merchantQRActionText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#047857',
+  },
+  // Merchant Stats styles
+  merchantStatsSection: {
+    flexDirection: 'row',
+    marginBottom: 24,
+    gap: 12,
+  },
+  merchantStatCard: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  merchantStatValue: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#10B981',
+    marginBottom: 4,
+  },
+  merchantStatLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+  },
+  // Merchant Transfer List styles
+  merchantTransferItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  merchantTransferAmounts: {
+    alignItems: 'flex-end',
+  },
+  merchantTransferGross: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#10B981',
+  },
+  merchantTransferFee: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  merchantEmptyHint: {
+    fontSize: 13,
+    color: '#9ca3af',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  // Merchant Enrollment Screen styles
+  merchantEnrollContent: {
+    flex: 1,
+    paddingTop: 60,
+  },
+  merchantEnrollHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  merchantEnrollTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  merchantEnrollScroll: {
+    flex: 1,
+    padding: 24,
+  },
+  merchantEnrollHero: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  merchantEnrollHeroTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  merchantEnrollHeroSubtitle: {
+    fontSize: 15,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 16,
+  },
+  merchantEnrollFeeCard: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 32,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  merchantEnrollFeeTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#92400E',
+    marginBottom: 12,
+  },
+  merchantEnrollFeeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  merchantEnrollFeeLabel: {
+    fontSize: 14,
+    color: '#78350F',
+  },
+  merchantEnrollFeeValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#92400E',
+  },
+  merchantEnrollFeeNote: {
+    fontSize: 12,
+    color: '#B45309',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  merchantEnrollSection: {
+    marginBottom: 24,
+  },
+  merchantEnrollLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  merchantEnrollHint: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  merchantCategoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  merchantCategoryOption: {
+    width: '48%',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+  },
+  merchantCategoryOptionActive: {
+    backgroundColor: '#D1FAE5',
+    borderColor: '#10B981',
+  },
+  merchantCategoryIcon: {
+    fontSize: 24,
+    marginBottom: 8,
+  },
+  merchantCategoryLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#6b7280',
+    textAlign: 'center',
+  },
+  merchantCategoryLabelActive: {
+    color: '#065F46',
+    fontWeight: '600',
+  },
+  merchantEnrollActions: {
+    padding: 24,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  merchantEnrollButton: {
+    backgroundColor: '#10B981',
+  },
+  merchantEnrollDisclaimer: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 12,
+    lineHeight: 16,
   },
 });

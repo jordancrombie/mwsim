@@ -21,6 +21,13 @@ const DEFAULTS_REGISTRATION_CODE = `
     UserDefaults.standard.register(defaults: defaultsToRegister)
     print("[Settings] Registered defaults: \\(defaultsToRegister)")
   }
+
+  // Set version and build info in Settings
+  let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
+  let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
+  UserDefaults.standard.set(version, forKey: "version_preference")
+  UserDefaults.standard.set(build, forKey: "build_preference")
+  print("[Settings] Version: \\(version), Build: \\(build)")
 `;
 
 const withSettingsDefaults = (config) => {
