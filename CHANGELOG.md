@@ -2,6 +2,34 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.4.1] - 2026-01-04 - P2P Transfer Details Investigation
+
+### Investigation (Build 54)
+- **TransferSim API Issues Identified**
+  - Added debug logging to diagnose P2P transfer display issues
+  - Identified three backend bugs in TransferSim API:
+
+1. **Alias Lookup Missing Display Name**
+   - Endpoint: `GET /api/v1/aliases/lookup`
+   - Issue: Response doesn't include `displayName` field
+   - Impact: Recipient confirmation only shows bank name, not user's name
+
+2. **Received Transfers Missing Sender Info**
+   - Endpoint: `GET /api/v1/transfers`
+   - Issue: Response missing `senderAlias`, `senderDisplayName`, `senderBankName`
+   - Impact: Transfer history shows "Unknown" for received transfers
+
+3. **Direction Filter Ignored**
+   - Endpoint: `GET /api/v1/transfers?direction=sent`
+   - Issue: `direction` query param is ignored, returns all transfers
+   - Impact: All/Sent/Received filter buttons don't work
+
+### Added
+- Debug logging for `lookupAlias()` response
+- Debug logging for `getTransfers()` with direction param and response
+
+---
+
 ## [1.4.0] - 2026-01-03 - P2P Transfer Integration & Micro Merchants
 
 ### Improved (Build 53)
