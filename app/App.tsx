@@ -27,6 +27,7 @@ import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
 import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
 import { transferSimApi } from './src/services/transferSim';
+import * as notificationService from './src/services/notifications';
 import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './src/config/env';
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
@@ -193,6 +194,11 @@ export default function App() {
     todayTransactionCount: number;
     weekRevenue: number;
   } | null>(null);
+
+  // Push notification state
+  const [notificationsRequested, setNotificationsRequested] = useState(false);
+  const notificationListenerRef = useRef<any>(null);
+  const notificationResponseRef = useRef<any>(null);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -553,6 +559,106 @@ export default function App() {
       console.log('[initializeApp] Splash hidden, done!');
     }
   };
+
+  /**
+   * Initialize push notifications
+   * Per M3: Request after first successful login, not on app install
+   */
+  const initializeNotifications = async () => {
+    if (!deviceId || notificationsRequested) {
+      return;
+    }
+
+    console.log('[Notifications] Initializing push notifications...');
+
+    // Check for notification that launched the app (when killed)
+    const initialDeepLink = await notificationService.getInitialNotification();
+    if (initialDeepLink) {
+      console.log('[Notifications] App launched from notification:', initialDeepLink);
+      handleNotificationDeepLink(initialDeepLink);
+    }
+
+    // Request permissions and register token
+    const registration = await notificationService.registerForPushNotifications(deviceId);
+    if (registration) {
+      console.log('[Notifications] Token registered locally:', registration.pushToken);
+
+      // Send to WSIM (will fail gracefully if endpoint not ready)
+      try {
+        await api.registerPushToken(registration);
+      } catch (e) {
+        // Expected to fail until WSIM Phase 1 is complete
+        console.log('[Notifications] WSIM registration pending - endpoint not ready');
+      }
+    }
+
+    setNotificationsRequested(true);
+  };
+
+  /**
+   * Handle deep link from push notification
+   * Navigate to the appropriate screen based on the URL
+   */
+  const handleNotificationDeepLink = async (url: string) => {
+    console.log('[Notifications] Handling deep link:', url);
+
+    // Parse mwsim://transfer/p2p_abc123
+    const transferMatch = url.match(/mwsim:\/\/transfer\/(.+)/);
+    if (transferMatch) {
+      const transferId = transferMatch[1];
+      console.log('[Notifications] Deep linking to transfer:', transferId);
+
+      try {
+        // Fetch the transfer details
+        const transfer = await transferSimApi.getTransferById(transferId);
+        setSelectedTransfer(transfer);
+        setCurrentScreen('transferDetail');
+      } catch (e) {
+        console.error('[Notifications] Failed to fetch transfer:', e);
+        // Fall back to transfer history
+        setCurrentScreen('transferHistory');
+      }
+    }
+  };
+
+  /**
+   * Set up notification listeners when user is authenticated
+   */
+  useEffect(() => {
+    if (!user || !deviceId) {
+      return;
+    }
+
+    // Initialize notifications on login (per M3)
+    initializeNotifications();
+
+    // Set up foreground notification listener
+    notificationListenerRef.current = notificationService.addNotificationReceivedListener(
+      (notification) => {
+        console.log('[Notifications] Foreground notification received:', notification.request.content);
+        // Notification will be shown automatically by the handler
+      }
+    );
+
+    // Set up notification tap listener
+    notificationResponseRef.current = notificationService.addNotificationResponseListener(
+      (response) => {
+        const deepLink = notificationService.handleNotificationResponse(response);
+        if (deepLink) {
+          handleNotificationDeepLink(deepLink);
+        }
+      }
+    );
+
+    return () => {
+      if (notificationListenerRef.current) {
+        notificationListenerRef.current.remove();
+      }
+      if (notificationResponseRef.current) {
+        notificationResponseRef.current.remove();
+      }
+    };
+  }, [user, deviceId]);
 
   const handleCreateAccount = async () => {
     if (!email.trim() || !name.trim()) {

@@ -1,0 +1,11 @@
+# Local deployment plans and proposals (not for version control)
+LOCAL_DEPLOYMENT_PLANS/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

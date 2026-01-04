@@ -1,0 +1,268 @@
+/**
+ * Push Notification Service
+ *
+ * Handles push notification registration, permissions, and event handling.
+ * Phase 3 of Push Notification Project.
+ *
+ * @see LOCAL_DEPLOYMENT_PLANS/PUSH_NOTIFICATION_PROPOSAL.md
+ */
+
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { Platform, Linking } from 'react-native';
+import Constants from 'expo-constants';
+
+// Types
+export interface PushTokenRegistration {
+  deviceId: string;
+  pushToken: string;
+  platform: 'ios' | 'android';
+  tokenType: 'expo';
+}
+
+export interface NotificationData {
+  type: 'transfer.received' | 'transfer.completed' | 'transfer.failed' | 'auth.challenge';
+  transferId?: string;
+  deepLink?: string;
+}
+
+// Configure notification handler for foreground notifications
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    priority: Notifications.AndroidNotificationPriority.HIGH,
+  }),
+});
+
+/**
+ * Check if push notifications are supported on this device
+ */
+export function isPushNotificationsSupported(): boolean {
+  return Device.isDevice;
+}
+
+/**
+ * Get current notification permission status
+ */
+export async function getNotificationPermissionStatus(): Promise<Notifications.PermissionStatus> {
+  const { status } = await Notifications.getPermissionsAsync();
+  return status;
+}
+
+/**
+ * Request notification permissions from the user
+ * Per M3: Request after first successful login, not on app install
+ *
+ * @returns true if permission granted, false otherwise
+ */
+export async function requestNotificationPermissions(): Promise<boolean> {
+  if (!Device.isDevice) {
+    console.log('[Notifications] Push notifications not supported on simulator');
+    return false;
+  }
+
+  const { status: existingStatus } = await Notifications.getPermissionsAsync();
+
+  if (existingStatus === 'granted') {
+    console.log('[Notifications] Permission already granted');
+    return true;
+  }
+
+  const { status } = await Notifications.requestPermissionsAsync();
+
+  if (status === 'granted') {
+    console.log('[Notifications] Permission granted');
+    return true;
+  }
+
+  console.log('[Notifications] Permission denied');
+  return false;
+}
+
+/**
+ * Get the Expo push token for this device
+ *
+ * @returns The push token string, or null if unavailable
+ */
+export async function getExpoPushToken(): Promise<string | null> {
+  if (!Device.isDevice) {
+    console.log('[Notifications] Push tokens not available on simulator');
+    return null;
+  }
+
+  try {
+    // Get project ID from app config
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+
+    if (!projectId) {
+      console.warn('[Notifications] No EAS project ID found - using fallback');
+    }
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: projectId || undefined,
+    });
+
+    console.log('[Notifications] Got push token:', tokenData.data);
+    return tokenData.data;
+  } catch (error) {
+    console.error('[Notifications] Error getting push token:', error);
+    return null;
+  }
+}
+
+/**
+ * Register for push notifications
+ * Requests permission and gets the push token
+ *
+ * @returns PushTokenRegistration or null if failed
+ */
+export async function registerForPushNotifications(
+  deviceId: string
+): Promise<PushTokenRegistration | null> {
+  const hasPermission = await requestNotificationPermissions();
+
+  if (!hasPermission) {
+    return null;
+  }
+
+  const pushToken = await getExpoPushToken();
+
+  if (!pushToken) {
+    return null;
+  }
+
+  return {
+    deviceId,
+    pushToken,
+    platform: Platform.OS as 'ios' | 'android',
+    tokenType: 'expo',
+  };
+}
+
+/**
+ * Handle notification tap - extract deep link and navigate
+ * Per M4: Use GET /transfers/:id for deep linking
+ *
+ * @param response The notification response from user interaction
+ * @returns The deep link URL if present
+ */
+export function handleNotificationResponse(
+  response: Notifications.NotificationResponse
+): string | null {
+  const rawData = response.notification.request.content.data;
+
+  if (!rawData || typeof rawData !== 'object') {
+    console.log('[Notifications] No data in notification');
+    return null;
+  }
+
+  // Cast with type guard
+  const data = rawData as Record<string, unknown>;
+
+  console.log('[Notifications] Handling notification tap:', data);
+
+  // Use deep link if provided, otherwise construct from transferId
+  if (typeof data.deepLink === 'string') {
+    return data.deepLink;
+  }
+
+  if (typeof data.transferId === 'string') {
+    return `mwsim://transfer/${data.transferId}`;
+  }
+
+  return null;
+}
+
+/**
+ * Check for notification that launched the app (when app was killed)
+ * Per M2: Use getLastNotificationResponseAsync on app launch
+ *
+ * @returns The deep link URL if app was launched from notification
+ */
+export async function getInitialNotification(): Promise<string | null> {
+  const response = await Notifications.getLastNotificationResponseAsync();
+
+  if (!response) {
+    return null;
+  }
+
+  console.log('[Notifications] App launched from notification');
+  return handleNotificationResponse(response);
+}
+
+/**
+ * Add listener for notification received while app is in foreground
+ */
+export function addNotificationReceivedListener(
+  callback: (notification: Notifications.Notification) => void
+): Notifications.Subscription {
+  return Notifications.addNotificationReceivedListener(callback);
+}
+
+/**
+ * Add listener for notification tap/interaction
+ */
+export function addNotificationResponseListener(
+  callback: (response: Notifications.NotificationResponse) => void
+): Notifications.Subscription {
+  return Notifications.addNotificationResponseReceivedListener(callback);
+}
+
+/**
+ * Clear all delivered notifications
+ */
+export async function clearAllNotifications(): Promise<void> {
+  await Notifications.dismissAllNotificationsAsync();
+}
+
+/**
+ * Set the app badge count (iOS only)
+ */
+export async function setBadgeCount(count: number): Promise<void> {
+  await Notifications.setBadgeCountAsync(count);
+}
+
+/**
+ * Get the current badge count
+ */
+export async function getBadgeCount(): Promise<number> {
+  return Notifications.getBadgeCountAsync();
+}
+
+/**
+ * Open system settings for notification permissions
+ * Useful when user previously denied and wants to enable
+ */
+export async function openNotificationSettings(): Promise<void> {
+  if (Platform.OS === 'ios') {
+    await Linking.openSettings();
+  } else {
+    await Linking.openSettings();
+  }
+}
+
+/**
+ * Schedule a local notification for testing
+ * Only use during development
+ */
+export async function scheduleTestNotification(): Promise<void> {
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Money Received!',
+      body: 'Test User sent you $50.00 CAD',
+      data: {
+        type: 'transfer.received',
+        transferId: 'test_123',
+        deepLink: 'mwsim://transfer/test_123',
+      },
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 2,
+    },
+  });
+}
