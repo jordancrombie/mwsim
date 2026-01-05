@@ -10,49 +10,54 @@ This file contains important instructions and procedures for Claude Code when wo
 
 ## iOS Build & TestFlight Upload
 
-### Automatic TestFlight Upload (IMPORTANT - DO NOT FORGET)
+### TestFlight Upload Procedure
 
-Claude CAN automatically upload builds to TestFlight using `xcodebuild`. Here's the complete procedure:
+Claude CAN automatically upload builds to TestFlight. **IMPORTANT: Only upload when explicitly requested by user/team.**
 
-#### 1. Bump Build Number
+#### Step 1: Bump Build Number
 Edit `app/app.json` and increment `ios.buildNumber`.
 
-#### 2. Prebuild
+#### Step 2: Prebuild
 ```bash
 cd /Users/jcrombie/ai/mwsim/app
-npx expo prebuild --clean --platform ios
+npx expo prebuild --clean
 ```
 
-#### 3. Create Archive (in custom Organizer location)
+#### Step 3: Create Archive
 ```bash
-cd /Users/jcrombie/ai/mwsim/app
+cd /Users/jcrombie/ai/mwsim/app/ios
 LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 xcodebuild \
-  -workspace ios/mwsim.xcworkspace \
+  -workspace mwsim.xcworkspace \
   -scheme mwsim \
   -configuration Release \
-  -sdk iphoneos \
-  -archivePath /Users/jcrombie/ai/AppBuilds/IOS/Archives/$(date +%Y-%m-%d)/mwsim.xcarchive \
+  -archivePath /Users/jcrombie/ai/AppBuilds/IOS/Archives/mwsim-VERSION-BUILD.xcarchive \
   archive \
   CODE_SIGN_STYLE=Automatic \
   DEVELOPMENT_TEAM=ZJHD6JAC94
 ```
 
-**Note:** Archives are stored in `/Users/jcrombie/ai/AppBuilds/IOS/Archives/` (custom location), NOT the default `~/Library/Developer/Xcode/Archives/`.
+**Note:** Replace `VERSION-BUILD` with actual version (e.g., `mwsim-1.5.2-58.xcarchive`).
+Archives are stored in `/Users/jcrombie/ai/AppBuilds/IOS/Archives/` (custom location).
 
-#### 4. Export and Upload to TestFlight
+#### Step 4: Export IPA
 ```bash
-xcodebuild -allowProvisioningUpdates \
-  -exportArchive \
-  -archivePath /Users/jcrombie/ai/AppBuilds/IOS/Archives/$(date +%Y-%m-%d)/mwsim.xcarchive \
-  -exportPath /Users/jcrombie/ai/AppBuilds/IOS/Exports \
+xcodebuild -exportArchive \
+  -archivePath /Users/jcrombie/ai/AppBuilds/IOS/Archives/mwsim-VERSION-BUILD.xcarchive \
+  -exportPath /Users/jcrombie/ai/AppBuilds/IOS/Export \
   -exportOptionsPlist /Users/jcrombie/ai/mwsim/app/ExportOptions.plist
 ```
 
-**Key flags:**
-- `-allowProvisioningUpdates`: Lets Xcode automatically fetch/regenerate provisioning profiles with required capabilities (like Push Notifications)
-- The ExportOptions.plist specifies `method: app-store-connect` and `destination: upload`
+#### Step 5: Upload to TestFlight (API Key Method)
+```bash
+xcrun altool --upload-app --type ios \
+  --file /Users/jcrombie/ai/AppBuilds/IOS/Export/mwsim.ipa \
+  --apiKey 649V537DQX \
+  --apiIssuer 69a6de71-3b4e-47e3-e053-5b8c7c11a4d1
+```
 
-#### ExportOptions.plist Content
+**API Key Location:** `~/.private_keys/AuthKey_649V537DQX.p8`
+
+#### ExportOptions.plist
 Located at `/Users/jcrombie/ai/mwsim/app/ExportOptions.plist`:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -64,9 +69,9 @@ Located at `/Users/jcrombie/ai/mwsim/app/ExportOptions.plist`:
     <key>teamID</key>
     <string>ZJHD6JAC94</string>
     <key>uploadSymbols</key>
-    <false/>
-    <key>destination</key>
-    <string>upload</string>
+    <true/>
+    <key>signingStyle</key>
+    <string>automatic</string>
 </dict>
 </plist>
 ```
@@ -74,9 +79,7 @@ Located at `/Users/jcrombie/ai/mwsim/app/ExportOptions.plist`:
 ### Expected Output
 Successful upload shows:
 ```
-Progress 46%: Upload succeeded.
-Uploaded mwsim
-** EXPORT SUCCEEDED **
+No errors uploading 'path/to/mwsim.ipa'
 ```
 
 Build will then process in App Store Connect (5-15 minutes) before appearing in TestFlight.
