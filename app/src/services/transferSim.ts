@@ -469,8 +469,8 @@ export const transferSimApi = {
    * PUT /api/v1/micro-merchants/me
    */
   async updateMerchantProfile(updates: {
-    businessName?: string;
-    category?: MerchantCategory;
+    merchantName?: string;
+    merchantCategory?: MerchantCategory;
     receivingAccountId?: string;
   }): Promise<MerchantProfile> {
     const { data } = await getTransferSimClient().put<MerchantProfile>('/api/v1/micro-merchants/me', updates);

@@ -373,20 +373,20 @@ export const api = {
 
   /**
    * Register push notification token with WSIM
-   * WSIM will store this token and use it to send notifications via Expo Push
+   * WSIM will store this token and use it to send notifications directly via APNs/FCM
    *
    * @param registration Push token registration data
    * @returns Success status
    *
-   * @note This endpoint is part of Phase 1 push notification work.
-   *       Until WSIM implements it, this will fail gracefully.
+   * @note This uses native APNs/FCM tokens for a fully self-hosted solution.
+   *       WSIM sends notifications directly to APNs/FCM without Expo's service.
    * @see LOCAL_DEPLOYMENT_PLANS/PUSH_NOTIFICATION_PROPOSAL.md
    */
   async registerPushToken(registration: {
     deviceId: string;
     pushToken: string;
     platform: 'ios' | 'android';
-    tokenType: 'expo';
+    tokenType: 'apns' | 'fcm'; // Native token types
   }): Promise<{ success: boolean; registeredAt: string }> {
     console.log('[API] registerPushToken - registering...');
     try {

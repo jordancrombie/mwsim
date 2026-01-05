@@ -14,6 +14,7 @@ import {
   RefreshControl,
   Linking,
   Image,
+  Share,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
@@ -32,6 +33,7 @@ import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './sr
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
+import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
 import { MERCHANT_CATEGORIES, P2P_THEME_COLORS } from './src/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1170,7 +1172,7 @@ export default function App() {
       if (profile) {
         setIsMicroMerchant(true);
         setMerchantProfile(profile);
-        console.log('[Merchant] Profile loaded:', profile.businessName);
+        console.log('[Merchant] Profile loaded:', profile.merchantName);
 
         // Load saved p2pMode preference
         const savedMode = await AsyncStorage.getItem('p2pMode');
@@ -1220,8 +1222,8 @@ export default function App() {
       setMerchantEnrollError(null);
 
       const profile = await transferSimApi.enrollMerchant({
-        businessName: merchantBusinessName.trim(),
-        category: merchantCategory,
+        merchantName: merchantBusinessName.trim(),
+        merchantCategory: merchantCategory,
         receivingAccountId: merchantReceivingAccount.accountId,
       });
 
@@ -1237,7 +1239,7 @@ export default function App() {
 
       Alert.alert(
         'Welcome, Merchant!',
-        `Your business "${profile.businessName}" is now set up to receive payments.`,
+        `Your business "${profile.merchantName}" is now set up to receive payments.`,
         [{ text: 'Get Started', onPress: () => setCurrentScreen('home') }]
       );
     } catch (e: any) {
@@ -1394,6 +1396,9 @@ export default function App() {
               setName('');
               setVerificationCode('');
               setError(null);
+
+              // Reset notification state so new token will be registered on next login
+              setNotificationsRequested(false);
 
               Alert.alert('Device Reset', `New device ID generated: ${newDeviceId.slice(0, 8)}...`);
             } catch (e) {
@@ -2082,7 +2087,7 @@ export default function App() {
           {/* Merchant Header */}
           <View style={styles.merchantDashboardHeader}>
             <Text style={styles.merchantBusinessName}>
-              {merchantProfile?.businessName || 'My Business'}
+              {merchantProfile?.merchantName || 'My Business'}
             </Text>
             <Text style={styles.merchantAlias}>
               {aliases.find(a => a.isPrimary)?.value || '@business'}
@@ -2094,19 +2099,20 @@ export default function App() {
 
           {/* Merchant QR Code */}
           <View style={styles.merchantQRSection}>
-            <Text style={styles.merchantQRTitle}>Payment QR Code</Text>
+            <Text style={styles.merchantQRTitle}>
+              {merchantQrToken ? `Scan to pay ${merchantProfile?.merchantName || 'merchant'}` : 'Payment QR Code'}
+            </Text>
             <View style={styles.merchantQRContainer}>
               {merchantQrLoading ? (
                 <ActivityIndicator size="large" color="#10B981" />
               ) : merchantQrToken ? (
                 <View style={styles.merchantQRCode}>
-                  <Text style={styles.merchantQRPlaceholder}>
-                    {/* QR Code would go here - using placeholder for now */}
-                    📱
-                  </Text>
-                  <Text style={styles.merchantQRHint}>
-                    Token: {merchantQrToken.tokenId.slice(0, 8)}...
-                  </Text>
+                  <QRCode
+                    value={merchantQrToken.qrPayload}
+                    size={200}
+                    backgroundColor="white"
+                    color="#065F46"
+                  />
                 </View>
               ) : (
                 <TouchableOpacity
@@ -2591,8 +2597,6 @@ export default function App() {
       }
 
       try {
-        // Use React Native Share
-        const { Share } = await import('react-native');
         await Share.share({
           message: `Send me money on mwsim! My alias is: ${primaryAlias.value}`,
         });
@@ -2628,10 +2632,13 @@ export default function App() {
                   <ActivityIndicator size="large" color="#3b82f6" />
                 ) : receiveToken ? (
                   <>
-                    {/* QR code would be displayed here with react-native-qrcode-svg */}
                     <View style={styles.receiveQRBox}>
-                      <Text style={styles.receiveQRIcon}>📱</Text>
-                      <Text style={styles.receiveQRText}>QR Code Ready</Text>
+                      <QRCode
+                        value={receiveToken.qrPayload}
+                        size={200}
+                        backgroundColor="white"
+                        color="#1e40af"
+                      />
                       <Text style={styles.receiveQRSubtext}>
                         Expires: {new Date(receiveToken.expiresAt).toLocaleTimeString()}
                       </Text>
