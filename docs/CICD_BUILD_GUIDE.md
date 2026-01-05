@@ -3,10 +3,111 @@
 This document covers both automated CI/CD builds and manual build procedures for the mwsim iOS app.
 
 ## Table of Contents
+- [Automated Builds (Buildkite)](#automated-builds-buildkite)
 - [Automated Builds (GitHub Actions)](#automated-builds-github-actions)
 - [Manual Build Steps](#manual-build-steps)
 - [Required Secrets](#required-secrets)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Automated Builds (Buildkite)
+
+### Pipeline Location
+`.buildkite/pipeline.yml`
+
+### Agent Requirements
+- **Queue**: `macos` (configure your macOS agent with this queue tag)
+- **Xcode**: 16.2+ with command line tools
+- **Node.js**: 20+ (via nvm, nodenv, or system install)
+- **CocoaPods**: Latest version
+
+### Pipeline Steps
+
+| Step | Description | Duration |
+|------|-------------|----------|
+| Setup | Xcode & Node.js selection | ~30s |
+| Dependencies | `npm ci` | ~60s |
+| Version Bump | Auto-increment build number | ~5s |
+| Expo Prebuild | Generate native iOS project | ~120s |
+| Code Signing | Setup API key | ~10s |
+| Archive | `xcodebuild archive` | ~300s |
+| Export | Create IPA from archive | ~60s |
+| Upload | Send to TestFlight | ~30s |
+| Artifacts | Upload IPA to Buildkite | ~10s |
+| Cleanup | Remove secrets | ~5s |
+
+**Total: ~10-15 minutes**
+
+### Setting Up Buildkite
+
+#### 1. Install Buildkite Agent on macOS
+```bash
+brew install buildkite/buildkite/buildkite-agent
+```
+
+#### 2. Configure Agent Tags
+Edit `~/.buildkite-agent/buildkite-agent.cfg`:
+```ini
+tags="queue=macos,os=darwin"
+```
+
+#### 3. Set Environment Variables
+Add to your agent's environment hook (`~/.buildkite-agent/hooks/environment`):
+```bash
+#!/bin/bash
+export APPLE_API_KEY_ID="649V537DQX"
+export APPLE_API_ISSUER_ID="69a6de71-3b4e-47e3-e053-5b8c7c11a4d1"
+export APPLE_TEAM_ID="ZJHD6JAC94"
+```
+
+#### 4. Store API Key as Secret
+Using Buildkite Secrets:
+```bash
+# Encode and store the API key
+base64 -i ~/.private_keys/AuthKey_649V537DQX.p8 | buildkite-agent secret set APPLE_API_KEY_BASE64
+```
+
+Or via environment hook:
+```bash
+export APPLE_API_KEY_BASE64="$(cat /secure/path/to/api_key_base64.txt)"
+```
+
+### Triggering Builds
+
+#### Via Git Push
+Configure a webhook in Buildkite to trigger on push to your repository.
+
+#### Manual Trigger with Custom Build Number
+```bash
+# Via Buildkite CLI
+buildkite-agent pipeline upload .buildkite/pipeline.yml
+
+# Or via API with custom build number
+curl -X POST "https://api.buildkite.com/v2/organizations/{org}/pipelines/{pipeline}/builds" \
+  -H "Authorization: Bearer $BUILDKITE_TOKEN" \
+  -d '{
+    "commit": "HEAD",
+    "branch": "main",
+    "env": {
+      "OVERRIDE_BUILD_NUMBER": "60"
+    }
+  }'
+```
+
+### Buildkite Secrets
+
+| Variable | Description | Where to Set |
+|----------|-------------|--------------|
+| `APPLE_API_KEY_ID` | API Key ID | Environment hook or pipeline env |
+| `APPLE_API_ISSUER_ID` | API Issuer ID | Environment hook or pipeline env |
+| `APPLE_TEAM_ID` | Apple Team ID | Environment hook or pipeline env |
+| `APPLE_API_KEY_BASE64` | Base64 .p8 key | Buildkite Secrets (recommended) |
+
+### Artifacts
+- IPA files uploaded to Buildkite artifacts
+- Archives also uploaded for debugging
+- Build summary annotation displayed in Buildkite UI
 
 ---
 
