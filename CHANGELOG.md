@@ -2,6 +2,55 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.2] - 2026-01-04 - Micro Merchant & QR Code Fixes
+
+### Fixed (Build 58)
+- **Micro Merchant Enrollment API Schema Mismatch**
+  - Fixed field names to match TransferSim API contract:
+    - `businessName` → `merchantName`
+    - `category` → `merchantCategory`
+  - Fixed enum values:
+    - `FOOD_BEVERAGE` → `FOOD_AND_BEVERAGE`
+    - `HEALTH_BEAUTY` → `HEALTH_AND_BEAUTY`
+    - `CRAFTS_ARTISAN` → `CRAFTS_AND_HANDMADE`
+  - Merchant registration now works correctly in both dev and production
+
+- **QR Code Rendering**
+  - Added `react-native-qrcode-svg` library for actual QR code generation
+  - Merchant QR codes now display scannable QR codes instead of placeholder emoji
+  - Personal receive QR codes also now render properly
+
+- **Share Alias Crash**
+  - Fixed crash when tapping "Share Alias" button on Receive screen
+  - Root cause: Dynamic import of `Share` module caused crash with New Architecture
+  - Solution: Moved `Share` to static imports at top of file
+
+- **Merchant QR Code UI**
+  - Fixed overlapping text issue when QR code is displayed
+  - Title now dynamically shows "Scan to pay [merchant name]" when QR is generated
+
+### Technical
+- Added `react-native-qrcode-svg` and `react-native-svg` dependencies
+- Updated `MerchantEnrollmentRequest`, `MerchantProfile`, and `MerchantCategory` types
+- Added static `Share` import to prevent dynamic import crashes
+
+---
+
+## [1.5.1] - 2026-01-04 - Push Notification Token Fix
+
+### Fixed (Build 57)
+- **Push Token Not Re-registering After Device Reset**
+  - Fixed: `handleResetDevice` now clears `notificationsRequested` state
+  - Previously, after Reset Device, the notification init would return early because `notificationsRequested` was still `true`
+  - This caused APNs to reject tokens as "Unregistered" because the new device ID was never associated with the push token
+  - Now, after reset, the app properly re-registers the push token with the new device ID on next login
+
+### Technical
+- Added `setNotificationsRequested(false)` to `handleResetDevice()` in App.tsx
+- Push notification infrastructure confirmed working end-to-end on dev environment
+
+---
+
 ## [1.4.1] - 2026-01-04 - P2P Transfer Details Investigation
 
 ### Investigation (Build 54)

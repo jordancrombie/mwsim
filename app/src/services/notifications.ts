@@ -10,14 +10,13 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform, Linking } from 'react-native';
-import Constants from 'expo-constants';
 
 // Types
 export interface PushTokenRegistration {
   deviceId: string;
   pushToken: string;
   platform: 'ios' | 'android';
-  tokenType: 'expo';
+  tokenType: 'apns' | 'fcm'; // Native token types (no Expo dependency)
 }
 
 export interface NotificationData {
@@ -84,39 +83,38 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 }
 
 /**
- * Get the Expo push token for this device
+ * Get the native device push token (APNs for iOS, FCM for Android)
  *
- * @returns The push token string, or null if unavailable
+ * This returns the raw device token that can be used directly with APNs/FCM,
+ * bypassing Expo's push notification service for a fully self-hosted solution.
+ *
+ * @returns The native push token string, or null if unavailable
  */
-export async function getExpoPushToken(): Promise<string | null> {
+export async function getNativeDevicePushToken(): Promise<string | null> {
   if (!Device.isDevice) {
     console.log('[Notifications] Push tokens not available on simulator');
     return null;
   }
 
   try {
-    // Get project ID from app config
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    const tokenData = await Notifications.getDevicePushTokenAsync();
 
-    if (!projectId) {
-      console.warn('[Notifications] No EAS project ID found - using fallback');
-    }
+    console.log('[Notifications] Got native device token:', tokenData.data);
+    console.log('[Notifications] Token type:', tokenData.type); // 'ios' or 'android'
 
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: projectId || undefined,
-    });
-
-    console.log('[Notifications] Got push token:', tokenData.data);
     return tokenData.data;
   } catch (error) {
-    console.error('[Notifications] Error getting push token:', error);
+    console.error('[Notifications] Error getting native device token:', error);
     return null;
   }
 }
 
 /**
  * Register for push notifications
- * Requests permission and gets the push token
+ * Requests permission and gets the native device push token
+ *
+ * Uses native APNs/FCM tokens for direct communication without Expo's service.
+ * This enables a fully self-hosted push notification infrastructure.
  *
  * @returns PushTokenRegistration or null if failed
  */
@@ -129,17 +127,20 @@ export async function registerForPushNotifications(
     return null;
   }
 
-  const pushToken = await getExpoPushToken();
+  const pushToken = await getNativeDevicePushToken();
 
   if (!pushToken) {
     return null;
   }
 
+  // Determine token type based on platform
+  const tokenType: 'apns' | 'fcm' = Platform.OS === 'ios' ? 'apns' : 'fcm';
+
   return {
     deviceId,
     pushToken,
     platform: Platform.OS as 'ios' | 'android',
-    tokenType: 'expo',
+    tokenType,
   };
 }
 
