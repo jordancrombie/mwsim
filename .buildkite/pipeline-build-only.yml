@@ -102,7 +102,7 @@ steps:
           -workspace mwsim.xcworkspace \
           -scheme mwsim \
           -configuration Release \
-          -archivePath "${BUILDKITE_BUILD_CHECKOUT_PATH}/build/mwsim-${VERSION}-${BUILD}.xcarchive" \
+          -archivePath "../build/mwsim-${VERSION}-${BUILD}.xcarchive" \
           archive \
           CODE_SIGN_STYLE=Automatic \
           DEVELOPMENT_TEAM=${APPLE_TEAM_ID} \
@@ -114,13 +114,12 @@ steps:
       # --- Export IPA ---
       - echo "--- :package: Exporting IPA"
       - |
-        cd "${BUILDKITE_BUILD_CHECKOUT_PATH}"
         BUILD=$(buildkite-agent meta-data get "build_number")
         VERSION=$(buildkite-agent meta-data get "version")
 
         xcodebuild -exportArchive \
-          -archivePath "${BUILDKITE_BUILD_CHECKOUT_PATH}/build/mwsim-${VERSION}-${BUILD}.xcarchive" \
-          -exportPath "${BUILDKITE_BUILD_CHECKOUT_PATH}/build/export" \
+          -archivePath "build/mwsim-${VERSION}-${BUILD}.xcarchive" \
+          -exportPath "build/export" \
           -exportOptionsPlist app/ExportOptions.plist \
           -allowProvisioningUpdates \
           -authenticationKeyPath ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8 \
