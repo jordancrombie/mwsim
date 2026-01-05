@@ -30,6 +30,12 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 - Added useEffect hooks for auto-QR generation on screen/mode changes
 - Added `checkP2PEnrollment()` call in `initializeApp()` after successful login
 
+### DevOps
+- Created CI/CD build guide (`docs/CICD_BUILD_GUIDE.md`)
+- Documented Buildkite and GitHub Actions pipeline configurations
+- Added App Store Connect API key authentication for TestFlight uploads
+- Pipeline templates available locally (excluded from repo for security)
+
 ---
 
 ## [1.5.2] - 2026-01-04 - Micro Merchant & QR Code Fixes

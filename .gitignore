@@ -1,6 +1,10 @@
 # Local deployment plans and proposals (not for version control)
 LOCAL_DEPLOYMENT_PLANS/
 
+# CI/CD pipelines (contain environment-specific configs)
+.buildkite/
+.github/
+
 # macOS
 .DS_Store
 
