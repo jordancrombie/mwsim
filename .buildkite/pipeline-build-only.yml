@@ -1,0 +1,162 @@
+# Buildkite Pipeline for iOS Build (No TestFlight Upload)
+#
+# Use this pipeline for:
+#   - PR validation builds
+#   - Testing build process
+#   - Creating archives without releasing
+#
+# Prerequisites:
+#   1. macOS agent with Xcode 16.2+ installed
+#   2. Node.js 20+ available on agent
+#   3. Environment variables set in Buildkite:
+#      - APPLE_API_KEY_ID: App Store Connect API Key ID
+#      - APPLE_API_ISSUER_ID: App Store Connect API Issuer ID
+#      - APPLE_TEAM_ID: Apple Developer Team ID
+#   4. Secrets (via buildkite-agent secret get or env hooks):
+#      - APPLE_API_KEY_BASE64: Base64-encoded .p8 API key
+#
+# Agent Requirements:
+#   - queue: macos (or your macOS queue name)
+#   - Xcode 16.2+ with command line tools
+#   - CocoaPods installed
+
+env:
+  BUNDLE_ID: "com.banksim.wsim"
+  XCODE_VERSION: "16.2"
+
+steps:
+  # ============================================
+  # BUILD ONLY (NO TESTFLIGHT UPLOAD)
+  # ============================================
+  - label: ":ios: Build iOS (No Upload)"
+    key: "ios-build"
+    agents:
+      queue: "macos"
+    timeout_in_minutes: 30
+
+    env:
+      NODE_VERSION: "20"
+
+    commands:
+      # --- Setup ---
+      - echo "--- :xcode: Selecting Xcode ${XCODE_VERSION}"
+      - sudo xcode-select -s /Applications/Xcode_${XCODE_VERSION}.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - echo "--- :nodejs: Setup Node.js"
+      - |
+        if command -v nvm &> /dev/null; then
+          nvm use ${NODE_VERSION} || nvm install ${NODE_VERSION}
+        elif command -v nodenv &> /dev/null; then
+          nodenv local ${NODE_VERSION}
+        fi
+      - node --version
+      - npm --version
+
+      # --- Install Dependencies ---
+      - echo "--- :npm: Installing dependencies"
+      - cd app && npm ci
+
+      # --- Version Info (read only, no increment) ---
+      - echo "--- :label: Getting version info"
+      - |
+        CURRENT_BUILD=$(jq -r '.expo.ios.buildNumber' app.json)
+        VERSION=$(jq -r '.expo.version' app.json)
+
+        echo "Version: ${VERSION}"
+        echo "Build: ${CURRENT_BUILD}"
+
+        buildkite-agent meta-data set "version" "${VERSION}"
+        buildkite-agent meta-data set "build_number" "${CURRENT_BUILD}"
+
+      # --- Expo Prebuild ---
+      - echo "--- :expo: Running Expo prebuild"
+      - npx expo prebuild --clean --platform ios
+
+      # --- Setup Code Signing ---
+      - echo "--- :key: Setting up App Store Connect API Key"
+      - |
+        mkdir -p ~/.private_keys
+
+        # Try Buildkite Secrets first, fall back to environment variable
+        if buildkite-agent secret get APPLE_API_KEY_BASE64 > /dev/null 2>&1; then
+          echo "Using Buildkite Secrets"
+          buildkite-agent secret get APPLE_API_KEY_BASE64 | base64 --decode > ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+        elif [ -n "${APPLE_API_KEY_BASE64:-}" ]; then
+          echo "Using environment variable"
+          echo "${APPLE_API_KEY_BASE64}" | base64 --decode > ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+        else
+          echo "Error: APPLE_API_KEY_BASE64 not found in secrets or environment"
+          exit 1
+        fi
+
+        chmod 600 ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+
+      # --- Build Archive ---
+      - echo "--- :hammer: Building iOS Archive"
+      - |
+        cd ios
+        BUILD=$(buildkite-agent meta-data get "build_number")
+        VERSION=$(buildkite-agent meta-data get "version")
+
+        xcodebuild \
+          -workspace mwsim.xcworkspace \
+          -scheme mwsim \
+          -configuration Release \
+          -archivePath "${BUILDKITE_BUILD_CHECKOUT_PATH}/build/mwsim-${VERSION}-${BUILD}.xcarchive" \
+          archive \
+          CODE_SIGN_STYLE=Automatic \
+          DEVELOPMENT_TEAM=${APPLE_TEAM_ID} \
+          -allowProvisioningUpdates \
+          -authenticationKeyPath ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8 \
+          -authenticationKeyID ${APPLE_API_KEY_ID} \
+          -authenticationKeyIssuerID ${APPLE_API_ISSUER_ID}
+
+      # --- Export IPA ---
+      - echo "--- :package: Exporting IPA"
+      - |
+        cd "${BUILDKITE_BUILD_CHECKOUT_PATH}"
+        BUILD=$(buildkite-agent meta-data get "build_number")
+        VERSION=$(buildkite-agent meta-data get "version")
+
+        xcodebuild -exportArchive \
+          -archivePath "${BUILDKITE_BUILD_CHECKOUT_PATH}/build/mwsim-${VERSION}-${BUILD}.xcarchive" \
+          -exportPath "${BUILDKITE_BUILD_CHECKOUT_PATH}/build/export" \
+          -exportOptionsPlist app/ExportOptions.plist \
+          -allowProvisioningUpdates \
+          -authenticationKeyPath ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8 \
+          -authenticationKeyID ${APPLE_API_KEY_ID} \
+          -authenticationKeyIssuerID ${APPLE_API_ISSUER_ID}
+
+      # --- Upload Artifact ---
+      - echo "--- :floppy_disk: Uploading artifacts"
+      - |
+        BUILD=$(buildkite-agent meta-data get "build_number")
+        VERSION=$(buildkite-agent meta-data get "version")
+        buildkite-agent artifact upload "build/export/mwsim.ipa"
+
+      # --- Cleanup ---
+      - echo "--- :broom: Cleanup"
+      - rm -f ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+
+      # --- Summary ---
+      - echo "--- :white_check_mark: Build Complete"
+      - |
+        BUILD=$(buildkite-agent meta-data get "build_number")
+        VERSION=$(buildkite-agent meta-data get "version")
+
+        cat << EOF | buildkite-agent annotate --style "success" --context "build-summary"
+        ## iOS Build Summary (No Upload)
+
+        | Property | Value |
+        |----------|-------|
+        | Version | ${VERSION} |
+        | Build | ${BUILD} |
+        | Bundle ID | ${BUNDLE_ID} |
+        | Status | ✅ Build successful |
+        | TestFlight | ⏭️ Skipped |
+
+        IPA available as build artifact.
+        EOF
+
+    artifact_paths:
+      - "build/export/*.ipa"
