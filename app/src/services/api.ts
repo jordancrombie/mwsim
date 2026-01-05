@@ -366,4 +366,55 @@ export const api = {
     console.log('[API] getAccounts - response:', JSON.stringify(data, null, 2));
     return data;
   },
+
+  // ==================
+  // Push Notification Endpoints
+  // ==================
+
+  /**
+   * Register push notification token with WSIM
+   * WSIM will store this token and use it to send notifications directly via APNs/FCM
+   *
+   * @param registration Push token registration data
+   * @returns Success status
+   *
+   * @note This uses native APNs/FCM tokens for a fully self-hosted solution.
+   *       WSIM sends notifications directly to APNs/FCM without Expo's service.
+   * @see LOCAL_DEPLOYMENT_PLANS/PUSH_NOTIFICATION_PROPOSAL.md
+   */
+  async registerPushToken(registration: {
+    deviceId: string;
+    pushToken: string;
+    platform: 'ios' | 'android';
+    tokenType: 'apns' | 'fcm'; // Native token types
+  }): Promise<{ success: boolean; registeredAt: string }> {
+    console.log('[API] registerPushToken - registering...');
+    try {
+      const { data } = await apiClient.post('/mobile/device/push-token', registration);
+      console.log('[API] registerPushToken - success');
+      return data;
+    } catch (error: any) {
+      // Endpoint may not exist yet (WSIM Phase 1 not complete)
+      // Fail gracefully - push notifications will work once WSIM is ready
+      console.log('[API] registerPushToken - endpoint not available yet:', error.response?.status || error.message);
+      throw error;
+    }
+  },
+
+  /**
+   * Deactivate push token on logout
+   * Marks the token as inactive so notifications stop being sent
+   *
+   * @note This endpoint is part of Phase 1 push notification work.
+   */
+  async deactivatePushToken(deviceId: string): Promise<void> {
+    console.log('[API] deactivatePushToken - deactivating...');
+    try {
+      await apiClient.delete(`/mobile/device/push-token/${deviceId}`);
+      console.log('[API] deactivatePushToken - success');
+    } catch (error: any) {
+      // Endpoint may not exist yet
+      console.log('[API] deactivatePushToken - endpoint not available yet:', error.response?.status || error.message);
+    }
+  },
 };
