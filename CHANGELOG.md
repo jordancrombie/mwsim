@@ -2,6 +2,36 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.3] - 2026-01-05 - Bug Fixes & UX Improvements
+
+### Fixed (Build 59)
+- **Share Button in Business Section**
+  - Fixed: Share button in Micro Merchant dashboard now works
+  - Shares merchant payment info with alias for easy customer sharing
+
+- **Auto-Generate QR Codes**
+  - QR codes now auto-generate when opening Receive Money screen
+  - QR codes now auto-generate when switching to Business mode
+  - No longer requires manual tap on "Generate QR Code" button
+  - Created top-level `generatePersonalQR()` function for reuse
+
+- **P2P Enrollment State on App Restart**
+  - Fixed: P2P enrollment status now checked on app initialization
+  - Previously, users had to manually tap P2P tab to trigger enrollment check
+  - Now `checkP2PEnrollment()` runs after wallet summary loads on login
+
+- **Personal Receive QR Code Layout**
+  - Fixed: QR code container now properly sized (248x280) with 16px padding
+  - QR code no longer bumps into top of frame when expiry text is shown
+  - Equal spacing on all sides of QR code within container
+
+### Technical
+- Added `generatePersonalQR()` at component level (moved from render block)
+- Added useEffect hooks for auto-QR generation on screen/mode changes
+- Added `checkP2PEnrollment()` call in `initializeApp()` after successful login
+
+---
+
 ## [1.5.2] - 2026-01-04 - Micro Merchant & QR Code Fixes
 
 ### Fixed (Build 58)
