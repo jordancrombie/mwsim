@@ -2,6 +2,91 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.3] - 2026-01-05 - Bug Fixes & UX Improvements
+
+### Fixed (Build 59)
+- **Share Button in Business Section**
+  - Fixed: Share button in Micro Merchant dashboard now works
+  - Shares merchant payment info with alias for easy customer sharing
+
+- **Auto-Generate QR Codes**
+  - QR codes now auto-generate when opening Receive Money screen
+  - QR codes now auto-generate when switching to Business mode
+  - No longer requires manual tap on "Generate QR Code" button
+  - Created top-level `generatePersonalQR()` function for reuse
+
+- **P2P Enrollment State on App Restart**
+  - Fixed: P2P enrollment status now checked on app initialization
+  - Previously, users had to manually tap P2P tab to trigger enrollment check
+  - Now `checkP2PEnrollment()` runs after wallet summary loads on login
+
+- **Personal Receive QR Code Layout**
+  - Fixed: QR code container now properly sized (248x280) with 16px padding
+  - QR code no longer bumps into top of frame when expiry text is shown
+  - Equal spacing on all sides of QR code within container
+
+### Technical
+- Added `generatePersonalQR()` at component level (moved from render block)
+- Added useEffect hooks for auto-QR generation on screen/mode changes
+- Added `checkP2PEnrollment()` call in `initializeApp()` after successful login
+
+### DevOps
+- Created CI/CD build guide (`docs/CICD_BUILD_GUIDE.md`)
+- Documented Buildkite and GitHub Actions pipeline configurations
+- Added App Store Connect API key authentication for TestFlight uploads
+- Pipeline templates available locally (excluded from repo for security)
+
+---
+
+## [1.5.2] - 2026-01-04 - Micro Merchant & QR Code Fixes
+
+### Fixed (Build 58)
+- **Micro Merchant Enrollment API Schema Mismatch**
+  - Fixed field names to match TransferSim API contract:
+    - `businessName` → `merchantName`
+    - `category` → `merchantCategory`
+  - Fixed enum values:
+    - `FOOD_BEVERAGE` → `FOOD_AND_BEVERAGE`
+    - `HEALTH_BEAUTY` → `HEALTH_AND_BEAUTY`
+    - `CRAFTS_ARTISAN` → `CRAFTS_AND_HANDMADE`
+  - Merchant registration now works correctly in both dev and production
+
+- **QR Code Rendering**
+  - Added `react-native-qrcode-svg` library for actual QR code generation
+  - Merchant QR codes now display scannable QR codes instead of placeholder emoji
+  - Personal receive QR codes also now render properly
+
+- **Share Alias Crash**
+  - Fixed crash when tapping "Share Alias" button on Receive screen
+  - Root cause: Dynamic import of `Share` module caused crash with New Architecture
+  - Solution: Moved `Share` to static imports at top of file
+
+- **Merchant QR Code UI**
+  - Fixed overlapping text issue when QR code is displayed
+  - Title now dynamically shows "Scan to pay [merchant name]" when QR is generated
+
+### Technical
+- Added `react-native-qrcode-svg` and `react-native-svg` dependencies
+- Updated `MerchantEnrollmentRequest`, `MerchantProfile`, and `MerchantCategory` types
+- Added static `Share` import to prevent dynamic import crashes
+
+---
+
+## [1.5.1] - 2026-01-04 - Push Notification Token Fix
+
+### Fixed (Build 57)
+- **Push Token Not Re-registering After Device Reset**
+  - Fixed: `handleResetDevice` now clears `notificationsRequested` state
+  - Previously, after Reset Device, the notification init would return early because `notificationsRequested` was still `true`
+  - This caused APNs to reject tokens as "Unregistered" because the new device ID was never associated with the push token
+  - Now, after reset, the app properly re-registers the push token with the new device ID on next login
+
+### Technical
+- Added `setNotificationsRequested(false)` to `handleResetDevice()` in App.tsx
+- Push notification infrastructure confirmed working end-to-end on dev environment
+
+---
+
 ## [1.4.1] - 2026-01-04 - P2P Transfer Details Investigation
 
 ### Investigation (Build 54)

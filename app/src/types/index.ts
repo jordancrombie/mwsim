@@ -275,23 +275,25 @@ export type RecipientType = 'individual' | 'merchant';
 
 /**
  * Business category for Micro Merchants
+ * Must match TransferSim API enum values
  */
 export type MerchantCategory =
-  | 'FOOD_BEVERAGE'      // Restaurants, cafes, food trucks
+  | 'FOOD_AND_BEVERAGE'  // Restaurants, cafes, food trucks
   | 'RETAIL'             // Shops, vendors
   | 'SERVICES'           // Tutoring, consulting, freelance
-  | 'HEALTH_BEAUTY'      // Salons, wellness
+  | 'HEALTH_AND_BEAUTY'  // Salons, wellness
   | 'ENTERTAINMENT'      // Events, performances
-  | 'CRAFTS_ARTISAN'     // Handmade goods, art
+  | 'CRAFTS_AND_HANDMADE'// Handmade goods, art
   | 'OTHER';             // General/uncategorized
 
 /**
  * Micro Merchant profile
+ * Field names match TransferSim API response
  */
 export interface MerchantProfile {
   merchantId: string;
-  businessName: string;
-  category: MerchantCategory;
+  merchantName: string;
+  merchantCategory: MerchantCategory;
   primaryAlias: string;              // e.g., "@javajoes"
   receivingAccountId: string;        // Bank account for receiving payments
   receivingBankName: string;
@@ -325,23 +327,25 @@ export interface ResolvedMerchantToken extends ResolvedToken {
 
 /**
  * Merchant enrollment request
+ * Field names must match TransferSim API contract
  */
 export interface MerchantEnrollmentRequest {
-  businessName: string;
-  category: MerchantCategory;
+  merchantName: string;
+  merchantCategory: MerchantCategory;
   receivingAccountId: string;
 }
 
 /**
  * Category display info for UI
+ * Keys must match TransferSim API enum values
  */
 export const MERCHANT_CATEGORIES: Record<MerchantCategory, { label: string; icon: string }> = {
-  FOOD_BEVERAGE: { label: 'Food & Beverage', icon: '☕' },
+  FOOD_AND_BEVERAGE: { label: 'Food & Beverage', icon: '☕' },
   RETAIL: { label: 'Retail & Shopping', icon: '🛍️' },
   SERVICES: { label: 'Services', icon: '💼' },
-  HEALTH_BEAUTY: { label: 'Health & Beauty', icon: '💆' },
+  HEALTH_AND_BEAUTY: { label: 'Health & Beauty', icon: '💆' },
   ENTERTAINMENT: { label: 'Entertainment', icon: '🎭' },
-  CRAFTS_ARTISAN: { label: 'Crafts & Artisan', icon: '🎨' },
+  CRAFTS_AND_HANDMADE: { label: 'Crafts & Artisan', icon: '🎨' },
   OTHER: { label: 'Other', icon: '🏪' },
 };
 

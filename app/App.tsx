@@ -14,6 +14,7 @@ import {
   RefreshControl,
   Linking,
   Image,
+  Share,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
@@ -27,10 +28,12 @@ import { secureStorage } from './src/services/secureStorage';
 import { biometricService } from './src/services/biometric';
 import { openReturnUrl, parseSourceBrowser } from './src/services/browserReturn';
 import { transferSimApi } from './src/services/transferSim';
+import * as notificationService from './src/services/notifications';
 import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './src/config/env';
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
+import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
 import { MERCHANT_CATEGORIES, P2P_THEME_COLORS } from './src/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -194,6 +197,11 @@ export default function App() {
     weekRevenue: number;
   } | null>(null);
 
+  // Push notification state
+  const [notificationsRequested, setNotificationsRequested] = useState(false);
+  const notificationListenerRef = useRef<any>(null);
+  const notificationResponseRef = useRef<any>(null);
+
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
 
@@ -332,6 +340,30 @@ export default function App() {
     };
     checkPendingPayment();
   }, [currentScreen, pendingRequestId]);
+
+  // Auto-generate personal QR code when Receive Money screen opens
+  useEffect(() => {
+    if (currentScreen === 'receiveMoney' && !receiveToken && !receiveLoading) {
+      console.log('[Receive] Auto-generating QR code on screen open');
+      // Use a small delay to allow screen to render first
+      const timer = setTimeout(() => {
+        generatePersonalQR();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [currentScreen]);
+
+  // Auto-generate merchant QR code when Business mode is activated
+  useEffect(() => {
+    if (p2pMode === 'business' && isMicroMerchant && !merchantQrToken && !merchantQrLoading) {
+      console.log('[Merchant] Auto-generating QR code on business mode');
+      // Use a small delay to allow screen to render first
+      const timer = setTimeout(() => {
+        generateMerchantQR();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [p2pMode, isMicroMerchant]);
 
   // Load payment request details
   const loadPaymentRequest = async (requestId: string) => {
@@ -520,6 +552,10 @@ export default function App() {
           setUser(summary.user);
           setCards(summary.cards || []);
           setCurrentScreen('home');
+
+          // Check P2P enrollment status after login
+          console.log('[initializeApp] Checking P2P enrollment...');
+          checkP2PEnrollment().catch((e) => console.log('[initializeApp] P2P enrollment check failed:', e));
         } catch (e) {
           // Token invalid or timeout, clear and show welcome
           console.log('[initializeApp] getWalletSummary failed:', e);
@@ -553,6 +589,106 @@ export default function App() {
       console.log('[initializeApp] Splash hidden, done!');
     }
   };
+
+  /**
+   * Initialize push notifications
+   * Per M3: Request after first successful login, not on app install
+   */
+  const initializeNotifications = async () => {
+    if (!deviceId || notificationsRequested) {
+      return;
+    }
+
+    console.log('[Notifications] Initializing push notifications...');
+
+    // Check for notification that launched the app (when killed)
+    const initialDeepLink = await notificationService.getInitialNotification();
+    if (initialDeepLink) {
+      console.log('[Notifications] App launched from notification:', initialDeepLink);
+      handleNotificationDeepLink(initialDeepLink);
+    }
+
+    // Request permissions and register token
+    const registration = await notificationService.registerForPushNotifications(deviceId);
+    if (registration) {
+      console.log('[Notifications] Token registered locally:', registration.pushToken);
+
+      // Send to WSIM (will fail gracefully if endpoint not ready)
+      try {
+        await api.registerPushToken(registration);
+      } catch (e) {
+        // Expected to fail until WSIM Phase 1 is complete
+        console.log('[Notifications] WSIM registration pending - endpoint not ready');
+      }
+    }
+
+    setNotificationsRequested(true);
+  };
+
+  /**
+   * Handle deep link from push notification
+   * Navigate to the appropriate screen based on the URL
+   */
+  const handleNotificationDeepLink = async (url: string) => {
+    console.log('[Notifications] Handling deep link:', url);
+
+    // Parse mwsim://transfer/p2p_abc123
+    const transferMatch = url.match(/mwsim:\/\/transfer\/(.+)/);
+    if (transferMatch) {
+      const transferId = transferMatch[1];
+      console.log('[Notifications] Deep linking to transfer:', transferId);
+
+      try {
+        // Fetch the transfer details
+        const transfer = await transferSimApi.getTransferById(transferId);
+        setSelectedTransfer(transfer);
+        setCurrentScreen('transferDetail');
+      } catch (e) {
+        console.error('[Notifications] Failed to fetch transfer:', e);
+        // Fall back to transfer history
+        setCurrentScreen('transferHistory');
+      }
+    }
+  };
+
+  /**
+   * Set up notification listeners when user is authenticated
+   */
+  useEffect(() => {
+    if (!user || !deviceId) {
+      return;
+    }
+
+    // Initialize notifications on login (per M3)
+    initializeNotifications();
+
+    // Set up foreground notification listener
+    notificationListenerRef.current = notificationService.addNotificationReceivedListener(
+      (notification) => {
+        console.log('[Notifications] Foreground notification received:', notification.request.content);
+        // Notification will be shown automatically by the handler
+      }
+    );
+
+    // Set up notification tap listener
+    notificationResponseRef.current = notificationService.addNotificationResponseListener(
+      (response) => {
+        const deepLink = notificationService.handleNotificationResponse(response);
+        if (deepLink) {
+          handleNotificationDeepLink(deepLink);
+        }
+      }
+    );
+
+    return () => {
+      if (notificationListenerRef.current) {
+        notificationListenerRef.current.remove();
+      }
+      if (notificationResponseRef.current) {
+        notificationResponseRef.current.remove();
+      }
+    };
+  }, [user, deviceId]);
 
   const handleCreateAccount = async () => {
     if (!email.trim() || !name.trim()) {
@@ -1064,7 +1200,7 @@ export default function App() {
       if (profile) {
         setIsMicroMerchant(true);
         setMerchantProfile(profile);
-        console.log('[Merchant] Profile loaded:', profile.businessName);
+        console.log('[Merchant] Profile loaded:', profile.merchantName);
 
         // Load saved p2pMode preference
         const savedMode = await AsyncStorage.getItem('p2pMode');
@@ -1114,8 +1250,8 @@ export default function App() {
       setMerchantEnrollError(null);
 
       const profile = await transferSimApi.enrollMerchant({
-        businessName: merchantBusinessName.trim(),
-        category: merchantCategory,
+        merchantName: merchantBusinessName.trim(),
+        merchantCategory: merchantCategory,
         receivingAccountId: merchantReceivingAccount.accountId,
       });
 
@@ -1131,7 +1267,7 @@ export default function App() {
 
       Alert.alert(
         'Welcome, Merchant!',
-        `Your business "${profile.businessName}" is now set up to receive payments.`,
+        `Your business "${profile.merchantName}" is now set up to receive payments.`,
         [{ text: 'Get Started', onPress: () => setCurrentScreen('home') }]
       );
     } catch (e: any) {
@@ -1139,6 +1275,20 @@ export default function App() {
       setMerchantEnrollError(e.response?.data?.message || 'Failed to enroll as merchant');
     } finally {
       setMerchantEnrollLoading(false);
+    }
+  };
+
+  // Generate Personal Receive QR code
+  const generatePersonalQR = async () => {
+    setReceiveLoading(true);
+    try {
+      const token = await transferSimApi.generateReceiveToken();
+      setReceiveToken(token);
+    } catch (e: any) {
+      console.error('[Receive] Generate token failed:', e);
+      Alert.alert('Error', 'Failed to generate receive code');
+    } finally {
+      setReceiveLoading(false);
     }
   };
 
@@ -1157,6 +1307,21 @@ export default function App() {
       Alert.alert('Error', 'Failed to generate payment QR code');
     } finally {
       setMerchantQrLoading(false);
+    }
+  };
+
+  // Share Merchant QR code
+  const handleShareMerchantQR = async () => {
+    if (!merchantProfile) {
+      Alert.alert('Error', 'Merchant profile not loaded');
+      return;
+    }
+    try {
+      await Share.share({
+        message: `Pay ${merchantProfile.merchantName} using mwsim! Scan the QR code or use alias: ${aliases.find(a => a.isPrimary)?.value || 'N/A'}`,
+      });
+    } catch (e) {
+      console.log('Share cancelled or failed');
     }
   };
 
@@ -1288,6 +1453,9 @@ export default function App() {
               setName('');
               setVerificationCode('');
               setError(null);
+
+              // Reset notification state so new token will be registered on next login
+              setNotificationsRequested(false);
 
               Alert.alert('Device Reset', `New device ID generated: ${newDeviceId.slice(0, 8)}...`);
             } catch (e) {
@@ -1976,7 +2144,7 @@ export default function App() {
           {/* Merchant Header */}
           <View style={styles.merchantDashboardHeader}>
             <Text style={styles.merchantBusinessName}>
-              {merchantProfile?.businessName || 'My Business'}
+              {merchantProfile?.merchantName || 'My Business'}
             </Text>
             <Text style={styles.merchantAlias}>
               {aliases.find(a => a.isPrimary)?.value || '@business'}
@@ -1988,19 +2156,20 @@ export default function App() {
 
           {/* Merchant QR Code */}
           <View style={styles.merchantQRSection}>
-            <Text style={styles.merchantQRTitle}>Payment QR Code</Text>
+            <Text style={styles.merchantQRTitle}>
+              {merchantQrToken ? `Scan to pay ${merchantProfile?.merchantName || 'merchant'}` : 'Payment QR Code'}
+            </Text>
             <View style={styles.merchantQRContainer}>
               {merchantQrLoading ? (
                 <ActivityIndicator size="large" color="#10B981" />
               ) : merchantQrToken ? (
                 <View style={styles.merchantQRCode}>
-                  <Text style={styles.merchantQRPlaceholder}>
-                    {/* QR Code would go here - using placeholder for now */}
-                    📱
-                  </Text>
-                  <Text style={styles.merchantQRHint}>
-                    Token: {merchantQrToken.tokenId.slice(0, 8)}...
-                  </Text>
+                  <QRCode
+                    value={merchantQrToken.qrPayload}
+                    size={200}
+                    backgroundColor="white"
+                    color="#065F46"
+                  />
                 </View>
               ) : (
                 <TouchableOpacity
@@ -2014,7 +2183,11 @@ export default function App() {
             </View>
             {merchantQrToken && (
               <View style={styles.merchantQRActions}>
-                <TouchableOpacity style={styles.merchantQRAction} activeOpacity={0.7}>
+                <TouchableOpacity
+                  style={styles.merchantQRAction}
+                  onPress={handleShareMerchantQR}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.merchantQRActionText}>Share</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -2465,19 +2638,6 @@ export default function App() {
   if (currentScreen === 'receiveMoney') {
     const primaryAlias = aliases.find(a => a.isPrimary) || aliases[0];
 
-    const handleGenerateQR = async () => {
-      setReceiveLoading(true);
-      try {
-        const token = await transferSimApi.generateReceiveToken();
-        setReceiveToken(token);
-      } catch (e: any) {
-        console.error('[Receive] Generate token failed:', e);
-        Alert.alert('Error', 'Failed to generate receive code');
-      } finally {
-        setReceiveLoading(false);
-      }
-    };
-
     const handleShareAlias = async () => {
       if (!primaryAlias) {
         Alert.alert('No Alias', 'Please create an alias first');
@@ -2485,8 +2645,6 @@ export default function App() {
       }
 
       try {
-        // Use React Native Share
-        const { Share } = await import('react-native');
         await Share.share({
           message: `Send me money on mwsim! My alias is: ${primaryAlias.value}`,
         });
@@ -2522,10 +2680,13 @@ export default function App() {
                   <ActivityIndicator size="large" color="#3b82f6" />
                 ) : receiveToken ? (
                   <>
-                    {/* QR code would be displayed here with react-native-qrcode-svg */}
                     <View style={styles.receiveQRBox}>
-                      <Text style={styles.receiveQRIcon}>📱</Text>
-                      <Text style={styles.receiveQRText}>QR Code Ready</Text>
+                      <QRCode
+                        value={receiveToken.qrPayload}
+                        size={200}
+                        backgroundColor="white"
+                        color="#1e40af"
+                      />
                       <Text style={styles.receiveQRSubtext}>
                         Expires: {new Date(receiveToken.expiresAt).toLocaleTimeString()}
                       </Text>
@@ -2544,7 +2705,7 @@ export default function App() {
 
               <TouchableOpacity
                 style={[styles.primaryButton, { marginTop: 16 }]}
-                onPress={handleGenerateQR}
+                onPress={generatePersonalQR}
                 disabled={receiveLoading}
                 activeOpacity={0.7}
               >
@@ -5420,17 +5581,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   receiveQRPlaceholder: {
-    width: 220,
-    height: 220,
+    width: 248,
+    height: 280,
     backgroundColor: '#f9fafb',
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#e5e7eb',
+    padding: 16,
   },
   receiveQRBox: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
   receiveQRIcon: {
     fontSize: 48,
