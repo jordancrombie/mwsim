@@ -39,7 +39,8 @@ yarn-error.*
 # testing
 coverage/
 
-# Xcode export options (ExportOptions.plist is needed for CI/CD - do not ignore)
+# Xcode export options
+ExportOptions.plist
 
 # generated native folders
 /ios
