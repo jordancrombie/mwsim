@@ -88,11 +88,16 @@ steps:
       - |
         mkdir -p ~/.private_keys
 
-        # Get the API key from Buildkite secrets
-        if command -v buildkite-agent &> /dev/null; then
+        # Try Buildkite Secrets first, fall back to environment variable
+        if buildkite-agent secret get APPLE_API_KEY_BASE64 > /dev/null 2>&1; then
+          echo "Using Buildkite Secrets"
           buildkite-agent secret get APPLE_API_KEY_BASE64 | base64 --decode > ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
-        else
+        elif [ -n "${APPLE_API_KEY_BASE64:-}" ]; then
+          echo "Using environment variable"
           echo "${APPLE_API_KEY_BASE64}" | base64 --decode > ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8
+        else
+          echo "Error: APPLE_API_KEY_BASE64 not found in secrets or environment"
+          exit 1
         fi
 
         chmod 600 ~/.private_keys/AuthKey_${APPLE_API_KEY_ID}.p8

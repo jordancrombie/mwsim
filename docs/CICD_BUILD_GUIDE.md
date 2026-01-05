@@ -62,13 +62,29 @@ export APPLE_TEAM_ID="ZJHD6JAC94"
 ```
 
 #### 4. Store API Key as Secret
-Using Buildkite Secrets:
+
+**Option A: Via Buildkite Web UI (Recommended)**
+1. Go to your Buildkite organization settings
+2. Navigate to "Secrets" under "Agent Infrastructure"
+3. Click "New Secret"
+4. Name: `APPLE_API_KEY_BASE64`
+5. Value: Run `base64 -i ~/.private_keys/AuthKey_649V537DQX.p8` and paste the output
+6. Restrict to specific pipelines if desired
+
+**Option B: Via Buildkite API**
 ```bash
-# Encode and store the API key
-base64 -i ~/.private_keys/AuthKey_649V537DQX.p8 | buildkite-agent secret set APPLE_API_KEY_BASE64
+# First, encode the key
+API_KEY_BASE64=$(base64 -i ~/.private_keys/AuthKey_649V537DQX.p8)
+
+# Create secret via API
+curl -X POST "https://api.buildkite.com/v2/organizations/{org}/cluster-queues/{queue}/secrets" \
+  -H "Authorization: Bearer $BUILDKITE_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"APPLE_API_KEY_BASE64\", \"value\": \"$API_KEY_BASE64\"}"
 ```
 
-Or via environment hook:
+**Option C: Via environment hook (simpler for self-hosted)**
+Add to `~/.buildkite-agent/hooks/environment`:
 ```bash
 export APPLE_API_KEY_BASE64="$(cat /secure/path/to/api_key_base64.txt)"
 ```
