@@ -341,6 +341,30 @@ export default function App() {
     checkPendingPayment();
   }, [currentScreen, pendingRequestId]);
 
+  // Auto-generate personal QR code when Receive Money screen opens
+  useEffect(() => {
+    if (currentScreen === 'receiveMoney' && !receiveToken && !receiveLoading) {
+      console.log('[Receive] Auto-generating QR code on screen open');
+      // Use a small delay to allow screen to render first
+      const timer = setTimeout(() => {
+        generatePersonalQR();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [currentScreen]);
+
+  // Auto-generate merchant QR code when Business mode is activated
+  useEffect(() => {
+    if (p2pMode === 'business' && isMicroMerchant && !merchantQrToken && !merchantQrLoading) {
+      console.log('[Merchant] Auto-generating QR code on business mode');
+      // Use a small delay to allow screen to render first
+      const timer = setTimeout(() => {
+        generateMerchantQR();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [p2pMode, isMicroMerchant]);
+
   // Load payment request details
   const loadPaymentRequest = async (requestId: string) => {
     setPaymentStatus('loading');
@@ -528,6 +552,10 @@ export default function App() {
           setUser(summary.user);
           setCards(summary.cards || []);
           setCurrentScreen('home');
+
+          // Check P2P enrollment status after login
+          console.log('[initializeApp] Checking P2P enrollment...');
+          checkP2PEnrollment().catch((e) => console.log('[initializeApp] P2P enrollment check failed:', e));
         } catch (e) {
           // Token invalid or timeout, clear and show welcome
           console.log('[initializeApp] getWalletSummary failed:', e);
@@ -1250,6 +1278,20 @@ export default function App() {
     }
   };
 
+  // Generate Personal Receive QR code
+  const generatePersonalQR = async () => {
+    setReceiveLoading(true);
+    try {
+      const token = await transferSimApi.generateReceiveToken();
+      setReceiveToken(token);
+    } catch (e: any) {
+      console.error('[Receive] Generate token failed:', e);
+      Alert.alert('Error', 'Failed to generate receive code');
+    } finally {
+      setReceiveLoading(false);
+    }
+  };
+
   // Generate Merchant QR code
   const generateMerchantQR = async () => {
     try {
@@ -1265,6 +1307,21 @@ export default function App() {
       Alert.alert('Error', 'Failed to generate payment QR code');
     } finally {
       setMerchantQrLoading(false);
+    }
+  };
+
+  // Share Merchant QR code
+  const handleShareMerchantQR = async () => {
+    if (!merchantProfile) {
+      Alert.alert('Error', 'Merchant profile not loaded');
+      return;
+    }
+    try {
+      await Share.share({
+        message: `Pay ${merchantProfile.merchantName} using mwsim! Scan the QR code or use alias: ${aliases.find(a => a.isPrimary)?.value || 'N/A'}`,
+      });
+    } catch (e) {
+      console.log('Share cancelled or failed');
     }
   };
 
@@ -2126,7 +2183,11 @@ export default function App() {
             </View>
             {merchantQrToken && (
               <View style={styles.merchantQRActions}>
-                <TouchableOpacity style={styles.merchantQRAction} activeOpacity={0.7}>
+                <TouchableOpacity
+                  style={styles.merchantQRAction}
+                  onPress={handleShareMerchantQR}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.merchantQRActionText}>Share</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -2577,19 +2638,6 @@ export default function App() {
   if (currentScreen === 'receiveMoney') {
     const primaryAlias = aliases.find(a => a.isPrimary) || aliases[0];
 
-    const handleGenerateQR = async () => {
-      setReceiveLoading(true);
-      try {
-        const token = await transferSimApi.generateReceiveToken();
-        setReceiveToken(token);
-      } catch (e: any) {
-        console.error('[Receive] Generate token failed:', e);
-        Alert.alert('Error', 'Failed to generate receive code');
-      } finally {
-        setReceiveLoading(false);
-      }
-    };
-
     const handleShareAlias = async () => {
       if (!primaryAlias) {
         Alert.alert('No Alias', 'Please create an alias first');
@@ -2657,7 +2705,7 @@ export default function App() {
 
               <TouchableOpacity
                 style={[styles.primaryButton, { marginTop: 16 }]}
-                onPress={handleGenerateQR}
+                onPress={generatePersonalQR}
                 disabled={receiveLoading}
                 activeOpacity={0.7}
               >
@@ -5533,17 +5581,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   receiveQRPlaceholder: {
-    width: 220,
-    height: 220,
+    width: 248,
+    height: 280,
     backgroundColor: '#f9fafb',
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#e5e7eb',
+    padding: 16,
   },
   receiveQRBox: {
     alignItems: 'center',
+    justifyContent: 'center',
   },
   receiveQRIcon: {
     fontSize: 48,
