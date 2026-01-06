@@ -15,6 +15,12 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.banksim.wsim",
       "buildNumber": "59",
+      "associatedDomains": [
+        "applinks:wsim.banksim.ca",
+        "applinks:wsim-dev.banksim.ca",
+        "applinks:transfer.banksim.ca",
+        "applinks:transfersim-dev.banksim.ca"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes",
