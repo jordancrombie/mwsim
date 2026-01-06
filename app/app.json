@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.banksim.wsim",
-      "buildNumber": "59",
+      "buildNumber": "60",
       "associatedDomains": [
         "applinks:wsim.banksim.ca",
         "applinks:wsim-dev.banksim.ca",
