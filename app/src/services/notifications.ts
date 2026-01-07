@@ -20,9 +20,13 @@ export interface PushTokenRegistration {
 }
 
 export interface NotificationData {
-  type: 'transfer.received' | 'transfer.completed' | 'transfer.failed' | 'auth.challenge';
+  type: 'transfer.received' | 'transfer.completed' | 'transfer.failed' | 'auth.challenge' | 'TRANSFER_RECEIVED';
   transferId?: string;
   deepLink?: string;
+  // Extended payment fields (from WSIM push notifications)
+  amount?: number;
+  senderName?: string;
+  recipientType?: 'individual' | 'merchant';
 }
 
 // Configure notification handler for foreground notifications
@@ -193,6 +197,45 @@ export async function getInitialNotification(): Promise<string | null> {
 
   console.log('[Notifications] App launched from notification');
   return handleNotificationResponse(response);
+}
+
+/**
+ * Parse notification data from a notification
+ * Returns typed NotificationData or null if invalid
+ */
+export function parseNotificationData(notification: Notifications.Notification): NotificationData | null {
+  const rawData = notification.request.content.data;
+
+  if (!rawData || typeof rawData !== 'object') {
+    return null;
+  }
+
+  const data = rawData as Record<string, unknown>;
+
+  // Check for valid notification type
+  const validTypes = ['transfer.received', 'transfer.completed', 'transfer.failed', 'auth.challenge', 'TRANSFER_RECEIVED'];
+  if (!data.type || !validTypes.includes(data.type as string)) {
+    return null;
+  }
+
+  return {
+    type: data.type as NotificationData['type'],
+    transferId: typeof data.transferId === 'string' ? data.transferId : undefined,
+    deepLink: typeof data.deepLink === 'string' ? data.deepLink : undefined,
+    amount: typeof data.amount === 'number' ? data.amount : undefined,
+    senderName: typeof data.senderName === 'string' ? data.senderName : undefined,
+    recipientType: data.recipientType === 'individual' || data.recipientType === 'merchant'
+      ? data.recipientType
+      : undefined,
+  };
+}
+
+/**
+ * Check if notification is a merchant payment received
+ */
+export function isMerchantPaymentNotification(data: NotificationData): boolean {
+  const isTransferReceived = data.type === 'transfer.received' || data.type === 'TRANSFER_RECEIVED';
+  return isTransferReceived && data.recipientType === 'merchant';
 }
 
 /**

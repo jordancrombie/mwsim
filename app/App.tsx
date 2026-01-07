@@ -202,6 +202,9 @@ export default function App() {
   const [notificationsRequested, setNotificationsRequested] = useState(false);
   const notificationListenerRef = useRef<any>(null);
   const notificationResponseRef = useRef<any>(null);
+  // Refs to track current state for notification callbacks (avoids stale closure)
+  const p2pModeRef = useRef(p2pMode);
+  const isMicroMerchantRef = useRef(isMicroMerchant);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -214,6 +217,15 @@ export default function App() {
   useEffect(() => {
     initializeApp();
   }, []);
+
+  // Keep refs in sync with state (for notification callbacks)
+  useEffect(() => {
+    p2pModeRef.current = p2pMode;
+  }, [p2pMode]);
+
+  useEffect(() => {
+    isMicroMerchantRef.current = isMicroMerchant;
+  }, [isMicroMerchant]);
 
   // Load banks when entering bank selection screen
   useEffect(() => {
@@ -836,6 +848,29 @@ export default function App() {
     notificationListenerRef.current = notificationService.addNotificationReceivedListener(
       (notification) => {
         console.log('[Notifications] Foreground notification received:', notification.request.content);
+
+        // Parse notification data to check for merchant payments
+        const notifData = notificationService.parseNotificationData(notification);
+        if (notifData && notificationService.isMerchantPaymentNotification(notifData)) {
+          console.log('[Notifications] Merchant payment received:', notifData);
+
+          // Auto-refresh merchant dashboard if in business mode (use refs for current values)
+          if (p2pModeRef.current === 'business' && isMicroMerchantRef.current) {
+            console.log('[Notifications] Refreshing merchant dashboard...');
+            loadMerchantDashboard();
+          }
+
+          // Show toast notification for merchant payment
+          const amount = notifData.amount ? `$${notifData.amount.toFixed(2)}` : 'Payment';
+          const sender = notifData.senderName || 'Customer';
+          Alert.alert(
+            '💰 Payment Received',
+            `${amount} from ${sender}`,
+            [{ text: 'OK', style: 'default' }],
+            { cancelable: true }
+          );
+        }
+
         // Notification will be shown automatically by the handler
       }
     );
