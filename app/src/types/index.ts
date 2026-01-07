@@ -351,6 +351,30 @@ export const MERCHANT_CATEGORIES: Record<MerchantCategory, { label: string; icon
 };
 
 /**
+ * Merchant dashboard time period stats
+ * Matches TransferSim API response structure
+ */
+export interface MerchantPeriodStats {
+  totalReceived: string;      // Decimal string, e.g., "500.00"
+  totalTransactions: number;
+  totalFees: string;          // Decimal string, e.g., "3.50"
+}
+
+/**
+ * Full merchant dashboard response from TransferSim
+ * GET /api/v1/micro-merchants/me/dashboard
+ */
+export interface MerchantDashboardResponse {
+  merchantId: string;
+  merchantName: string;
+  today?: MerchantPeriodStats;     // Added by TransferSim (Option B)
+  last7Days: MerchantPeriodStats;
+  last30Days: MerchantPeriodStats;
+  allTime: MerchantPeriodStats;
+  recentTransactions: TransferWithRecipientType[];
+}
+
+/**
  * Theme colors for P2P modes
  */
 export const P2P_THEME_COLORS = {

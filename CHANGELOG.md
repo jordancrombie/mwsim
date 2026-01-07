@@ -2,6 +2,24 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.5] - 2026-01-07 - Merchant Dashboard Stats Fix
+
+### Fixed (Build 64)
+- **Merchant Dashboard Stats Not Updating**
+  - Fixed: Dashboard stats (Today, This Week, Transactions) now properly parse TransferSim API response
+  - Root cause: API schema mismatch - mwsim expected flat fields, TransferSim returns nested time periods
+  - TransferSim API structure: `{ today: {...}, last7Days: {...}, allTime: {...} }`
+  - Added proper response parsing to convert `today.totalReceived` → `todayRevenue`, etc.
+  - Added debug logging to trace dashboard API responses
+
+### Technical
+- Added `MerchantPeriodStats` type for time period stats structure
+- Added `MerchantDashboardResponse` type matching actual TransferSim API contract
+- Updated `getMerchantStats()` to parse nested response structure
+- Decimal string parsing (`"500.00"` → `500.00`) for revenue values
+
+---
+
 ## [1.5.4] - 2026-01-06 - Deep Logout & Push Notification Fixes
 
 ### Added (Build 63)
