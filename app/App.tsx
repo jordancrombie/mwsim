@@ -4,6 +4,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
@@ -1212,6 +1213,52 @@ export default function App() {
         },
       },
     ]);
+  };
+
+  // Deep logout - deactivates push token before signing out (long-press feature for testers)
+  const handleDeepLogout = async () => {
+    if (!deviceId) {
+      // Fall back to normal logout if no deviceId
+      handleLogout();
+      return;
+    }
+
+    Alert.alert(
+      'Deep Sign Out',
+      'This will deactivate push notifications for this device and sign out.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out & Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Deactivate push token BEFORE logout (needs auth)
+              await api.deactivatePushToken(deviceId);
+              console.log('[DeepLogout] Push token deactivated for device:', deviceId);
+            } catch (e) {
+              console.log('[DeepLogout] Failed to deactivate push token:', e);
+            }
+
+            try {
+              await api.logout();
+            } catch (e) {
+              // Continue anyway
+            }
+
+            setUser(null);
+            setCards([]);
+            setEmail('');
+            setName('');
+            setVerificationCode('');
+            setCurrentScreen('welcome');
+
+            // Show toast to confirm deep logout worked
+            Alert.alert('Device Cleared', 'Push notifications deactivated for this device.');
+          },
+        },
+      ]
+    );
   };
 
   // QR Scanner functions
@@ -2587,9 +2634,13 @@ export default function App() {
               <Text style={styles.homeGreeting}>Welcome back,</Text>
               <Text style={styles.homeName}>{user?.name || 'User'}</Text>
             </View>
-            <TouchableOpacity onPress={handleLogout}>
+            <Pressable
+              onPress={handleLogout}
+              onLongPress={handleDeepLogout}
+              delayLongPress={2000}
+            >
               <Text style={styles.signOutText}>Sign Out</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
 
           {/* Tab Content */}
