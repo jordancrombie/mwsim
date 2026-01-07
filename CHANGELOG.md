@@ -2,6 +2,23 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.4] - 2026-01-06 - Deep Logout & Push Notification Fixes
+
+### Added (Build 63)
+- **Deep Logout (Long-Press)**
+  - Long-press (2 seconds) on "Sign Out" button triggers deep logout
+  - Deactivates push token for this device before signing out
+  - Shows confirmation alert: "Device Cleared"
+  - Fixes cross-device notification issue when multiple users test on same device
+  - Normal tap still performs regular logout (no change for end users)
+
+### Technical
+- Added `handleDeepLogout()` function with push token deactivation
+- Changed Sign Out button from `TouchableOpacity` to `Pressable` with `onLongPress`
+- Added `Pressable` to react-native imports
+
+---
+
 ## [1.5.3] - 2026-01-06 - Universal Links & QR Scanner Improvements
 
 ### Fixed (Build 62)

@@ -3,7 +3,7 @@
     "name": "mwsim",
     "slug": "mwsim",
     "scheme": "mwsim",
-    "version": "1.5.3",
+    "version": "1.5.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.banksim.wsim",
-      "buildNumber": "62",
+      "buildNumber": "63",
       "associatedDomains": [
         "applinks:wsim.banksim.ca",
         "applinks:wsim-dev.banksim.ca",
