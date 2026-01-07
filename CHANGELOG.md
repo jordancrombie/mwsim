@@ -2,6 +2,37 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.7] - 2026-01-07 - TransferSim Webhook Spec Alignment
+
+### Fixed (Build 66)
+- **Notification Parsing Aligned with TransferSim Webhook Spec**
+  - Fixed: `amount` parsing now handles string format (`"25.00"`) per spec
+  - Fixed: `senderDisplayName` field now recognized (in addition to `senderName`)
+  - Fixed: `transfer.completed` event type now triggers merchant dashboard refresh
+  - Added: `merchantName` field support for merchant payments
+
+### Technical
+- Aligned with TransferSim `transfer.completed` webhook specification
+- `parseNotificationData()` now parses string amounts via `parseFloat()`
+- `isMerchantPaymentNotification()` accepts `transfer.completed` type
+- Added debug logging for notification payload troubleshooting
+
+### Expected Push Payload (per TransferSim spec)
+```json
+{
+  "data": {
+    "type": "transfer.completed",
+    "transferId": "p2p_xyz789abc012345678901234",
+    "recipientType": "merchant",
+    "merchantName": "Sarah's Bakery",
+    "senderDisplayName": "Bob Smith",
+    "amount": "25.00"
+  }
+}
+```
+
+---
+
 ## [1.5.6] - 2026-01-07 - Real-Time Merchant Dashboard Updates
 
 ### Added (Build 65)
@@ -17,19 +48,6 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 - Added `isMerchantPaymentNotification()` to detect merchant payment notifications
 - Added refs (`p2pModeRef`, `isMicroMerchantRef`) to avoid stale closure in notification callbacks
 - Foreground notification listener now triggers `loadMerchantDashboard()` for merchant payments
-
-### Expected Push Payload
-```json
-{
-  "data": {
-    "type": "TRANSFER_RECEIVED",
-    "transferId": "txn_abc123",
-    "amount": 25.00,
-    "senderName": "John Doe",
-    "recipientType": "merchant"
-  }
-}
-```
 
 ---
 

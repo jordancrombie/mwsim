@@ -24,9 +24,11 @@ export interface NotificationData {
   transferId?: string;
   deepLink?: string;
   // Extended payment fields (from WSIM push notifications)
+  // Aligned with TransferSim webhook spec: transfer.completed
   amount?: number;
-  senderName?: string;
-  recipientType?: 'individual' | 'merchant';
+  senderName?: string;              // senderDisplayName from webhook
+  recipientType?: 'individual' | 'merchant';  // lowercase per spec
+  merchantName?: string;            // Only populated when recipientType is "merchant"
 }
 
 // Configure notification handler for foreground notifications
@@ -218,24 +220,43 @@ export function parseNotificationData(notification: Notifications.Notification):
     return null;
   }
 
+  // Parse amount - handle both number and string formats
+  let amount: number | undefined;
+  if (typeof data.amount === 'number') {
+    amount = data.amount;
+  } else if (typeof data.amount === 'string') {
+    const parsed = parseFloat(data.amount);
+    amount = isNaN(parsed) ? undefined : parsed;
+  }
+
+  // Parse sender name - handle both senderName and senderDisplayName
+  const senderName = typeof data.senderName === 'string'
+    ? data.senderName
+    : typeof data.senderDisplayName === 'string'
+      ? data.senderDisplayName
+      : undefined;
+
   return {
     type: data.type as NotificationData['type'],
     transferId: typeof data.transferId === 'string' ? data.transferId : undefined,
     deepLink: typeof data.deepLink === 'string' ? data.deepLink : undefined,
-    amount: typeof data.amount === 'number' ? data.amount : undefined,
-    senderName: typeof data.senderName === 'string' ? data.senderName : undefined,
+    amount,
+    senderName,
     recipientType: data.recipientType === 'individual' || data.recipientType === 'merchant'
       ? data.recipientType
       : undefined,
+    merchantName: typeof data.merchantName === 'string' ? data.merchantName : undefined,
   };
 }
 
 /**
  * Check if notification is a merchant payment received
+ * Handles various type formats from different backends
  */
 export function isMerchantPaymentNotification(data: NotificationData): boolean {
-  const isTransferReceived = data.type === 'transfer.received' || data.type === 'TRANSFER_RECEIVED';
-  return isTransferReceived && data.recipientType === 'merchant';
+  const transferTypes = ['transfer.received', 'transfer.completed', 'TRANSFER_RECEIVED'];
+  const isTransfer = transferTypes.includes(data.type);
+  return isTransfer && data.recipientType === 'merchant';
 }
 
 /**
