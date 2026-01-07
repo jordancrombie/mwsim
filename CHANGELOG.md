@@ -2,6 +2,37 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.6] - 2026-01-07 - Real-Time Merchant Dashboard Updates
+
+### Added (Build 65)
+- **Real-Time Merchant Dashboard Updates**
+  - Merchant dashboard now auto-refreshes when a payment notification is received
+  - Today's revenue, This Week, and Transactions counters update immediately
+  - Toast notification: "💰 Payment Received - $X.XX from [sender]"
+  - Works when app is in foreground and user is in Business mode
+
+### Technical
+- Extended `NotificationData` type with payment fields (`amount`, `senderName`, `recipientType`)
+- Added `parseNotificationData()` helper to safely parse notification payloads
+- Added `isMerchantPaymentNotification()` to detect merchant payment notifications
+- Added refs (`p2pModeRef`, `isMicroMerchantRef`) to avoid stale closure in notification callbacks
+- Foreground notification listener now triggers `loadMerchantDashboard()` for merchant payments
+
+### Expected Push Payload
+```json
+{
+  "data": {
+    "type": "TRANSFER_RECEIVED",
+    "transferId": "txn_abc123",
+    "amount": 25.00,
+    "senderName": "John Doe",
+    "recipientType": "merchant"
+  }
+}
+```
+
+---
+
 ## [1.5.5] - 2026-01-07 - Merchant Dashboard Stats Fix
 
 ### Fixed (Build 64)
