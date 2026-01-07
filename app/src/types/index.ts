@@ -227,6 +227,7 @@ export interface ReceiveToken {
 export interface ResolvedToken {
   tokenId: string;
   recipientAlias: string;
+  recipientAliasType?: AliasType;  // EMAIL, PHONE, USERNAME, RANDOM_KEY
   recipientDisplayName: string;
   recipientBankName: string;
   amount?: number;
@@ -348,6 +349,30 @@ export const MERCHANT_CATEGORIES: Record<MerchantCategory, { label: string; icon
   CRAFTS_AND_HANDMADE: { label: 'Crafts & Artisan', icon: '🎨' },
   OTHER: { label: 'Other', icon: '🏪' },
 };
+
+/**
+ * Merchant dashboard time period stats
+ * Matches TransferSim API response structure
+ */
+export interface MerchantPeriodStats {
+  totalReceived: string;      // Decimal string, e.g., "500.00"
+  totalTransactions: number;
+  totalFees: string;          // Decimal string, e.g., "3.50"
+}
+
+/**
+ * Full merchant dashboard response from TransferSim
+ * GET /api/v1/micro-merchants/me/dashboard
+ */
+export interface MerchantDashboardResponse {
+  merchantId: string;
+  merchantName: string;
+  today?: MerchantPeriodStats;     // Added by TransferSim (Option B)
+  last7Days: MerchantPeriodStats;
+  last30Days: MerchantPeriodStats;
+  allTime: MerchantPeriodStats;
+  recentTransactions: TransferWithRecipientType[];
+}
 
 /**
  * Theme colors for P2P modes

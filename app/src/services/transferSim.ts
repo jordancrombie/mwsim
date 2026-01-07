@@ -28,6 +28,7 @@ import type {
   MerchantProfile,
   MerchantCategory,
   MerchantEnrollmentRequest,
+  MerchantDashboardResponse,
   ResolvedMerchantToken,
   TransferWithRecipientType,
   TransferDirection,
@@ -301,22 +302,30 @@ export const transferSimApi = {
   /**
    * Initiate a P2P transfer
    * @param senderBsimId - Required for multi-bank support. Identifies which bank to debit.
+   * @param recipientAliasType - Optional alias type (EMAIL, PHONE, USERNAME). Required when sending via QR token.
    */
   async sendMoney(
     recipientAlias: string,
     amount: number,
     sourceAccountId: string,
     senderBsimId: string,
-    description?: string
+    description?: string,
+    recipientAliasType?: AliasType
   ): Promise<{ transferId: string; status: string }> {
-    const { data } = await getTransferSimClient().post<TransferResponse>('/api/v1/transfers', {
+    const requestBody: Record<string, unknown> = {
       recipientAlias,
       amount,
       currency: 'CAD',
       sourceAccountId,
       senderBsimId,
       description,
-    });
+    };
+    // Include recipientAliasType if provided (required for QR token transfers)
+    if (recipientAliasType) {
+      requestBody.recipientAliasType = recipientAliasType;
+    }
+    console.log('[TransferSim] sendMoney request:', JSON.stringify(requestBody, null, 2));
+    const { data } = await getTransferSimClient().post<TransferResponse>('/api/v1/transfers', requestBody);
     return {
       transferId: data.transferId,
       status: data.status,
@@ -535,10 +544,35 @@ export const transferSimApi = {
   /**
    * Get merchant dashboard stats (today's revenue, transaction count)
    * GET /api/v1/micro-merchants/me/dashboard
+   *
+   * TransferSim returns structured time period stats:
+   * - today: { totalReceived, totalTransactions, totalFees }
+   * - last7Days: { totalReceived, totalTransactions, totalFees }
+   * - last30Days: { totalReceived, totalTransactions, totalFees }
+   * - allTime: { totalReceived, totalTransactions, totalFees }
+   *
+   * We map this to the UI's expected format.
    */
   async getMerchantStats(): Promise<{ todayRevenue: number; todayTransactionCount: number; weekRevenue: number }> {
-    const { data } = await getTransferSimClient().get('/api/v1/micro-merchants/me/dashboard');
-    return data;
+    const { data } = await getTransferSimClient().get<MerchantDashboardResponse>('/api/v1/micro-merchants/me/dashboard');
+
+    console.log('[TransferSim] Dashboard response:', JSON.stringify(data, null, 2));
+
+    // Parse the structured response into the UI's expected format
+    // TransferSim returns decimal strings (e.g., "500.00"), convert to numbers
+    const todayRevenue = data.today?.totalReceived
+      ? parseFloat(data.today.totalReceived)
+      : 0;
+    const todayTransactionCount = data.today?.totalTransactions ?? 0;
+    const weekRevenue = data.last7Days?.totalReceived
+      ? parseFloat(data.last7Days.totalReceived)
+      : 0;
+
+    return {
+      todayRevenue,
+      todayTransactionCount,
+      weekRevenue,
+    };
   },
 
   /**

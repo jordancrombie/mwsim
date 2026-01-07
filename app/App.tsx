@@ -4,6 +4,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   TextInput,
   KeyboardAvoidingView,
@@ -205,6 +206,10 @@ export default function App() {
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
 
+  // QR scanner lock refs (synchronous to prevent rapid-fire scans)
+  const qrScanLockRef = useRef(false);
+  const p2pQrScanLockRef = useRef(false);
+
   // Initialize app
   useEffect(() => {
     initializeApp();
@@ -257,9 +262,82 @@ export default function App() {
     }
   }, [historyFilter, currentScreen, loadHistoryTransfers]);
 
-  // Handle deep link for payment requests
+  // Handle deep link for payment requests and Universal Links
   const handleDeepLink = useCallback(async (url: string) => {
     console.log('[DeepLink] Received URL:', url);
+
+    // Check for TransferSim Universal Link: https://transfer.banksim.ca/pay/{tokenId}
+    const transferSimMatch = url.match(/https:\/\/transfer(?:sim-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+    if (transferSimMatch) {
+      const tokenId = transferSimMatch[1];
+      console.log('[DeepLink] TransferSim token ID:', tokenId);
+
+      // Store for cold start recovery
+      await secureStorage.set('pendingTransferSimTokenId', tokenId);
+
+      // Check if we're authenticated
+      const accessToken = await secureStorage.getAccessToken();
+      if (!accessToken) {
+        console.log('[DeepLink] Not authenticated, redirecting to login');
+        setCurrentScreen('login');
+        return;
+      }
+
+      // Resolve token and navigate to P2P send
+      try {
+        setResolving(true);
+        const resolved = await transferSimApi.resolveTokenWithMerchantInfo(tokenId);
+        setResolvedToken(resolved);
+
+        if (resolved.amount) {
+          setP2pSendAmount(resolved.amount.toString());
+        }
+        if (resolved.description) {
+          setP2pSendNote(resolved.description);
+        }
+
+        // Clear the pending token since we've handled it
+        await secureStorage.remove('pendingTransferSimTokenId');
+
+        // Navigate to P2P send confirmation
+        setP2pQrScanned(true);
+        setCurrentScreen('p2pQrScan');
+      } catch (e: any) {
+        console.error('[DeepLink] TransferSim token resolve failed:', e);
+        Alert.alert(
+          'Invalid Link',
+          'This payment link has expired or is invalid.',
+          [{ text: 'OK' }]
+        );
+      } finally {
+        setResolving(false);
+      }
+      return;
+    }
+
+    // Check for WSIM Universal Link: https://wsim.banksim.ca/pay/{requestId}
+    const wsimMatch = url.match(/https:\/\/wsim(?:-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+    if (wsimMatch) {
+      const requestId = wsimMatch[1];
+      console.log('[DeepLink] WSIM payment request ID:', requestId);
+
+      // Store for cold start recovery
+      await secureStorage.set('pendingPaymentRequestId', requestId);
+      setPendingRequestId(requestId);
+      setSourceBrowser(null);
+
+      // Check if we're authenticated
+      const accessToken = await secureStorage.getAccessToken();
+      if (!accessToken) {
+        console.log('[DeepLink] Not authenticated, redirecting to login');
+        setCurrentScreen('login');
+        return;
+      }
+
+      // Navigate to payment approval
+      await loadPaymentRequest(requestId);
+      return;
+    }
 
     // Check for payment deep link: mwsim://payment/:requestId
     const paymentMatch = url.match(/mwsim:\/\/payment\/([^?]+)/);
@@ -290,6 +368,55 @@ export default function App() {
 
       // Navigate to payment approval
       await loadPaymentRequest(requestId);
+      return;
+    }
+
+    // Check for tsim deep link: tsim://pay/{tokenId} (legacy)
+    const tsimMatch = url.match(/tsim:\/\/pay\/([a-zA-Z0-9_-]+)/);
+    if (tsimMatch) {
+      const tokenId = tsimMatch[1];
+      console.log('[DeepLink] Legacy tsim token ID:', tokenId);
+
+      // Store for cold start recovery
+      await secureStorage.set('pendingTransferSimTokenId', tokenId);
+
+      // Check if we're authenticated
+      const accessToken = await secureStorage.getAccessToken();
+      if (!accessToken) {
+        console.log('[DeepLink] Not authenticated, redirecting to login');
+        setCurrentScreen('login');
+        return;
+      }
+
+      // Resolve token and navigate to P2P send
+      try {
+        setResolving(true);
+        const resolved = await transferSimApi.resolveTokenWithMerchantInfo(tokenId);
+        setResolvedToken(resolved);
+
+        if (resolved.amount) {
+          setP2pSendAmount(resolved.amount.toString());
+        }
+        if (resolved.description) {
+          setP2pSendNote(resolved.description);
+        }
+
+        // Clear the pending token since we've handled it
+        await secureStorage.remove('pendingTransferSimTokenId');
+
+        // Navigate to P2P send confirmation
+        setP2pQrScanned(true);
+        setCurrentScreen('p2pQrScan');
+      } catch (e: any) {
+        console.error('[DeepLink] TransferSim token resolve failed:', e);
+        Alert.alert(
+          'Invalid Link',
+          'This payment link has expired or is invalid.',
+          [{ text: 'OK' }]
+        );
+      } finally {
+        setResolving(false);
+      }
     }
   }, []);
 
@@ -340,6 +467,49 @@ export default function App() {
     };
     checkPendingPayment();
   }, [currentScreen, pendingRequestId]);
+
+  // Check for pending TransferSim token on login success (cold start recovery)
+  useEffect(() => {
+    const checkPendingTransferSimToken = async () => {
+      if (currentScreen === 'home') {
+        const tokenId = await secureStorage.get('pendingTransferSimTokenId');
+        if (tokenId) {
+          console.log('[Payment] Found pending TransferSim token after login:', tokenId);
+          try {
+            setResolving(true);
+            const resolved = await transferSimApi.resolveTokenWithMerchantInfo(tokenId);
+            setResolvedToken(resolved);
+
+            if (resolved.amount) {
+              setP2pSendAmount(resolved.amount.toString());
+            }
+            if (resolved.description) {
+              setP2pSendNote(resolved.description);
+            }
+
+            // Clear the pending token since we've handled it
+            await secureStorage.remove('pendingTransferSimTokenId');
+
+            // Navigate to P2P send confirmation
+            setP2pQrScanned(true);
+            setCurrentScreen('p2pQrScan');
+          } catch (e: any) {
+            console.error('[Payment] Pending TransferSim token resolve failed:', e);
+            // Clear invalid token
+            await secureStorage.remove('pendingTransferSimTokenId');
+            Alert.alert(
+              'Link Expired',
+              'The payment link you opened has expired or is invalid.',
+              [{ text: 'OK' }]
+            );
+          } finally {
+            setResolving(false);
+          }
+        }
+      }
+    };
+    checkPendingTransferSimToken();
+  }, [currentScreen]);
 
   // Auto-generate personal QR code when Receive Money screen opens
   useEffect(() => {
@@ -1045,6 +1215,52 @@ export default function App() {
     ]);
   };
 
+  // Deep logout - deactivates push token before signing out (long-press feature for testers)
+  const handleDeepLogout = async () => {
+    if (!deviceId) {
+      // Fall back to normal logout if no deviceId
+      handleLogout();
+      return;
+    }
+
+    Alert.alert(
+      'Deep Sign Out',
+      'This will deactivate push notifications for this device and sign out.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out & Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Deactivate push token BEFORE logout (needs auth)
+              await api.deactivatePushToken(deviceId);
+              console.log('[DeepLogout] Push token deactivated for device:', deviceId);
+            } catch (e) {
+              console.log('[DeepLogout] Failed to deactivate push token:', e);
+            }
+
+            try {
+              await api.logout();
+            } catch (e) {
+              // Continue anyway
+            }
+
+            setUser(null);
+            setCards([]);
+            setEmail('');
+            setName('');
+            setVerificationCode('');
+            setCurrentScreen('welcome');
+
+            // Show toast to confirm deep logout worked
+            Alert.alert('Device Cleared', 'Push notifications deactivated for this device.');
+          },
+        },
+      ]
+    );
+  };
+
   // QR Scanner functions
   const handleOpenQrScanner = async () => {
     // Request camera permission using expo-camera hook
@@ -1067,63 +1283,139 @@ export default function App() {
   };
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
-    if (qrScanned) return; // Prevent multiple scans
+    // Use ref for synchronous lock (state updates are async and can miss rapid scans)
+    if (qrScanLockRef.current || qrScanned) return;
+    qrScanLockRef.current = true;
+    setQrScanned(true);
 
     console.log('[QR Scanner] Scanned:', data);
 
     // Validate the URL format
     // Expected formats:
+    // WSIM Payment Requests:
     // - https://wsim.banksim.ca/pay/{requestId} (production)
     // - https://wsim-dev.banksim.ca/pay/{requestId} (development)
     // - mwsim://payment/{requestId}
+    // TransferSim P2P/Merchant Tokens:
+    // - https://transfer.banksim.ca/pay/{tokenId} (production)
+    // - https://transfersim-dev.banksim.ca/pay/{tokenId} (development)
+    // - tsim://pay/{tokenId} (legacy deep link)
 
     let requestId: string | null = null;
+    let tokenId: string | null = null;
 
-    // Try Universal Link format (supports both prod and dev URLs)
-    const universalLinkMatch = data.match(/https:\/\/wsim(?:-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
-    if (universalLinkMatch) {
-      requestId = universalLinkMatch[1];
+    // Try WSIM Universal Link format (for web payment requests)
+    const wsimLinkMatch = data.match(/https:\/\/wsim(?:-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+    if (wsimLinkMatch) {
+      requestId = wsimLinkMatch[1];
     }
 
-    // Try deep link format: mwsim://payment/{requestId}
+    // Try TransferSim Universal Link format (for P2P/merchant QR codes)
     if (!requestId) {
+      const transferSimLinkMatch = data.match(/https:\/\/transfer(?:sim-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+      if (transferSimLinkMatch) {
+        tokenId = transferSimLinkMatch[1];
+      }
+    }
+
+    // Try mwsim deep link format: mwsim://payment/{requestId}
+    if (!requestId && !tokenId) {
       const deepLinkMatch = data.match(/mwsim:\/\/payment\/([a-zA-Z0-9_-]+)/);
       if (deepLinkMatch) {
         requestId = deepLinkMatch[1];
       }
     }
 
-    if (!requestId) {
-      // Not a valid payment QR code
+    // Try tsim deep link format: tsim://pay/{tokenId} (legacy)
+    if (!requestId && !tokenId) {
+      const tsimMatch = data.match(/tsim:\/\/pay\/([a-zA-Z0-9_-]+)/);
+      if (tsimMatch) {
+        tokenId = tsimMatch[1];
+      }
+    }
+
+    if (requestId) {
+      // WSIM payment request flow (existing)
+      console.log('[QR Scanner] WSIM payment request ID:', requestId);
+
+      // Store for cold start recovery (same as deep link flow)
+      await secureStorage.set('pendingPaymentRequestId', requestId);
+      setPendingRequestId(requestId);
+
+      // Source is QR scan (not a browser)
+      setSourceBrowser(null);
+      await secureStorage.remove('pendingPaymentSourceBrowser');
+
+      // Navigate to payment approval
+      await loadPaymentRequest(requestId);
+    } else if (tokenId) {
+      // TransferSim token flow (P2P/merchant payments)
+      console.log('[QR Scanner] TransferSim token ID:', tokenId);
+      await handleTransferSimToken(tokenId);
+    } else {
+      // Not a valid payment QR code - keep scanning locked until user dismisses
       Alert.alert(
         'Invalid QR Code',
         'This doesn\'t appear to be a valid payment QR code. Please scan a QR code from a merchant checkout.',
         [
-          { text: 'Try Again', onPress: () => setQrScanned(false) },
-          { text: 'Cancel', onPress: () => setCurrentScreen('home'), style: 'cancel' },
+          {
+            text: 'Try Again',
+            onPress: () => {
+              qrScanLockRef.current = false;
+              setQrScanned(false);
+            },
+          },
+          {
+            text: 'Cancel',
+            onPress: () => {
+              qrScanLockRef.current = false;
+              setCurrentScreen('home');
+            },
+            style: 'cancel',
+          },
         ]
       );
-      setQrScanned(true);
-      return;
     }
+  };
 
-    // Valid payment QR code found
-    setQrScanned(true);
-    console.log('[QR Scanner] Payment request ID:', requestId);
+  // Handle TransferSim tokens from main QR scanner or Universal Links
+  const handleTransferSimToken = async (tokenId: string) => {
+    try {
+      setResolving(true);
+      const resolved = await transferSimApi.resolveTokenWithMerchantInfo(tokenId);
+      setResolvedToken(resolved);
 
-    // Store for cold start recovery (same as deep link flow)
-    await secureStorage.set('pendingPaymentRequestId', requestId);
-    setPendingRequestId(requestId);
+      // Pre-fill amount if specified in token
+      if (resolved.amount) {
+        setP2pSendAmount(resolved.amount.toString());
+      }
+      if (resolved.description) {
+        setP2pSendNote(resolved.description);
+      }
 
-    // Source is QR scan (not a browser)
-    setSourceBrowser(null);
-    await secureStorage.remove('pendingPaymentSourceBrowser');
-
-    // Navigate to payment approval
-    await loadPaymentRequest(requestId);
+      // Navigate to P2P send confirmation (skip scanner since we already have the token)
+      setP2pQrScanned(true);
+      setCurrentScreen('p2pQrScan');
+    } catch (e: any) {
+      console.error('[QR Scanner] TransferSim token resolve failed:', e);
+      Alert.alert(
+        'Invalid Token',
+        'This QR code has expired or is invalid.',
+        [{
+          text: 'OK',
+          onPress: () => {
+            qrScanLockRef.current = false;
+            setQrScanned(false);
+          },
+        }]
+      );
+    } finally {
+      setResolving(false);
+    }
   };
 
   const handleCloseQrScanner = () => {
+    qrScanLockRef.current = false;
     setQrScanned(false);
     setTorchOn(false);
     setCurrentScreen('home');
@@ -2342,9 +2634,13 @@ export default function App() {
               <Text style={styles.homeGreeting}>Welcome back,</Text>
               <Text style={styles.homeName}>{user?.name || 'User'}</Text>
             </View>
-            <TouchableOpacity onPress={handleLogout}>
+            <Pressable
+              onPress={handleLogout}
+              onLongPress={handleDeepLogout}
+              delayLongPress={2000}
+            >
               <Text style={styles.signOutText}>Sign Out</Text>
-            </TouchableOpacity>
+            </Pressable>
           </View>
 
           {/* Tab Content */}
@@ -3469,7 +3765,9 @@ export default function App() {
   // P2P QR Scanner Screen
   if (currentScreen === 'p2pQrScan') {
     const handleP2pQrScanned = async ({ data }: { type: string; data: string }) => {
-      if (p2pQrScanned) return;
+      // Use ref for synchronous lock (state updates are async and can miss rapid scans)
+      if (p2pQrScanLockRef.current || p2pQrScanned) return;
+      p2pQrScanLockRef.current = true;
       setP2pQrScanned(true);
       setResolving(true);
 
@@ -3477,11 +3775,23 @@ export default function App() {
 
       try {
         // The QR payload could be a token ID or a full URL
-        // Expected format: tsim://pay/{tokenId} or just the tokenId
+        // Supported formats:
+        // - https://transfer.banksim.ca/pay/{tokenId} (Universal Link)
+        // - https://transfersim-dev.banksim.ca/pay/{tokenId} (dev Universal Link)
+        // - tsim://pay/{tokenId} (legacy deep link)
+        // - just the tokenId
         let tokenId = data;
-        const tokenMatch = data.match(/tsim:\/\/pay\/([a-zA-Z0-9_-]+)/);
-        if (tokenMatch) {
-          tokenId = tokenMatch[1];
+
+        // Try TransferSim Universal Link format first
+        const transferSimMatch = data.match(/https:\/\/transfer(?:sim-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+        if (transferSimMatch) {
+          tokenId = transferSimMatch[1];
+        } else {
+          // Try legacy tsim:// deep link format
+          const tokenMatch = data.match(/tsim:\/\/pay\/([a-zA-Z0-9_-]+)/);
+          if (tokenMatch) {
+            tokenId = tokenMatch[1];
+          }
         }
 
         // Use merchant-aware token resolution to get recipientType
@@ -3500,7 +3810,13 @@ export default function App() {
         Alert.alert(
           'Invalid QR Code',
           'This QR code is not a valid P2P receive code.',
-          [{ text: 'Try Again', onPress: () => setP2pQrScanned(false) }]
+          [{
+            text: 'Try Again',
+            onPress: () => {
+              p2pQrScanLockRef.current = false;
+              setP2pQrScanned(false);
+            },
+          }]
         );
       } finally {
         setResolving(false);
@@ -3532,12 +3848,21 @@ export default function App() {
 
       setP2pSending(true);
       try {
+        console.log('[P2P QR] Sending transfer:', {
+          recipientAlias: resolvedToken.recipientAlias,
+          recipientAliasType: resolvedToken.recipientAliasType,
+          amount,
+          accountId: p2pSelectedAccount.accountId,
+          bsimId: p2pSelectedAccount.bsimId,
+          note: p2pSendNote.trim() || undefined,
+        });
         await transferSimApi.sendMoney(
           resolvedToken.recipientAlias,
           amount,
           p2pSelectedAccount.accountId,
           p2pSelectedAccount.bsimId,
-          p2pSendNote.trim() || undefined
+          p2pSendNote.trim() || undefined,
+          resolvedToken.recipientAliasType
         );
 
         Alert.alert(
@@ -3560,6 +3885,7 @@ export default function App() {
     };
 
     const handleCancelP2pQr = () => {
+      p2pQrScanLockRef.current = false;
       setP2pQrScanned(false);
       setResolvedToken(null);
       setP2pSendAmount('');
