@@ -205,6 +205,10 @@ export default function App() {
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
 
+  // QR scanner lock refs (synchronous to prevent rapid-fire scans)
+  const qrScanLockRef = useRef(false);
+  const p2pQrScanLockRef = useRef(false);
+
   // Initialize app
   useEffect(() => {
     initializeApp();
@@ -1232,7 +1236,10 @@ export default function App() {
   };
 
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
-    if (qrScanned) return; // Prevent multiple scans
+    // Use ref for synchronous lock (state updates are async and can miss rapid scans)
+    if (qrScanLockRef.current || qrScanned) return;
+    qrScanLockRef.current = true;
+    setQrScanned(true);
 
     console.log('[QR Scanner] Scanned:', data);
 
@@ -1282,7 +1289,6 @@ export default function App() {
 
     if (requestId) {
       // WSIM payment request flow (existing)
-      setQrScanned(true);
       console.log('[QR Scanner] WSIM payment request ID:', requestId);
 
       // Store for cold start recovery (same as deep link flow)
@@ -1297,20 +1303,31 @@ export default function App() {
       await loadPaymentRequest(requestId);
     } else if (tokenId) {
       // TransferSim token flow (P2P/merchant payments)
-      setQrScanned(true);
       console.log('[QR Scanner] TransferSim token ID:', tokenId);
       await handleTransferSimToken(tokenId);
     } else {
-      // Not a valid payment QR code
+      // Not a valid payment QR code - keep scanning locked until user dismisses
       Alert.alert(
         'Invalid QR Code',
         'This doesn\'t appear to be a valid payment QR code. Please scan a QR code from a merchant checkout.',
         [
-          { text: 'Try Again', onPress: () => setQrScanned(false) },
-          { text: 'Cancel', onPress: () => setCurrentScreen('home'), style: 'cancel' },
+          {
+            text: 'Try Again',
+            onPress: () => {
+              qrScanLockRef.current = false;
+              setQrScanned(false);
+            },
+          },
+          {
+            text: 'Cancel',
+            onPress: () => {
+              qrScanLockRef.current = false;
+              setCurrentScreen('home');
+            },
+            style: 'cancel',
+          },
         ]
       );
-      setQrScanned(true);
     }
   };
 
@@ -1337,7 +1354,13 @@ export default function App() {
       Alert.alert(
         'Invalid Token',
         'This QR code has expired or is invalid.',
-        [{ text: 'OK', onPress: () => setQrScanned(false) }]
+        [{
+          text: 'OK',
+          onPress: () => {
+            qrScanLockRef.current = false;
+            setQrScanned(false);
+          },
+        }]
       );
     } finally {
       setResolving(false);
@@ -1345,6 +1368,7 @@ export default function App() {
   };
 
   const handleCloseQrScanner = () => {
+    qrScanLockRef.current = false;
     setQrScanned(false);
     setTorchOn(false);
     setCurrentScreen('home');
@@ -3690,7 +3714,9 @@ export default function App() {
   // P2P QR Scanner Screen
   if (currentScreen === 'p2pQrScan') {
     const handleP2pQrScanned = async ({ data }: { type: string; data: string }) => {
-      if (p2pQrScanned) return;
+      // Use ref for synchronous lock (state updates are async and can miss rapid scans)
+      if (p2pQrScanLockRef.current || p2pQrScanned) return;
+      p2pQrScanLockRef.current = true;
       setP2pQrScanned(true);
       setResolving(true);
 
@@ -3698,11 +3724,23 @@ export default function App() {
 
       try {
         // The QR payload could be a token ID or a full URL
-        // Expected format: tsim://pay/{tokenId} or just the tokenId
+        // Supported formats:
+        // - https://transfer.banksim.ca/pay/{tokenId} (Universal Link)
+        // - https://transfersim-dev.banksim.ca/pay/{tokenId} (dev Universal Link)
+        // - tsim://pay/{tokenId} (legacy deep link)
+        // - just the tokenId
         let tokenId = data;
-        const tokenMatch = data.match(/tsim:\/\/pay\/([a-zA-Z0-9_-]+)/);
-        if (tokenMatch) {
-          tokenId = tokenMatch[1];
+
+        // Try TransferSim Universal Link format first
+        const transferSimMatch = data.match(/https:\/\/transfer(?:sim-dev)?\.banksim\.ca\/pay\/([a-zA-Z0-9_-]+)/);
+        if (transferSimMatch) {
+          tokenId = transferSimMatch[1];
+        } else {
+          // Try legacy tsim:// deep link format
+          const tokenMatch = data.match(/tsim:\/\/pay\/([a-zA-Z0-9_-]+)/);
+          if (tokenMatch) {
+            tokenId = tokenMatch[1];
+          }
         }
 
         // Use merchant-aware token resolution to get recipientType
@@ -3721,7 +3759,13 @@ export default function App() {
         Alert.alert(
           'Invalid QR Code',
           'This QR code is not a valid P2P receive code.',
-          [{ text: 'Try Again', onPress: () => setP2pQrScanned(false) }]
+          [{
+            text: 'Try Again',
+            onPress: () => {
+              p2pQrScanLockRef.current = false;
+              setP2pQrScanned(false);
+            },
+          }]
         );
       } finally {
         setResolving(false);
@@ -3753,12 +3797,21 @@ export default function App() {
 
       setP2pSending(true);
       try {
+        console.log('[P2P QR] Sending transfer:', {
+          recipientAlias: resolvedToken.recipientAlias,
+          recipientAliasType: resolvedToken.recipientAliasType,
+          amount,
+          accountId: p2pSelectedAccount.accountId,
+          bsimId: p2pSelectedAccount.bsimId,
+          note: p2pSendNote.trim() || undefined,
+        });
         await transferSimApi.sendMoney(
           resolvedToken.recipientAlias,
           amount,
           p2pSelectedAccount.accountId,
           p2pSelectedAccount.bsimId,
-          p2pSendNote.trim() || undefined
+          p2pSendNote.trim() || undefined,
+          resolvedToken.recipientAliasType
         );
 
         Alert.alert(
@@ -3781,6 +3834,7 @@ export default function App() {
     };
 
     const handleCancelP2pQr = () => {
+      p2pQrScanLockRef.current = false;
       setP2pQrScanned(false);
       setResolvedToken(null);
       setP2pSendAmount('');

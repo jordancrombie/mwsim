@@ -2,6 +2,27 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.3] - 2026-01-06 - Universal Links & QR Scanner Improvements
+
+### Fixed (Build 62)
+- **P2P QR Transfer - recipientAliasType**
+  - Fixed: P2P transfers via QR code now pass `recipientAliasType` to TransferSim API
+  - TransferSim v0.4.3 now returns `recipientAliasType` in token resolution
+  - Resolves "Could not determine alias type" error when sending via QR scan
+
+- **QR Scanner Debouncing**
+  - Fixed: QR scanner no longer fires multiple times on error
+  - Added synchronous ref locks to prevent rapid-fire scans
+  - Scanner stays locked until user dismisses error dialog
+  - Prevents "spinning out" when scanning invalid QR codes
+
+### Technical
+- Added `qrScanLockRef` and `p2pQrScanLockRef` refs for synchronous scan locking
+- Updated `ResolvedToken` type to include optional `recipientAliasType` field
+- Updated `sendMoney()` function to accept optional `recipientAliasType` parameter
+
+---
+
 ## [1.5.3] - 2026-01-05 - Bug Fixes & UX Improvements
 
 ### Fixed (Build 59)

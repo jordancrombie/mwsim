@@ -227,6 +227,7 @@ export interface ReceiveToken {
 export interface ResolvedToken {
   tokenId: string;
   recipientAlias: string;
+  recipientAliasType?: AliasType;  // EMAIL, PHONE, USERNAME, RANDOM_KEY
   recipientDisplayName: string;
   recipientBankName: string;
   amount?: number;
