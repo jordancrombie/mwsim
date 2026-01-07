@@ -848,9 +848,18 @@ export default function App() {
     notificationListenerRef.current = notificationService.addNotificationReceivedListener(
       (notification) => {
         console.log('[Notifications] Foreground notification received:', notification.request.content);
+        console.log('[Notifications] Raw data:', JSON.stringify(notification.request.content.data, null, 2));
 
         // Parse notification data to check for merchant payments
         const notifData = notificationService.parseNotificationData(notification);
+        console.log('[Notifications] Parsed data:', notifData);
+
+        if (notifData) {
+          const isMerchantPayment = notificationService.isMerchantPaymentNotification(notifData);
+          console.log('[Notifications] Is merchant payment:', isMerchantPayment);
+          console.log('[Notifications] Current p2pMode:', p2pModeRef.current, 'isMicroMerchant:', isMicroMerchantRef.current);
+        }
+
         if (notifData && notificationService.isMerchantPaymentNotification(notifData)) {
           console.log('[Notifications] Merchant payment received:', notifData);
 
