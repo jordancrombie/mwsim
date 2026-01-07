@@ -301,22 +301,30 @@ export const transferSimApi = {
   /**
    * Initiate a P2P transfer
    * @param senderBsimId - Required for multi-bank support. Identifies which bank to debit.
+   * @param recipientAliasType - Optional alias type (EMAIL, PHONE, USERNAME). Required when sending via QR token.
    */
   async sendMoney(
     recipientAlias: string,
     amount: number,
     sourceAccountId: string,
     senderBsimId: string,
-    description?: string
+    description?: string,
+    recipientAliasType?: AliasType
   ): Promise<{ transferId: string; status: string }> {
-    const { data } = await getTransferSimClient().post<TransferResponse>('/api/v1/transfers', {
+    const requestBody: Record<string, unknown> = {
       recipientAlias,
       amount,
       currency: 'CAD',
       sourceAccountId,
       senderBsimId,
       description,
-    });
+    };
+    // Include recipientAliasType if provided (required for QR token transfers)
+    if (recipientAliasType) {
+      requestBody.recipientAliasType = recipientAliasType;
+    }
+    console.log('[TransferSim] sendMoney request:', JSON.stringify(requestBody, null, 2));
+    const { data } = await getTransferSimClient().post<TransferResponse>('/api/v1/transfers', requestBody);
     return {
       transferId: data.transferId,
       status: data.status,
