@@ -2,6 +2,22 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.10] - 2026-01-08 - iPad Layout & QR Auto-Refresh
+
+### Added (Build 69)
+- **iPad Responsive Layout**
+  - Merchant QR code is now larger on iPad (300px vs 200px on iPhone)
+  - Countdown border is 50% thicker on iPad (6px vs 4px) with rounded corners
+  - Stats and recent payments pushed to bottom of screen on iPad
+  - Uses `useWindowDimensions` hook for responsive sizing
+
+- **QR Code Auto-Refresh**
+  - Merchant QR code now automatically regenerates when countdown timer expires
+  - No manual refresh needed - seamless continuous QR availability
+  - Uses `onExpired` callback in QRCountdownBorder component
+
+---
+
 ## [1.5.9] - 2026-01-08 - QR Countdown Timer & Bug Fixes
 
 ### Added (Build 68)

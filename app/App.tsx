@@ -17,6 +17,8 @@ import {
   Image,
   Share,
   Animated,
+  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
@@ -84,6 +86,7 @@ interface QRCountdownBorderProps {
   expiresAt: string;
   size: number;
   strokeWidth?: number;
+  onExpired?: () => void;
   children: React.ReactNode;
 }
 
@@ -91,13 +94,20 @@ const QRCountdownBorder: React.FC<QRCountdownBorderProps> = ({
   expiresAt,
   size,
   strokeWidth = 4,
+  onExpired,
   children,
 }) => {
   const [progress, setProgress] = useState(1); // 1 = full, 0 = empty
   const animatedValue = useRef(new Animated.Value(1)).current;
+  const hasExpiredRef = useRef(false);
 
   // QR tokens typically last 5 minutes (300 seconds)
   const TOKEN_DURATION_MS = 5 * 60 * 1000;
+
+  useEffect(() => {
+    // Reset expired flag when expiresAt changes (new QR generated)
+    hasExpiredRef.current = false;
+  }, [expiresAt]);
 
   useEffect(() => {
     const updateProgress = () => {
@@ -114,12 +124,18 @@ const QRCountdownBorder: React.FC<QRCountdownBorderProps> = ({
         duration: 500,
         useNativeDriver: false,
       }).start();
+
+      // Call onExpired when timer reaches zero (only once)
+      if (remaining === 0 && !hasExpiredRef.current && onExpired) {
+        hasExpiredRef.current = true;
+        onExpired();
+      }
     };
 
     updateProgress();
     const interval = setInterval(updateProgress, 1000);
     return () => clearInterval(interval);
-  }, [expiresAt, animatedValue]);
+  }, [expiresAt, animatedValue, onExpired]);
 
   // Calculate the path for a square border
   // Starting from top-center, going counter-clockwise (left)
@@ -201,6 +217,13 @@ const QRCountdownBorder: React.FC<QRCountdownBorderProps> = ({
 export default function App() {
   console.log('[App] Component rendering - START');
 
+  // Screen dimensions for responsive layout
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const isTablet = screenWidth >= 768; // iPad or larger
+  const merchantQRSize = isTablet ? 300 : 200;
+  const merchantQRInnerSize = isTablet ? 280 : 180;
+  const merchantQRStrokeWidth = isTablet ? 6 : 4;
+
   // Navigation state
   const [currentScreen, setCurrentScreen] = useState<Screen>('loading');
 
@@ -261,6 +284,7 @@ export default function App() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [recentTransfers, setRecentTransfers] = useState<Transfer[]>([]);
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
+  const [transferDetailReturnScreen, setTransferDetailReturnScreen] = useState<'transferHistory' | 'home'>('transferHistory');
 
   // Alias Management screen state
   const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
@@ -949,6 +973,7 @@ export default function App() {
         // Fetch the transfer details
         const transfer = await transferSimApi.getTransferById(transferId);
         setSelectedTransfer(transfer);
+        setTransferDetailReturnScreen('transferHistory');
         setCurrentScreen('transferDetail');
       } catch (e) {
         console.error('[Notifications] Failed to fetch transfer:', e);
@@ -2693,18 +2718,19 @@ export default function App() {
             <Text style={styles.merchantQRTitle}>
               {merchantQrToken ? `Scan to pay ${merchantProfile?.merchantName || 'merchant'}` : 'Payment QR Code'}
             </Text>
-            <View style={styles.merchantQRContainer}>
+            <View style={[styles.merchantQRContainer, { width: merchantQRSize, height: merchantQRSize }]}>
               {merchantQrLoading ? (
                 <ActivityIndicator size="large" color="#10B981" />
               ) : merchantQrToken ? (
                 <QRCountdownBorder
                   expiresAt={merchantQrToken.expiresAt}
-                  size={200}
-                  strokeWidth={4}
+                  size={merchantQRSize}
+                  strokeWidth={merchantQRStrokeWidth}
+                  onExpired={generateMerchantQR}
                 >
                   <QRCode
                     value={merchantQrToken.qrPayload}
-                    size={180}
+                    size={merchantQRInnerSize}
                     backgroundColor="white"
                     color="#065F46"
                   />
@@ -2738,6 +2764,9 @@ export default function App() {
               </View>
             )}
           </View>
+
+          {/* Spacer to push stats/payments to bottom on tablet */}
+          {isTablet && <View style={{ flex: 1, minHeight: 60 }} />}
 
           {/* Today's Stats */}
           <View style={styles.merchantStatsSection}>
@@ -2781,7 +2810,16 @@ export default function App() {
               </View>
             ) : (
               merchantTransfers.slice(0, 5).map((transfer) => (
-                <View key={transfer.transferId} style={styles.merchantTransferItem}>
+                <TouchableOpacity
+                  key={transfer.transferId}
+                  style={styles.merchantTransferItem}
+                  onPress={() => {
+                    setSelectedTransfer(transfer);
+                    setTransferDetailReturnScreen('home');
+                    setCurrentScreen('transferDetail');
+                  }}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
                       {transfer.senderDisplayName || transfer.senderAlias}
@@ -2800,7 +2838,7 @@ export default function App() {
                       </Text>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
@@ -2810,6 +2848,7 @@ export default function App() {
       return (
         <ScrollView
           style={styles.p2pContent}
+          contentContainerStyle={isTablet ? { flexGrow: 1 } : undefined}
           refreshControl={
             <RefreshControl refreshing={p2pLoading} onRefresh={loadP2PData} />
           }
@@ -3807,6 +3846,7 @@ export default function App() {
                   activeOpacity={0.7}
                   onPress={() => {
                     setSelectedTransfer(transfer);
+                    setTransferDetailReturnScreen('transferHistory');
                     setCurrentScreen('transferDetail');
                   }}
                 >
@@ -3914,7 +3954,7 @@ export default function App() {
             <TouchableOpacity
               onPress={() => {
                 setSelectedTransfer(null);
-                setCurrentScreen('transferHistory');
+                setCurrentScreen(transferDetailReturnScreen);
               }}
             >
               <Text style={styles.backButton}>← Back</Text>
