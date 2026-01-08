@@ -2,6 +2,23 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.11] - 2026-01-08 - Animated Stats & Enhanced iPad Layout
+
+### Added (Build 70)
+- **Animated Counter Component**
+  - Merchant stats now animate ("roll up") when values change
+  - Smooth easing animation: starts fast, slows at end
+  - Duration adjusts based on value difference (larger jumps animate faster)
+  - Triggers on push notification updates for real-time feedback
+
+- **Enhanced iPad Layout**
+  - QR code increased to 380px on iPad (was 300px, iPhone remains 200px)
+  - QR section now expands dynamically to fill available space
+  - Stats text larger on iPad: 32px values / 16px labels (vs 24px / 13px on iPhone)
+  - Removes gap between QR card and stats section
+
+---
+
 ## [1.5.10] - 2026-01-08 - iPad Layout & QR Auto-Refresh
 
 ### Added (Build 69)
