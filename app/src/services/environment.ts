@@ -75,7 +75,8 @@ function getSettingsValue(key: string): string | null {
 
 /**
  * Gets the current environment from iOS Settings.
- * Falls back to 'production' if not set or on non-iOS platforms.
+ * Both debug and release builds respect the iOS Settings value.
+ * Debug builds default to 'development', release builds default to 'production'.
  */
 export function getEnvironment(): Environment {
   // Return cached value if available
@@ -83,8 +84,9 @@ export function getEnvironment(): Environment {
     return cachedEnvironment;
   }
 
-  // Read from iOS Settings.bundle
+  // Read from iOS Settings.bundle (works for both debug and release)
   const settingValue = getSettingsValue('environment');
+  console.log(`[Environment] Settings value: ${settingValue}, __DEV__: ${__DEV__}`);
 
   // Map setting value to environment
   if (settingValue === 'development' || settingValue === 'dev') {
@@ -92,7 +94,7 @@ export function getEnvironment(): Environment {
   } else if (settingValue === 'production' || settingValue === 'prod') {
     cachedEnvironment = 'production';
   } else {
-    // Default to production if not set or unrecognized
+    // Default to production for all builds (Debug and Release)
     cachedEnvironment = 'production';
   }
 

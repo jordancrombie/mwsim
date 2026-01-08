@@ -16,7 +16,9 @@ import {
   Linking,
   Image,
   Share,
+  Animated,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
 import * as WebBrowser from 'expo-web-browser';
@@ -72,6 +74,129 @@ type Screen =
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
+
+// Animated path component for SVG
+const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+// QR Countdown Border Component
+// Displays a countdown border around a QR code that depletes counter-clockwise
+interface QRCountdownBorderProps {
+  expiresAt: string;
+  size: number;
+  strokeWidth?: number;
+  children: React.ReactNode;
+}
+
+const QRCountdownBorder: React.FC<QRCountdownBorderProps> = ({
+  expiresAt,
+  size,
+  strokeWidth = 4,
+  children,
+}) => {
+  const [progress, setProgress] = useState(1); // 1 = full, 0 = empty
+  const animatedValue = useRef(new Animated.Value(1)).current;
+
+  // QR tokens typically last 5 minutes (300 seconds)
+  const TOKEN_DURATION_MS = 5 * 60 * 1000;
+
+  useEffect(() => {
+    const updateProgress = () => {
+      const now = Date.now();
+      const expiryTime = new Date(expiresAt).getTime();
+      const createdTime = expiryTime - TOKEN_DURATION_MS;
+      const totalDuration = expiryTime - createdTime;
+      const elapsed = now - createdTime;
+      const remaining = Math.max(0, 1 - elapsed / totalDuration);
+      setProgress(remaining);
+
+      Animated.timing(animatedValue, {
+        toValue: remaining,
+        duration: 500,
+        useNativeDriver: false,
+      }).start();
+    };
+
+    updateProgress();
+    const interval = setInterval(updateProgress, 1000);
+    return () => clearInterval(interval);
+  }, [expiresAt, animatedValue]);
+
+  // Calculate the path for a square border
+  // Starting from top-center, going counter-clockwise (left)
+  const padding = strokeWidth / 2;
+  const innerSize = size - strokeWidth;
+  const halfSize = innerSize / 2;
+
+  // Path starts at top-center, goes counter-clockwise:
+  // top-center -> top-left -> bottom-left -> bottom-right -> top-right -> back to top-center
+  const pathD = `
+    M ${size / 2} ${padding}
+    L ${padding} ${padding}
+    L ${padding} ${size - padding}
+    L ${size - padding} ${size - padding}
+    L ${size - padding} ${padding}
+    L ${size / 2} ${padding}
+  `;
+
+  // Perimeter of the square path
+  const perimeter = innerSize * 4;
+
+  // Interpolate stroke-dashoffset based on progress
+  const strokeDashoffset = animatedValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [perimeter, 0],
+  });
+
+  // Color interpolation: green (full) -> yellow (half) -> red (empty)
+  const strokeColor = animatedValue.interpolate({
+    inputRange: [0, 0.3, 0.6, 1],
+    outputRange: ['#EF4444', '#F59E0B', '#10B981', '#10B981'],
+  });
+
+  return (
+    <View style={{ position: 'relative', width: size, height: size }}>
+      {/* SVG border overlay */}
+      <Svg
+        width={size}
+        height={size}
+        style={{ position: 'absolute', top: 0, left: 0 }}
+      >
+        {/* Background track (subtle gray) */}
+        <Path
+          d={pathD}
+          stroke="#E5E7EB"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Animated countdown stroke */}
+        <AnimatedPath
+          d={pathD}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={`${perimeter}`}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+      {/* QR code content */}
+      <View style={{
+        position: 'absolute',
+        top: strokeWidth,
+        left: strokeWidth,
+        width: size - strokeWidth * 2,
+        height: size - strokeWidth * 2,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}>
+        {children}
+      </View>
+    </View>
+  );
+};
 
 export default function App() {
   console.log('[App] Component rendering - START');
@@ -850,34 +975,55 @@ export default function App() {
         console.log('[Notifications] Foreground notification received:', notification.request.content);
         console.log('[Notifications] Raw data:', JSON.stringify(notification.request.content.data, null, 2));
 
-        // Parse notification data to check for merchant payments
+        // Parse notification data to check for transfer notifications
         const notifData = notificationService.parseNotificationData(notification);
         console.log('[Notifications] Parsed data:', notifData);
 
+        // Extract title and body for fallback detection
+        const { title, body } = notification.request.content;
+
         if (notifData) {
+          const isTransfer = notificationService.isTransferNotification(notifData);
           const isMerchantPayment = notificationService.isMerchantPaymentNotification(notifData);
-          console.log('[Notifications] Is merchant payment:', isMerchantPayment);
+          console.log('[Notifications] Is transfer:', isTransfer, 'Is merchant payment:', isMerchantPayment);
           console.log('[Notifications] Current p2pMode:', p2pModeRef.current, 'isMicroMerchant:', isMicroMerchantRef.current);
-        }
 
-        if (notifData && notificationService.isMerchantPaymentNotification(notifData)) {
-          console.log('[Notifications] Merchant payment received:', notifData);
-
-          // Auto-refresh merchant dashboard if in business mode (use refs for current values)
-          if (p2pModeRef.current === 'business' && isMicroMerchantRef.current) {
-            console.log('[Notifications] Refreshing merchant dashboard...');
+          // Refresh merchant dashboard for ANY transfer notification when in business mode
+          // This handles cases where WSIM doesn't include recipientType in the push payload
+          if (isTransfer && p2pModeRef.current === 'business' && isMicroMerchantRef.current) {
+            console.log('[Notifications] Transfer received in business mode, refreshing merchant dashboard...');
             loadMerchantDashboard();
-          }
 
-          // Show toast notification for merchant payment
-          const amount = notifData.amount ? `$${notifData.amount.toFixed(2)}` : 'Payment';
-          const sender = notifData.senderName || 'Customer';
-          Alert.alert(
-            '💰 Payment Received',
-            `${amount} from ${sender}`,
-            [{ text: 'OK', style: 'default' }],
-            { cancelable: true }
-          );
+            // Show toast notification for payment
+            const amount = notifData.amount ? `$${notifData.amount.toFixed(2)}` : 'Payment';
+            const sender = notifData.senderName || 'Customer';
+            Alert.alert(
+              '💰 Payment Received',
+              `${amount} from ${sender}`,
+              [{ text: 'OK', style: 'default' }],
+              { cancelable: true }
+            );
+          }
+        } else {
+          // FALLBACK: Detect payment notifications by title/body when data is null
+          // This handles expo-notifications not passing through APNs custom payload
+          const isPaymentNotification = title === 'Payment Received!' && body?.includes('received $');
+          console.log('[Notifications] Fallback detection - isPaymentNotification:', isPaymentNotification);
+
+          if (isPaymentNotification && p2pModeRef.current === 'business' && isMicroMerchantRef.current) {
+            console.log('[Notifications] Payment detected via fallback, refreshing merchant dashboard...');
+            loadMerchantDashboard();
+
+            // Parse amount from body (e.g., "Demo shop 2 received $123.00")
+            const amountMatch = body?.match(/received \$(\d+(?:\.\d{2})?)/);
+            const amount = amountMatch ? `$${amountMatch[1]}` : 'Payment';
+            Alert.alert(
+              '💰 Payment Received',
+              `${amount} received`,
+              [{ text: 'OK', style: 'default' }],
+              { cancelable: true }
+            );
+          }
         }
 
         // Notification will be shown automatically by the handler
@@ -918,11 +1064,14 @@ export default function App() {
     setError(null);
 
     try {
+      // Ensure deviceName has a fallback value
+      const resolvedDeviceName = deviceName || Device.deviceName || `${Platform.OS} device`;
+
       const result = await api.createAccount(
         email.trim(),
         name.trim(),
         deviceId,
-        deviceName || `${Platform.OS} device`,
+        resolvedDeviceName,
         Platform.OS as 'ios' | 'android'
       );
 
@@ -961,11 +1110,14 @@ export default function App() {
     setError(null);
 
     try {
+      // Ensure deviceName has a fallback value
+      const resolvedDeviceName = deviceName || Device.deviceName || `${Platform.OS} device`;
+
       const result = await api.loginWithPassword(
         email.trim(),
         password,
         deviceId,
-        deviceName,
+        resolvedDeviceName,
         Platform.OS as 'ios' | 'android'
       );
 
@@ -1326,6 +1478,26 @@ export default function App() {
     }
   };
 
+  const handleOpenP2pQrScanner = async () => {
+    // Request camera permission using expo-camera hook
+    const result = await requestCameraPermission();
+
+    if (result.granted) {
+      setP2pQrScanned(false);
+      setP2pTorchOn(false);
+      setCurrentScreen('p2pQrScan');
+    } else {
+      Alert.alert(
+        'Camera Permission Required',
+        'Please enable camera access in Settings to scan QR codes.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+    }
+  };
+
   const handleBarCodeScanned = async ({ type, data }: { type: string; data: string }) => {
     // Use ref for synchronous lock (state updates are async and can miss rapid scans)
     if (qrScanLockRef.current || qrScanned) return;
@@ -1498,9 +1670,35 @@ export default function App() {
         // Load aliases and recent transfers
         await loadP2PData();
       }
-    } catch (e) {
+    } catch (e: any) {
       console.log('[P2P] Enrollment check failed:', e);
-      setP2pEnrolled(false);
+      // Don't reset enrollment status on rate limit or network errors
+      // Only set to false on definitive "not enrolled" responses
+      if (e?.response?.status === 429) {
+        console.log('[P2P] Rate limited - trying cached enrollment');
+        // Try to use cached enrollment
+        const cachedEnrollment = await secureStorage.getP2PEnrollment();
+        if (cachedEnrollment) {
+          console.log('[P2P] Using cached enrollment');
+          setP2pEnrolled(true);
+          setP2pEnrollment(cachedEnrollment);
+          await loadP2PData();
+        }
+      } else if (e?.response?.status === 401 || e?.response?.status === 403) {
+        // Auth errors - likely not enrolled or invalid context
+        setP2pEnrolled(false);
+      } else if (!e?.response) {
+        // Network error - try cached enrollment
+        console.log('[P2P] Network error - trying cached enrollment');
+        const cachedEnrollment = await secureStorage.getP2PEnrollment();
+        if (cachedEnrollment) {
+          console.log('[P2P] Using cached enrollment');
+          setP2pEnrolled(true);
+          setP2pEnrollment(cachedEnrollment);
+        }
+      } else {
+        setP2pEnrolled(false);
+      }
     } finally {
       setP2pLoading(false);
     }
@@ -2372,7 +2570,7 @@ export default function App() {
 
             <TouchableOpacity
               style={styles.p2pQuickAction}
-              onPress={() => setCurrentScreen('p2pQrScan')}
+              onPress={handleOpenP2pQrScanner}
               activeOpacity={0.7}
             >
               <View style={[styles.p2pQuickActionIcon, { backgroundColor: '#fce7f3' }]}>
@@ -2499,14 +2697,18 @@ export default function App() {
               {merchantQrLoading ? (
                 <ActivityIndicator size="large" color="#10B981" />
               ) : merchantQrToken ? (
-                <View style={styles.merchantQRCode}>
+                <QRCountdownBorder
+                  expiresAt={merchantQrToken.expiresAt}
+                  size={200}
+                  strokeWidth={4}
+                >
                   <QRCode
                     value={merchantQrToken.qrPayload}
-                    size={200}
+                    size={180}
                     backgroundColor="white"
                     color="#065F46"
                   />
-                </View>
+                </QRCountdownBorder>
               ) : (
                 <TouchableOpacity
                   style={styles.merchantGenerateQRButton}
@@ -3021,12 +3223,18 @@ export default function App() {
                 ) : receiveToken ? (
                   <>
                     <View style={styles.receiveQRBox}>
-                      <QRCode
-                        value={receiveToken.qrPayload}
+                      <QRCountdownBorder
+                        expiresAt={receiveToken.expiresAt}
                         size={200}
-                        backgroundColor="white"
-                        color="#1e40af"
-                      />
+                        strokeWidth={4}
+                      >
+                        <QRCode
+                          value={receiveToken.qrPayload}
+                          size={180}
+                          backgroundColor="white"
+                          color="#1e40af"
+                        />
+                      </QRCountdownBorder>
                       <Text style={styles.receiveQRSubtext}>
                         Expires: {new Date(receiveToken.expiresAt).toLocaleTimeString()}
                       </Text>
@@ -3878,9 +4086,10 @@ export default function App() {
 
       // Biometric authentication before sending
       const amountFormatted = `$${amount.toFixed(2)}`;
+      const recipientName = resolvedToken.merchantName || resolvedToken.recipientDisplayName || resolvedToken.recipientAlias || 'recipient';
       const authResult = await biometricService.authenticateForTransfer(
         amountFormatted,
-        resolvedToken.recipientDisplayName
+        recipientName
       );
 
       if (!authResult.success) {
@@ -3911,7 +4120,7 @@ export default function App() {
 
         Alert.alert(
           'Money Sent!',
-          `$${amount.toFixed(2)} sent to ${resolvedToken.recipientDisplayName}`,
+          `$${amount.toFixed(2)} sent to ${recipientName}`,
           [{
             text: 'Done',
             onPress: () => {
@@ -3977,10 +4186,10 @@ export default function App() {
                   </View>
                 )}
                 <Text style={styles.p2pQrRecipientName}>
-                  {resolvedToken.merchantName || resolvedToken.recipientDisplayName}
+                  {resolvedToken.merchantName || resolvedToken.recipientDisplayName || resolvedToken.recipientAlias || 'Unknown'}
                 </Text>
                 <Text style={styles.p2pQrRecipientAlias}>{resolvedToken.recipientAlias}</Text>
-                <Text style={styles.p2pQrRecipientBank}>{resolvedToken.recipientBankName}</Text>
+                <Text style={styles.p2pQrRecipientBank}>{resolvedToken.recipientBankName || 'Unknown Bank'}</Text>
                 {/* Fee notice for merchant payments */}
                 {resolvedToken.recipientType === 'merchant' && (
                   <Text style={styles.p2pMerchantFeeNote}>
@@ -6780,8 +6989,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
+    overflow: 'hidden',
   },
   merchantQRCode: {
     alignItems: 'center',

@@ -2,6 +2,69 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.9] - 2026-01-08 - QR Countdown Timer & Bug Fixes
+
+### Added (Build 68)
+- **QR Code Countdown Border**
+  - Visual countdown timer around merchant and personal receive QR codes
+  - Border depletes counter-clockwise as QR code approaches expiration
+  - Color transitions: green → yellow → red as time runs out
+  - Provides visual feedback on QR code validity without checking expiry text
+
+### Fixed (Build 68)
+- **P2P QR Scanner Camera Permission**
+  - Fixed: P2P "Scan QR" button now properly requests camera permission on first use
+  - Previously showed "Camera Access Required - go to Settings" instead of prompting
+  - Now consistent with Cards tab QR scanner behavior
+
+- **Rate Limit Handling (429 Errors)**
+  - Fixed: App no longer shows P2P enrollment screen when rate limited
+  - Now falls back to cached enrollment data on 429 or network errors
+  - Prevents false "enroll in P2P" prompts during API rate limiting
+
+- **Login Race Condition**
+  - Fixed: "email, password, deviceId, deviceName and platform are required" error
+  - Added fallback chain for deviceName: `deviceName || Device.deviceName || platform device`
+  - Prevents race condition when logging in immediately after logout
+
+- **"Sent to undefined" in QR Payments**
+  - Fixed: Recipient name now shows proper fallback chain instead of "undefined"
+  - Displays: merchantName → recipientDisplayName → recipientAlias → "recipient"
+  - Applied to biometric prompt, success alert, and confirmation screen
+
+### Changed (Build 68)
+- **Default Environment**
+  - Debug builds now default to Production environment (was Development)
+  - Allows testing against production servers while maintaining console debugging
+  - Users can still switch via iOS Settings if Settings.bundle is available
+
+---
+
+## [1.5.8] - 2026-01-07 - QR Send & Dashboard Fixes
+
+### Fixed (Build 67)
+- **Sender Side: "sent to undefined" Fix**
+  - TransferSim token endpoint now returns `recipientDisplayName` and `recipientBankName`
+  - Send confirmation now shows recipient's actual name instead of "undefined"
+
+- **Receiver Side: Dashboard Auto-Refresh Now Works**
+  - Dashboard now refreshes for ANY transfer notification when in business mode
+  - No longer requires `recipientType: 'merchant'` in push payload
+  - More robust handling when WSIM doesn't include all fields
+
+- **Today Stats Timezone Fix**
+  - "Today" revenue now calculated in user's local timezone (not UTC)
+  - Dashboard API accepts `tzOffset` parameter from client
+  - Eastern timezone users now see correct "Today" transaction counts
+
+### Technical
+- TransferSim `/api/v1/tokens/:tokenId` now calls BSIM to fetch display name and bank name
+- Added `isTransferNotification()` helper for more robust notification detection
+- Dashboard API calculates start-of-day using client's timezone offset
+- mwsim passes `tzOffset` (from `getTimezoneOffset()`) to dashboard API
+
+---
+
 ## [1.5.7] - 2026-01-07 - TransferSim Webhook Spec Alignment
 
 ### Fixed (Build 66)

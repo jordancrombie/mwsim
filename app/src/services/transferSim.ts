@@ -531,12 +531,12 @@ export const transferSimApi = {
     limit: number = 20,
     offset: number = 0
   ): Promise<{ transfers: TransferWithRecipientType[]; total: number }> {
-    const { data } = await getTransferSimClient().get<{ transfers: TransferWithRecipientType[]; total: number }>(
+    const { data } = await getTransferSimClient().get<{ transactions: TransferWithRecipientType[]; total: number }>(
       '/api/v1/micro-merchants/me/transactions',
       { params: { limit, offset } }
     );
     return {
-      transfers: sanitizeMerchantTransfers(data.transfers),
+      transfers: sanitizeMerchantTransfers(data.transactions),
       total: data.total || 0,
     };
   },
@@ -552,9 +552,15 @@ export const transferSimApi = {
    * - allTime: { totalReceived, totalTransactions, totalFees }
    *
    * We map this to the UI's expected format.
+   * Passes tzOffset for correct "Today" calculation in user's local timezone.
    */
   async getMerchantStats(): Promise<{ todayRevenue: number; todayTransactionCount: number; weekRevenue: number }> {
-    const { data } = await getTransferSimClient().get<MerchantDashboardResponse>('/api/v1/micro-merchants/me/dashboard');
+    // Pass timezone offset so server calculates "today" in user's local timezone
+    const tzOffset = new Date().getTimezoneOffset();
+    const { data } = await getTransferSimClient().get<MerchantDashboardResponse>(
+      '/api/v1/micro-merchants/me/dashboard',
+      { params: { tzOffset } }
+    );
 
     console.log('[TransferSim] Dashboard response:', JSON.stringify(data, null, 2));
 
