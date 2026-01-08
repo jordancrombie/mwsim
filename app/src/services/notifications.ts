@@ -250,13 +250,20 @@ export function parseNotificationData(notification: Notifications.Notification):
 }
 
 /**
+ * Check if notification is any transfer notification (regardless of recipientType)
+ * Useful for refreshing dashboards when we receive money
+ */
+export function isTransferNotification(data: NotificationData): boolean {
+  const transferTypes = ['transfer.received', 'transfer.completed', 'TRANSFER_RECEIVED'];
+  return transferTypes.includes(data.type);
+}
+
+/**
  * Check if notification is a merchant payment received
  * Handles various type formats from different backends
  */
 export function isMerchantPaymentNotification(data: NotificationData): boolean {
-  const transferTypes = ['transfer.received', 'transfer.completed', 'TRANSFER_RECEIVED'];
-  const isTransfer = transferTypes.includes(data.type);
-  return isTransfer && data.recipientType === 'merchant';
+  return isTransferNotification(data) && data.recipientType === 'merchant';
 }
 
 /**
