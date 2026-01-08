@@ -17,7 +17,6 @@ import {
   Image,
   Share,
   Animated,
-  Easing,
   Dimensions,
   useWindowDimensions,
 } from 'react-native';
@@ -80,78 +79,6 @@ type HomeTab = 'cards' | 'p2p';
 
 // Animated path component for SVG
 const AnimatedPath = Animated.createAnimatedComponent(Path);
-
-// Animated Counter Component
-// Displays a number that animates ("rolls up") when the value changes
-interface AnimatedCounterProps {
-  value: number;
-  prefix?: string;
-  suffix?: string;
-  decimals?: number;
-  duration?: number;
-  style?: any;
-}
-
-const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
-  value,
-  prefix = '',
-  suffix = '',
-  decimals = 0,
-  duration = 800,
-  style,
-}) => {
-  const [displayValue, setDisplayValue] = useState(value);
-  const previousValueRef = useRef(value);
-  const animatedValue = useRef(new Animated.Value(value)).current;
-
-  useEffect(() => {
-    const previousValue = previousValueRef.current;
-
-    // Only animate if value actually changed
-    if (previousValue !== value) {
-      // Calculate animation duration based on difference
-      // Larger differences animate slightly faster per unit
-      const diff = Math.abs(value - previousValue);
-      const adjustedDuration = Math.min(duration, Math.max(400, duration - (diff * 10)));
-
-      // Reset animated value to previous
-      animatedValue.setValue(previousValue);
-
-      // Animate to new value with easeOut (starts fast, slows down)
-      Animated.timing(animatedValue, {
-        toValue: value,
-        duration: adjustedDuration,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }).start();
-
-      // Update previous value ref
-      previousValueRef.current = value;
-    }
-  }, [value, duration, animatedValue]);
-
-  // Listen to animated value changes
-  useEffect(() => {
-    const listenerId = animatedValue.addListener(({ value: animValue }) => {
-      setDisplayValue(animValue);
-    });
-
-    return () => {
-      animatedValue.removeListener(listenerId);
-    };
-  }, [animatedValue]);
-
-  // Format the display value
-  const formattedValue = decimals > 0
-    ? displayValue.toFixed(decimals)
-    : Math.round(displayValue).toString();
-
-  return (
-    <Text style={style}>
-      {prefix}{formattedValue}{suffix}
-    </Text>
-  );
-};
 
 // QR Countdown Border Component
 // Displays a countdown border around a QR code that depletes counter-clockwise
@@ -2838,35 +2765,25 @@ export default function App() {
             )}
           </View>
 
+
           {/* Today's Stats */}
           <View style={styles.merchantStatsSection}>
             <View style={styles.merchantStatCard}>
-              <AnimatedCounter
-                value={merchantStats?.todayRevenue || 0}
-                prefix="$"
-                decimals={2}
-                duration={800}
-                style={[styles.merchantStatValue, isTablet && { fontSize: 32 }]}
-              />
+              <Text style={[styles.merchantStatValue, isTablet && { fontSize: 32 }]}>
+                ${merchantStats?.todayRevenue?.toFixed(2) || '0.00'}
+              </Text>
               <Text style={[styles.merchantStatLabel, isTablet && { fontSize: 16 }]}>Today</Text>
             </View>
             <View style={styles.merchantStatCard}>
-              <AnimatedCounter
-                value={merchantStats?.weekRevenue || 0}
-                prefix="$"
-                decimals={2}
-                duration={800}
-                style={[styles.merchantStatValue, isTablet && { fontSize: 32 }]}
-              />
+              <Text style={[styles.merchantStatValue, isTablet && { fontSize: 32 }]}>
+                ${merchantStats?.weekRevenue?.toFixed(2) || '0.00'}
+              </Text>
               <Text style={[styles.merchantStatLabel, isTablet && { fontSize: 16 }]}>This Week</Text>
             </View>
             <View style={styles.merchantStatCard}>
-              <AnimatedCounter
-                value={merchantStats?.todayTransactionCount || 0}
-                decimals={0}
-                duration={600}
-                style={[styles.merchantStatValue, isTablet && { fontSize: 32 }]}
-              />
+              <Text style={[styles.merchantStatValue, isTablet && { fontSize: 32 }]}>
+                {merchantStats?.todayTransactionCount || 0}
+              </Text>
               <Text style={[styles.merchantStatLabel, isTablet && { fontSize: 16 }]}>Transactions</Text>
             </View>
           </View>
