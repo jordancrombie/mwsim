@@ -26,6 +26,7 @@ import * as Device from 'expo-device';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
 import { v4 as uuidv4 } from 'uuid';
 
 import { api } from './src/services/api';
@@ -4589,7 +4590,7 @@ export default function App() {
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"
-        buildNumber="74"
+        buildNumber="75"
       />
     );
   }
@@ -4606,9 +4607,82 @@ export default function App() {
     };
 
     const handlePickImage = async (): Promise<string | null> => {
-      // TODO: M-5 will add expo-image-picker integration
-      Alert.alert('Coming Soon', 'Photo selection will be available in a future update.');
-      return null;
+      // Show action sheet to choose between camera and gallery
+      return new Promise((resolve) => {
+        Alert.alert(
+          'Change Profile Photo',
+          'Choose how you want to add a photo',
+          [
+            {
+              text: 'Take Photo',
+              onPress: async () => {
+                try {
+                  // Request camera permission
+                  const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                  if (status !== 'granted') {
+                    Alert.alert('Permission Required', 'Camera access is needed to take a photo.');
+                    resolve(null);
+                    return;
+                  }
+
+                  const result = await ImagePicker.launchCameraAsync({
+                    mediaTypes: ['images'],
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.8,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    resolve(result.assets[0].uri);
+                  } else {
+                    resolve(null);
+                  }
+                } catch (error) {
+                  console.error('Camera error:', error);
+                  Alert.alert('Error', 'Failed to access camera.');
+                  resolve(null);
+                }
+              },
+            },
+            {
+              text: 'Choose from Library',
+              onPress: async () => {
+                try {
+                  // Request media library permission
+                  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                  if (status !== 'granted') {
+                    Alert.alert('Permission Required', 'Photo library access is needed to select a photo.');
+                    resolve(null);
+                    return;
+                  }
+
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ['images'],
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.8,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    resolve(result.assets[0].uri);
+                  } else {
+                    resolve(null);
+                  }
+                } catch (error) {
+                  console.error('Image picker error:', error);
+                  Alert.alert('Error', 'Failed to access photo library.');
+                  resolve(null);
+                }
+              },
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(null),
+            },
+          ]
+        );
+      });
     };
 
     return (

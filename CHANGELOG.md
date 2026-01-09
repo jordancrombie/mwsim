@@ -4,6 +4,16 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
+### Added (Build 75)
+- **Image Picker Integration (M-5)**
+  - Added expo-image-picker for profile photo selection
+  - Action sheet with "Take Photo" and "Choose from Library" options
+  - Camera permission handling with user-friendly prompts
+  - Photo library permission handling
+  - Square crop (1:1 aspect ratio) with 80% quality compression
+  - Updated camera usage description to include profile photos
+  - Added NSPhotoLibraryUsageDescription for iOS
+
 ### Added (Build 74)
 - **Profile Edit Screen (M-4)**
   - New screen accessible from Settings > Profile & Image
