@@ -5,6 +5,7 @@ export interface User {
   name: string;
   walletId: string;
   createdAt: string;
+  profileImageUrl?: string | null;
 }
 
 // Card types

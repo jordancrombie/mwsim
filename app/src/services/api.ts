@@ -417,4 +417,93 @@ export const api = {
       console.log('[API] deactivatePushToken - endpoint not available yet:', error.response?.status || error.message);
     }
   },
+
+  // ==================
+  // Profile Endpoints
+  // ==================
+
+  /**
+   * Get user profile data
+   * Returns display name, profile image URL, and thumbnails
+   */
+  async getProfile(): Promise<{
+    displayName: string;
+    profileImageUrl?: string | null;
+    thumbnails?: {
+      small: string;
+      medium: string;
+    };
+  }> {
+    console.log('[API] getProfile - fetching...');
+    const { data } = await apiClient.get('/mobile/profile');
+    console.log('[API] getProfile - success');
+    return data;
+  },
+
+  /**
+   * Update user profile (display name)
+   */
+  async updateProfile(profile: { displayName: string }): Promise<{
+    displayName: string;
+    profileImageUrl?: string | null;
+  }> {
+    console.log('[API] updateProfile - updating...');
+    const { data } = await apiClient.put('/mobile/profile', profile);
+    console.log('[API] updateProfile - success');
+    return data;
+  },
+
+  /**
+   * Upload profile image
+   * Accepts multipart/form-data with image file
+   * Image will be resized to 512x512 and thumbnails created
+   *
+   * @param imageUri Local file URI from expo-image-picker
+   * @returns Updated profile with new image URL
+   */
+  async uploadProfileImage(imageUri: string): Promise<{
+    success: boolean;
+    profileImageUrl: string;
+    thumbnails?: {
+      small: string;
+      medium: string;
+    };
+  }> {
+    console.log('[API] uploadProfileImage - uploading...');
+
+    // Create form data for multipart upload
+    const formData = new FormData();
+
+    // Extract filename and determine mime type
+    const filename = imageUri.split('/').pop() || 'profile.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1].toLowerCase()}` : 'image/jpeg';
+
+    // Append file to form data
+    formData.append('image', {
+      uri: imageUri,
+      name: filename,
+      type,
+    } as any);
+
+    const { data } = await apiClient.post('/mobile/profile/image', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    console.log('[API] uploadProfileImage - success');
+    return data;
+  },
+
+  /**
+   * Delete profile image
+   * Removes the user's profile image, reverting to initials avatar
+   */
+  async deleteProfileImage(): Promise<{ success: boolean }> {
+    console.log('[API] deleteProfileImage - deleting...');
+    const { data } = await apiClient.delete('/mobile/profile/image');
+    console.log('[API] deleteProfileImage - success');
+    return data;
+  },
 };
