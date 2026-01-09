@@ -4,6 +4,17 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
+### Added (Build 74)
+- **Profile Edit Screen (M-4)**
+  - New screen accessible from Settings > Profile & Image
+  - Large ProfileAvatar with "Edit" badge for photo changes
+  - Editable display name field with validation (2-50 characters)
+  - "Change Photo" and "Remove Photo" buttons (image picker pending M-5)
+  - Read-only email display section
+  - Unsaved changes warning dialog when navigating back
+  - Keyboard-aware layout with proper iOS padding
+  - Save updates local state (API integration pending M-6)
+
 ### Added (Build 73)
 - **Profile Avatar in Home Screen Greeting**
   - Displays user avatar (initials) next to "Welcome back" greeting

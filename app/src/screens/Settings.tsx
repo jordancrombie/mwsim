@@ -13,6 +13,7 @@ interface SettingsScreenProps {
   onBack: () => void;
   onSignOut: () => void;
   onDeepSignOut: () => void;
+  onProfileEdit: () => void;
   environmentName: string;
   isDevelopment: boolean;
   appVersion: string;
@@ -65,6 +66,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onBack,
   onSignOut,
   onDeepSignOut,
+  onProfileEdit,
   environmentName,
   isDevelopment,
   appVersion,
@@ -111,10 +113,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             icon="👤"
             title="Profile & Image"
             subtitle="Edit your display name and photo"
-            onPress={() => {
-              // TODO: Navigate to profile edit screen (M-4)
-              Alert.alert('Coming Soon', 'Profile editing will be available in a future update.');
-            }}
+            onPress={onProfileEdit}
           />
         </View>
 
