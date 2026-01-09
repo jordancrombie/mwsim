@@ -4,6 +4,12 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
+### TestFlight (Build 81)
+- **Phase 1 User Profile Integration Testing Build**
+  - All M-1 through M-10 tasks complete
+  - Points to development environment for testing
+  - Includes profile editing, image upload, avatars, and offline caching
+
 ### Added (Build 80)
 - **Offline Profile Image Caching (M-10)**
   - Created `imageCache.ts` service using expo-file-system
