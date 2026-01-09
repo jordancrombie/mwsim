@@ -38,6 +38,7 @@ import { getEnvironmentName, isDevelopment, getEnvironmentDebugInfo } from './sr
 import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
+import { MerchantPaymentSuccess } from './src/components/MerchantPaymentSuccess';
 import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
 import { MERCHANT_CATEGORIES, P2P_THEME_COLORS } from './src/types';
@@ -346,6 +347,10 @@ export default function App() {
     todayTransactionCount: number;
     weekRevenue: number;
   } | null>(null);
+
+  // Merchant payment success animation state
+  const [showMerchantPaymentSuccess, setShowMerchantPaymentSuccess] = useState(false);
+  const [merchantPaymentSuccessMessage, setMerchantPaymentSuccessMessage] = useState('');
 
   // Push notification state
   const [notificationsRequested, setNotificationsRequested] = useState(false);
@@ -802,6 +807,12 @@ export default function App() {
     );
   };
 
+  // Handle merchant payment success animation completion
+  const handleMerchantPaymentSuccessComplete = useCallback(() => {
+    setShowMerchantPaymentSuccess(false);
+    setMerchantPaymentSuccessMessage('');
+  }, []);
+
   // Handle success animation completion - show stay/redirect options
   const handleSuccessAnimationComplete = () => {
     setShowSuccessAnimation(false);
@@ -1019,15 +1030,11 @@ export default function App() {
             console.log('[Notifications] Transfer received in business mode, refreshing merchant dashboard...');
             loadMerchantDashboard();
 
-            // Show toast notification for payment
+            // Show payment success animation
             const amount = notifData.amount ? `$${notifData.amount.toFixed(2)}` : 'Payment';
             const sender = notifData.senderName || 'Customer';
-            Alert.alert(
-              '💰 Payment Received',
-              `${amount} from ${sender}`,
-              [{ text: 'OK', style: 'default' }],
-              { cancelable: true }
-            );
+            setMerchantPaymentSuccessMessage(`${amount} from ${sender}`);
+            setShowMerchantPaymentSuccess(true);
           }
         } else {
           // FALLBACK: Detect payment notifications by title/body when data is null
@@ -1042,12 +1049,8 @@ export default function App() {
             // Parse amount from body (e.g., "Demo shop 2 received $123.00")
             const amountMatch = body?.match(/received \$(\d+(?:\.\d{2})?)/);
             const amount = amountMatch ? `$${amountMatch[1]}` : 'Payment';
-            Alert.alert(
-              '💰 Payment Received',
-              `${amount} received`,
-              [{ text: 'OK', style: 'default' }],
-              { cancelable: true }
-            );
+            setMerchantPaymentSuccessMessage(`${amount} received`);
+            setShowMerchantPaymentSuccess(true);
           }
         }
 
@@ -2719,7 +2722,16 @@ export default function App() {
               {merchantQrToken ? `Scan to pay ${merchantProfile?.merchantName || 'merchant'}` : 'Payment QR Code'}
             </Text>
             <View style={[styles.merchantQRContainer, { width: merchantQRSize, height: merchantQRSize }]}>
-              {merchantQrLoading ? (
+              {showMerchantPaymentSuccess ? (
+                <View style={{ flex: 1, width: '100%', height: '100%' }}>
+                  <MerchantPaymentSuccess
+                    onComplete={handleMerchantPaymentSuccessComplete}
+                    message={merchantPaymentSuccessMessage}
+                    displayDuration={3000}
+                    fadeDuration={500}
+                  />
+                </View>
+              ) : merchantQrLoading ? (
                 <ActivityIndicator size="large" color="#10B981" />
               ) : merchantQrToken ? (
                 <QRCountdownBorder

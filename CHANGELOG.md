@@ -2,6 +2,18 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.12] - 2026-01-08 - Payment Received Animation
+
+### Added (Build 71)
+- **Payment Received Animation**
+  - Replaces popup alert with smooth animated overlay when merchant receives payment
+  - Large animated checkmark with "Payment Received" title and amount/sender details
+  - Smooth 500ms fade in with scale effect, 3 second display, 500ms fade out
+  - Returns seamlessly to QR code after animation completes
+  - New `MerchantPaymentSuccess` component with customizable timing
+
+---
+
 ## [1.5.11] - 2026-01-08 - Enhanced iPad Layout
 
 ### Added (Build 70)
