@@ -4,6 +4,17 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
+### Added (Build 76)
+- **Profile API Service (M-6)**
+  - Added profile API endpoints to api.ts:
+    - `getProfile()` - Fetch user profile data
+    - `updateProfile()` - Update display name
+    - `uploadProfileImage()` - Upload profile image (multipart/form-data)
+    - `deleteProfileImage()` - Remove profile image
+  - ProfileEditScreen now calls WSIM API for profile updates
+  - Home screen ProfileAvatar displays profile image when available
+  - Added `profileImageUrl` field to User type
+
 ### Added (Build 75)
 - **Image Picker Integration (M-5)**
   - Added expo-image-picker for profile photo selection

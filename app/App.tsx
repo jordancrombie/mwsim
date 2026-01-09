@@ -2909,6 +2909,7 @@ export default function App() {
           <View style={styles.homeHeader}>
             <View style={styles.homeHeaderLeft}>
               <ProfileAvatar
+                imageUrl={user?.profileImageUrl}
                 displayName={user?.name || 'User'}
                 size="medium"
                 userId={user?.id}
@@ -4590,7 +4591,7 @@ export default function App() {
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"
-        buildNumber="75"
+        buildNumber="76"
       />
     );
   }
@@ -4598,11 +4599,32 @@ export default function App() {
   // Profile Edit Screen
   if (currentScreen === 'profileEdit') {
     const handleSaveProfile = async (displayName: string, imageUri?: string | null) => {
-      // TODO: M-6 will add API integration
-      // For now, just update local state
       console.log('Saving profile:', { displayName, imageUri });
-      if (user) {
-        setUser({ ...user, name: displayName });
+
+      try {
+        // Handle image changes
+        if (imageUri === '__REMOVE__') {
+          // Delete profile image
+          await api.deleteProfileImage();
+        } else if (imageUri) {
+          // Upload new image
+          await api.uploadProfileImage(imageUri);
+        }
+
+        // Update display name if changed
+        if (displayName !== user?.name) {
+          await api.updateProfile({ displayName });
+        }
+
+        // Refresh wallet data to get updated profile
+        const summary = await api.getWalletSummary();
+        if (summary.user) {
+          setUser(summary.user);
+        }
+      } catch (error: any) {
+        console.error('Profile save error:', error);
+        // Re-throw to let ProfileEditScreen handle the error
+        throw error;
       }
     };
 
