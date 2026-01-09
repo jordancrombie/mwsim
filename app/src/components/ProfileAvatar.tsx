@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
 } from 'react-native';
+import { getCachedImageUri, cacheImage } from '../services/imageCache';
 
 // Avatar sizes in pixels
 const AVATAR_SIZES = {
@@ -110,6 +111,69 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(!!imageUrl);
   const [hasError, setHasError] = useState(false);
+  const [resolvedUri, setResolvedUri] = useState<string | null>(null);
+  const [isCached, setIsCached] = useState(false);
+
+  // Debug logging to trace what URL is being rendered
+  console.log(`[ProfileAvatar] Rendering size=${size} imageUrl=${imageUrl ? imageUrl.substring(imageUrl.lastIndexOf('/') + 1) : 'null'} cached=${isCached}`);
+
+  // Check cache and resolve image URI when imageUrl changes
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveImage = async () => {
+      if (!imageUrl) {
+        setResolvedUri(null);
+        setIsCached(false);
+        setIsLoading(false);
+        return;
+      }
+
+      // Reset state
+      setHasError(false);
+      setIsLoading(true);
+
+      // Check cache first
+      try {
+        const cachedUri = await getCachedImageUri(imageUrl);
+        if (cancelled) return;
+
+        if (cachedUri) {
+          console.log(`[ProfileAvatar] Using cached image for ${imageUrl.substring(imageUrl.lastIndexOf('/') + 1)}`);
+          setResolvedUri(cachedUri);
+          setIsCached(true);
+          setIsLoading(false);
+        } else {
+          // Use network URL, will cache after successful load
+          setResolvedUri(imageUrl);
+          setIsCached(false);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        // Fallback to network URL on cache error
+        setResolvedUri(imageUrl);
+        setIsCached(false);
+      }
+    };
+
+    resolveImage();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [imageUrl]);
+
+  // Cache image after successful network load
+  const handleImageLoad = () => {
+    setIsLoading(false);
+
+    // If loaded from network (not cached), cache it for next time
+    if (imageUrl && !isCached) {
+      cacheImage(imageUrl).catch(() => {
+        // Ignore cache errors
+      });
+    }
+  };
 
   const sizeValue = AVATAR_SIZES[size];
   const fontSize = Math.round(sizeValue * FONT_SIZE_RATIO);
@@ -125,32 +189,39 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
     backgroundColor,
   };
 
-  // Show initials if no image URL, or if image failed to load
-  const showInitials = !imageUrl || hasError;
+  // Show initials if no resolved URI, image failed to load, or while loading
+  // This prevents showing stale cached images while new ones load
+  const showInitials = !resolvedUri || hasError || isLoading;
 
   if (showInitials) {
     return (
       <View style={[styles.container, containerStyle]}>
         <Text style={[styles.initials, { fontSize }]}>{initials}</Text>
+        {/* Hidden Image to trigger loading when we have a resolved URI */}
+        {resolvedUri && !hasError && (
+          <Image
+            key={resolvedUri}
+            source={{ uri: resolvedUri }}
+            style={{ width: 0, height: 0, position: 'absolute' }}
+            onLoadEnd={handleImageLoad}
+            onError={() => {
+              setHasError(true);
+              setIsLoading(false);
+            }}
+          />
+        )}
       </View>
     );
   }
 
   return (
     <View style={[styles.container, containerStyle]}>
-      {isLoading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="small" color="#ffffff" />
-        </View>
-      )}
       <Image
-        source={{ uri: imageUrl }}
+        key={resolvedUri}
+        source={{ uri: resolvedUri }}
         style={[styles.image, { width: sizeValue, height: sizeValue, borderRadius }]}
-        onLoadStart={() => setIsLoading(true)}
-        onLoadEnd={() => setIsLoading(false)}
         onError={() => {
           setHasError(true);
-          setIsLoading(false);
         }}
       />
     </View>

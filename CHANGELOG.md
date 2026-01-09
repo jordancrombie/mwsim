@@ -4,6 +4,44 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
+### Added (Build 80)
+- **Offline Profile Image Caching (M-10)**
+  - Created `imageCache.ts` service using expo-file-system
+  - Profile images are cached locally after first load
+  - Cached images work offline and load faster
+  - Cache stored in app's cache directory with 7-day expiry
+  - 50 MB size limit with automatic cleanup of old entries
+  - "Clear Image Cache" option added to Settings
+  - Shows cache stats (image count and size)
+
+### Added (Build 79)
+- **Avatars in Transaction History (M-8)**
+  - Added ProfileAvatar to transfer history screen and home screen "Recent Transfers"
+  - Shows initials-based avatars for sender/recipient (images when API provides URLs)
+  - Small direction badge (↗/↙) indicates sent vs received transfers
+  - Added `senderProfileImageUrl` and `recipientProfileImageUrl` to Transfer type
+- **Merchant Avatar on Payment Approval (M-9)**
+  - Added ProfileAvatar to payment approval screen showing merchant logo
+  - Uses `merchantLogoUrl` from payment request, falls back to initials
+  - Avatar displayed in row with merchant name for visual recognition
+  - Helps users confirm they're paying the correct merchant
+
+### Fixed (Build 78)
+- **Profile Image Persistence Across Navigation**
+  - Fixed: Profile image now persists correctly when navigating away and back
+  - Root cause: `getWalletSummary()` API doesn't return `profileImageUrl`, and cached user data was being overwritten without preserving it
+  - Solution: `getWalletSummary()` now merges cached `profileImageUrl` into returned user object
+  - `uploadProfileImage()` now updates cached user immediately after upload
+  - `deleteProfileImage()` now clears cached `profileImageUrl`
+  - This ensures profile images survive navigation between screens
+
+### Fixed (Build 77)
+- **Profile Image Caching Issue**
+  - Fixed: Profile image now updates immediately after changing photo
+  - Previously, old cached image would display after uploading a new photo
+  - Added `useEffect` to reset image loading state when URL changes
+  - Added `key={imageUrl}` to force Image component remount on URL change
+
 ### Added (Build 76)
 - **Profile API Service (M-6)**
   - Added profile API endpoints to api.ts:

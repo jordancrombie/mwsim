@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { clearImageCache, getCacheStats } from '../services/imageCache';
 
 interface SettingsScreenProps {
   user: { name: string; email: string } | null;
@@ -72,6 +73,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   appVersion,
   buildNumber,
 }) => {
+  const [cacheStats, setCacheStats] = useState<{ count: number; totalSizeMB: number } | null>(null);
+
+  // Load cache stats on mount
+  useEffect(() => {
+    getCacheStats().then(setCacheStats);
+  }, []);
+
+  const handleClearCache = () => {
+    Alert.alert(
+      'Clear Image Cache',
+      'This will remove all cached profile images. They will be re-downloaded when needed.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          onPress: async () => {
+            await clearImageCache();
+            setCacheStats({ count: 0, totalSizeMB: 0 });
+            Alert.alert('Cache Cleared', 'Image cache has been cleared.');
+          },
+        },
+      ]
+    );
+  };
+
   const handleSignOut = () => {
     Alert.alert(
       'Sign Out',
@@ -163,6 +189,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </View>
               ) : null
             }
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="🗑️"
+            title="Clear Image Cache"
+            subtitle={cacheStats
+              ? `${cacheStats.count} images (${cacheStats.totalSizeMB} MB)`
+              : 'Loading...'}
+            onPress={handleClearCache}
+            showChevron={false}
           />
         </View>
 

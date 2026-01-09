@@ -1355,7 +1355,11 @@ export default function App() {
     try {
       const summary = await api.getWalletSummary();
       setCards(summary.cards || []);
-      setUser(summary.user);
+      // Preserve profileImageUrl since getWalletSummary doesn't return it
+      setUser(prev => ({
+        ...summary.user,
+        profileImageUrl: prev?.profileImageUrl,
+      }));
     } catch (e) {
       console.error('Failed to refresh:', e);
     } finally {
@@ -2647,6 +2651,15 @@ export default function App() {
             ) : (
               recentTransfers.slice(0, 5).map((transfer) => (
                 <View key={transfer.transferId} style={styles.p2pTransferItem}>
+                  <ProfileAvatar
+                    imageUrl={transfer.direction === 'sent'
+                      ? transfer.recipientProfileImageUrl
+                      : transfer.senderProfileImageUrl}
+                    displayName={transfer.direction === 'sent'
+                      ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
+                      : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                    size="small"
+                  />
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
                       {transfer.direction === 'sent'
@@ -3861,14 +3874,25 @@ export default function App() {
                     setCurrentScreen('transferDetail');
                   }}
                 >
-                  {/* Direction Icon */}
-                  <View style={[
-                    styles.historyItemIcon,
-                    { backgroundColor: transfer.direction === 'sent' ? '#fef2f2' : '#f0fdf4' }
-                  ]}>
-                    <Text style={{ fontSize: 20 }}>
-                      {transfer.direction === 'sent' ? '↗️' : '↙️'}
-                    </Text>
+                  {/* Avatar with direction indicator */}
+                  <View style={styles.historyItemAvatarContainer}>
+                    <ProfileAvatar
+                      imageUrl={transfer.direction === 'sent'
+                        ? transfer.recipientProfileImageUrl
+                        : transfer.senderProfileImageUrl}
+                      displayName={transfer.direction === 'sent'
+                        ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
+                        : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                      size="small"
+                    />
+                    <View style={[
+                      styles.historyDirectionBadge,
+                      { backgroundColor: transfer.direction === 'sent' ? '#fef2f2' : '#f0fdf4' }
+                    ]}>
+                      <Text style={{ fontSize: 10 }}>
+                        {transfer.direction === 'sent' ? '↗' : '↙'}
+                      </Text>
+                    </View>
                   </View>
 
                   {/* Details */}
@@ -4587,11 +4611,26 @@ export default function App() {
         onBack={() => setCurrentScreen('home')}
         onSignOut={handleLogout}
         onDeepSignOut={handleDeepLogout}
-        onProfileEdit={() => setCurrentScreen('profileEdit')}
+        onProfileEdit={async () => {
+          // Fetch latest profile data before entering edit screen
+          try {
+            const result = await api.getProfile();
+            console.log('Fetched profile:', result);
+            if (user && result.profile) {
+              setUser({
+                ...user,
+                profileImageUrl: result.profile.profileImageUrl,
+              });
+            }
+          } catch (error) {
+            console.log('Could not fetch profile, continuing with cached data:', error);
+          }
+          setCurrentScreen('profileEdit');
+        }}
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"
-        buildNumber="76"
+        buildNumber="80"
       />
     );
   }
@@ -4602,13 +4641,18 @@ export default function App() {
       console.log('Saving profile:', { displayName, imageUri });
 
       try {
+        let newProfileImageUrl: string | null | undefined = user?.profileImageUrl;
+
         // Handle image changes
         if (imageUri === '__REMOVE__') {
           // Delete profile image
           await api.deleteProfileImage();
+          newProfileImageUrl = null;
         } else if (imageUri) {
-          // Upload new image
-          await api.uploadProfileImage(imageUri);
+          // Upload new image and capture the returned URL
+          const uploadResult = await api.uploadProfileImage(imageUri);
+          console.log('Upload result:', uploadResult);
+          newProfileImageUrl = uploadResult.profileImageUrl;
         }
 
         // Update display name if changed
@@ -4616,10 +4660,15 @@ export default function App() {
           await api.updateProfile({ displayName });
         }
 
-        // Refresh wallet data to get updated profile
+        // Update user state with new profile data
+        // Wallet summary may not include profileImageUrl, so we merge it manually
         const summary = await api.getWalletSummary();
         if (summary.user) {
-          setUser(summary.user);
+          setUser({
+            ...summary.user,
+            name: displayName, // Use the updated name
+            profileImageUrl: newProfileImageUrl,
+          });
         }
       } catch (error: any) {
         console.error('Profile save error:', error);
@@ -4929,9 +4978,16 @@ export default function App() {
 
             {/* Outer Container Card - Contains merchant, order details, and payment method */}
             <View style={styles.outerCard}>
-              {/* Merchant Name Header */}
+              {/* Merchant Header with Avatar */}
               <View style={styles.orderCardMerchantHeader}>
-                <Text style={styles.orderCardMerchantName}>{paymentRequest?.merchantName}</Text>
+                <View style={styles.merchantAvatarRow}>
+                  <ProfileAvatar
+                    imageUrl={paymentRequest?.merchantLogoUrl}
+                    displayName={paymentRequest?.merchantName || 'Merchant'}
+                    size="medium"
+                  />
+                  <Text style={styles.orderCardMerchantName}>{paymentRequest?.merchantName}</Text>
+                </View>
                 {/* Only show orderDescription if no orderDetails (fallback) */}
                 {paymentRequest?.orderDescription && !paymentRequest?.orderDetails && (
                   <Text style={styles.orderCardDescription}>{paymentRequest.orderDescription}</Text>
@@ -5643,11 +5699,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e2e8f0',
     backgroundColor: '#f8fafc',
   },
+  merchantAvatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+  },
   orderCardMerchantName: {
     fontSize: 17,
     fontWeight: '600',
     color: '#1e293b',
-    textAlign: 'center',
   },
   orderCardDescription: {
     fontSize: 14,
@@ -6147,10 +6208,10 @@ const styles = StyleSheet.create({
   p2pTransferItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
+    gap: 12,
   },
   p2pTransferInfo: {
     flex: 1,
@@ -6801,13 +6862,21 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  historyItemIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  historyItemAvatarContainer: {
+    position: 'relative',
+    marginRight: 12,
+  },
+  historyDirectionBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
   },
   historyItemDetails: {
     flex: 1,
