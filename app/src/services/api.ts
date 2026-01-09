@@ -226,7 +226,16 @@ export const api = {
       await secureStorage.setCachedCards(data.cards);
     }
     if (data.user) {
-      await secureStorage.setUserData(data.user);
+      // Preserve existing profileImageUrl if API doesn't return it
+      // (profileImageUrl comes from /profile endpoint, not wallet summary)
+      const existingUser = await secureStorage.getUserData<{ profileImageUrl?: string | null }>();
+      const mergedUser = {
+        ...data.user,
+        profileImageUrl: data.user.profileImageUrl ?? existingUser?.profileImageUrl,
+      };
+      await secureStorage.setUserData(mergedUser);
+      // Return the merged user so callers get the preserved profileImageUrl
+      data.user = mergedUser;
     }
 
     return data;
@@ -427,30 +436,40 @@ export const api = {
    * Returns display name, profile image URL, and thumbnails
    */
   async getProfile(): Promise<{
-    displayName: string;
-    profileImageUrl?: string | null;
-    thumbnails?: {
-      small: string;
-      medium: string;
+    success: boolean;
+    profile: {
+      displayName: string;
+      profileImageUrl?: string | null;
+      thumbnails?: {
+        small: string;
+        medium: string;
+      };
     };
   }> {
     console.log('[API] getProfile - fetching...');
     const { data } = await apiClient.get('/mobile/profile');
-    console.log('[API] getProfile - success');
+    console.log('[API] getProfile - success:', data);
     return data;
   },
 
   /**
    * Update user profile (display name)
+   * Note: WSIM expects 'name' field, not 'displayName'
    */
   async updateProfile(profile: { displayName: string }): Promise<{
     displayName: string;
     profileImageUrl?: string | null;
   }> {
-    console.log('[API] updateProfile - updating...');
-    const { data } = await apiClient.put('/mobile/profile', profile);
-    console.log('[API] updateProfile - success');
-    return data;
+    console.log('[API] updateProfile - updating with:', profile);
+    try {
+      // WSIM expects 'name' field
+      const { data } = await apiClient.put('/mobile/profile', { name: profile.displayName });
+      console.log('[API] updateProfile - success:', data);
+      return data;
+    } catch (error: any) {
+      console.error('[API] updateProfile - failed:', error.response?.status, error.response?.data);
+      throw error;
+    }
   },
 
   /**
@@ -470,6 +489,7 @@ export const api = {
     };
   }> {
     console.log('[API] uploadProfileImage - uploading...');
+    console.log('[API] uploadProfileImage - imageUri:', imageUri);
 
     // Create form data for multipart upload
     const formData = new FormData();
@@ -479,6 +499,9 @@ export const api = {
     const match = /\.(\w+)$/.exec(filename);
     const type = match ? `image/${match[1].toLowerCase()}` : 'image/jpeg';
 
+    console.log('[API] uploadProfileImage - filename:', filename);
+    console.log('[API] uploadProfileImage - mime type:', type);
+
     // Append file to form data
     formData.append('image', {
       uri: imageUri,
@@ -486,14 +509,32 @@ export const api = {
       type,
     } as any);
 
-    const { data } = await apiClient.post('/mobile/profile/image', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    console.log('[API] uploadProfileImage - FormData created, sending to server...');
 
-    console.log('[API] uploadProfileImage - success');
-    return data;
+    try {
+      const { data } = await apiClient.post('/mobile/profile/image', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      console.log('[API] uploadProfileImage - success');
+
+      // Update cached user with new profileImageUrl so it persists across navigation
+      const existingUser = await secureStorage.getUserData<Record<string, unknown>>();
+      if (existingUser) {
+        await secureStorage.setUserData({
+          ...existingUser,
+          profileImageUrl: data.profileImageUrl,
+        });
+        console.log('[API] uploadProfileImage - cached user updated');
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('[API] uploadProfileImage - failed:', error.response?.status, error.response?.data);
+      throw error;
+    }
   },
 
   /**
@@ -504,6 +545,17 @@ export const api = {
     console.log('[API] deleteProfileImage - deleting...');
     const { data } = await apiClient.delete('/mobile/profile/image');
     console.log('[API] deleteProfileImage - success');
+
+    // Clear cached profileImageUrl so it persists as removed across navigation
+    const existingUser = await secureStorage.getUserData<Record<string, unknown>>();
+    if (existingUser) {
+      await secureStorage.setUserData({
+        ...existingUser,
+        profileImageUrl: null,
+      });
+      console.log('[API] deleteProfileImage - cached user updated');
+    }
+
     return data;
   },
 };

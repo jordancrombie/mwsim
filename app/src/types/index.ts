@@ -200,11 +200,13 @@ export interface Transfer {
   senderAlias?: string;
   senderDisplayName?: string;
   senderBankName?: string;
+  senderProfileImageUrl?: string;  // Profile image URL (if available from API)
 
   // Recipient info (for sent transfers)
   recipientAlias?: string;
   recipientDisplayName?: string;
   recipientBankName?: string;
+  recipientProfileImageUrl?: string;  // Profile image URL (if available from API)
 
   createdAt: string;
   completedAt?: string;
