@@ -14,7 +14,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.banksim.wsim",
-      "buildNumber": "74",
+      "buildNumber": "75",
       "associatedDomains": [
         "applinks:wsim.banksim.ca",
         "applinks:wsim-dev.banksim.ca",
@@ -23,7 +23,8 @@
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes",
+        "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes and take profile photos",
+        "NSPhotoLibraryUsageDescription": "mwsim needs access to your photo library to select a profile photo",
         "LSApplicationQueriesSchemes": [
           "googlechrome",
           "googlechromes",
@@ -48,6 +49,7 @@
     },
     "plugins": [
       "expo-camera",
+      "expo-image-picker",
       [
         "expo-notifications",
         {
