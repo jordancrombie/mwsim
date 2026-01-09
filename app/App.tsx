@@ -39,6 +39,7 @@ import { SplashScreen } from './src/components/SplashScreen';
 import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
 import { MerchantPaymentSuccess } from './src/components/MerchantPaymentSuccess';
+import { SettingsScreen } from './src/screens/Settings';
 import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
 import { MERCHANT_CATEGORIES, P2P_THEME_COLORS } from './src/types';
@@ -59,6 +60,7 @@ type Screen =
   | 'cardDetails'
   | 'paymentApproval'
   | 'qrScanner'
+  | 'settings'
   // P2P screens
   | 'p2pHome'
   | 'p2pEnrollment'
@@ -1439,7 +1441,8 @@ export default function App() {
     ]);
   };
 
-  // Deep logout - deactivates push token before signing out (long-press feature for testers)
+  // Deep logout: deactivates push token and clears all device data
+  // Note: Settings screen handles the confirmation dialog before calling this
   const handleDeepLogout = async () => {
     if (!deviceId) {
       // Fall back to normal logout if no deviceId
@@ -1447,42 +1450,29 @@ export default function App() {
       return;
     }
 
-    Alert.alert(
-      'Deep Sign Out',
-      'This will deactivate push notifications for this device and sign out.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Sign Out & Clear',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Deactivate push token BEFORE logout (needs auth)
-              await api.deactivatePushToken(deviceId);
-              console.log('[DeepLogout] Push token deactivated for device:', deviceId);
-            } catch (e) {
-              console.log('[DeepLogout] Failed to deactivate push token:', e);
-            }
+    try {
+      // Deactivate push token BEFORE logout (needs auth)
+      await api.deactivatePushToken(deviceId);
+      console.log('[DeepLogout] Push token deactivated for device:', deviceId);
+    } catch (e) {
+      console.log('[DeepLogout] Failed to deactivate push token:', e);
+    }
 
-            try {
-              await api.logout();
-            } catch (e) {
-              // Continue anyway
-            }
+    try {
+      await api.logout();
+    } catch (e) {
+      // Continue anyway
+    }
 
-            setUser(null);
-            setCards([]);
-            setEmail('');
-            setName('');
-            setVerificationCode('');
-            setCurrentScreen('welcome');
+    setUser(null);
+    setCards([]);
+    setEmail('');
+    setName('');
+    setVerificationCode('');
+    setCurrentScreen('welcome');
 
-            // Show toast to confirm deep logout worked
-            Alert.alert('Device Cleared', 'Push notifications deactivated for this device.');
-          },
-        },
-      ]
-    );
+    // Show toast to confirm deep logout worked
+    Alert.alert('Device Cleared', 'Push notifications deactivated for this device.');
   };
 
   // QR Scanner functions
@@ -2911,31 +2901,30 @@ export default function App() {
       <View style={styles.container}>
         <StatusBar style="dark" />
         <View style={styles.homeContent}>
-          {/* Environment indicator */}
-          <TouchableOpacity
-            style={[styles.envBadge, isDevelopment() && styles.envBadgeDev]}
-            onLongPress={() => {
-              const debugInfo = getEnvironmentDebugInfo();
-              Alert.alert('Environment Debug Info', debugInfo);
-            }}
-            delayLongPress={500}
-          >
-            <Text style={styles.envBadgeText}>{getEnvironmentName()}</Text>
-          </TouchableOpacity>
-
           {/* Header */}
           <View style={styles.homeHeader}>
             <View>
               <Text style={styles.homeGreeting}>Welcome back,</Text>
               <Text style={styles.homeName}>{user?.name || 'User'}</Text>
+              {/* Environment indicator - tucked under name */}
+              <TouchableOpacity
+                style={[styles.envBadgeInline, isDevelopment() && styles.envBadgeInlineDev]}
+                onLongPress={() => {
+                  const debugInfo = getEnvironmentDebugInfo();
+                  Alert.alert('Environment Debug Info', debugInfo);
+                }}
+                delayLongPress={500}
+              >
+                <Text style={styles.envBadgeInlineText}>{getEnvironmentName()}</Text>
+              </TouchableOpacity>
             </View>
-            <Pressable
-              onPress={handleLogout}
-              onLongPress={handleDeepLogout}
-              delayLongPress={2000}
+            <TouchableOpacity
+              onPress={() => setCurrentScreen('settings')}
+              style={styles.settingsButton}
+              activeOpacity={0.7}
             >
-              <Text style={styles.signOutText}>Sign Out</Text>
-            </Pressable>
+              <Text style={styles.settingsIcon}>⚙️</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Tab Content */}
@@ -4578,6 +4567,22 @@ export default function App() {
     );
   }
 
+  // Settings Screen
+  if (currentScreen === 'settings') {
+    return (
+      <SettingsScreen
+        user={user}
+        onBack={() => setCurrentScreen('home')}
+        onSignOut={handleLogout}
+        onDeepSignOut={handleDeepLogout}
+        environmentName={getEnvironmentName()}
+        isDevelopment={isDevelopment()}
+        appVersion="1.5.12"
+        buildNumber="72"
+      />
+    );
+  }
+
   // Card Details Screen
   if (currentScreen === 'cardDetails' && selectedCard) {
     const cardColor = selectedCard.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
@@ -4971,6 +4976,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
   },
+  // Inline environment badge (under user name)
+  envBadgeInline: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#22c55e', // Green for production
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 3,
+    marginTop: 4,
+  },
+  envBadgeInlineDev: {
+    backgroundColor: '#f59e0b', // Orange for development
+  },
+  envBadgeInlineText: {
+    color: '#ffffff',
+    fontSize: 9,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
   content: {
     flex: 1,
     paddingHorizontal: 24,
@@ -5271,6 +5295,12 @@ const styles = StyleSheet.create({
   signOutText: {
     fontSize: 14,
     color: '#ef4444',
+  },
+  settingsButton: {
+    padding: 8,
+  },
+  settingsIcon: {
+    fontSize: 24,
   },
   resetButton: {
     marginTop: 24,
