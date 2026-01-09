@@ -4,6 +4,13 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
+### Added (Build 73)
+- **Profile Avatar in Home Screen Greeting**
+  - Displays user avatar (initials) next to "Welcome back" greeting
+  - Uses medium size (64px) ProfileAvatar component
+  - Deterministic color based on user ID for consistent appearance
+  - Ready for profile image display once image upload is connected
+
 ### Added (Build 72)
 - **Settings Screen Infrastructure**
   - iOS-style settings screen accessible via gear icon in header

@@ -40,6 +40,7 @@ import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
 import { MerchantPaymentSuccess } from './src/components/MerchantPaymentSuccess';
 import { SettingsScreen } from './src/screens/Settings';
+import { ProfileAvatar } from './src/components/ProfileAvatar';
 import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
 import { MERCHANT_CATEGORIES, P2P_THEME_COLORS } from './src/types';
@@ -2903,20 +2904,27 @@ export default function App() {
         <View style={styles.homeContent}>
           {/* Header */}
           <View style={styles.homeHeader}>
-            <View>
-              <Text style={styles.homeGreeting}>Welcome back,</Text>
-              <Text style={styles.homeName}>{user?.name || 'User'}</Text>
-              {/* Environment indicator - tucked under name */}
-              <TouchableOpacity
-                style={[styles.envBadgeInline, isDevelopment() && styles.envBadgeInlineDev]}
-                onLongPress={() => {
-                  const debugInfo = getEnvironmentDebugInfo();
-                  Alert.alert('Environment Debug Info', debugInfo);
-                }}
-                delayLongPress={500}
-              >
-                <Text style={styles.envBadgeInlineText}>{getEnvironmentName()}</Text>
-              </TouchableOpacity>
+            <View style={styles.homeHeaderLeft}>
+              <ProfileAvatar
+                displayName={user?.name || 'User'}
+                size="medium"
+                userId={user?.id}
+              />
+              <View style={styles.homeHeaderText}>
+                <Text style={styles.homeGreeting}>Welcome back,</Text>
+                <Text style={styles.homeName}>{user?.name || 'User'}</Text>
+                {/* Environment indicator - tucked under name */}
+                <TouchableOpacity
+                  style={[styles.envBadgeInline, isDevelopment() && styles.envBadgeInlineDev]}
+                  onLongPress={() => {
+                    const debugInfo = getEnvironmentDebugInfo();
+                    Alert.alert('Environment Debug Info', debugInfo);
+                  }}
+                  delayLongPress={500}
+                >
+                  <Text style={styles.envBadgeInlineText}>{getEnvironmentName()}</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <TouchableOpacity
               onPress={() => setCurrentScreen('settings')}
@@ -4578,7 +4586,7 @@ export default function App() {
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"
-        buildNumber="72"
+        buildNumber="73"
       />
     );
   }
@@ -5210,6 +5218,14 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
+  },
+  homeHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  homeHeaderText: {
+    flexDirection: 'column',
   },
   homeGreeting: {
     fontSize: 14,
