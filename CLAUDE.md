@@ -128,6 +128,32 @@ APNS_BUNDLE_ID=com.banksim.wsim
 APNS_PRODUCTION=false  # true for App Store builds
 ```
 
+## Environment Switching (Development vs Production)
+
+To switch the default environment for debug builds, modify these two files:
+
+### 1. Settings.bundle Default
+**File:** `app/plugins/withSettingsBundle.js`
+
+Find the `DefaultValue` key under the environment setting and change:
+```xml
+<key>DefaultValue</key>
+<string>development</string>  <!-- or 'production' -->
+```
+
+### 2. Code Fallback Default
+**File:** `app/src/services/environment.ts`
+
+Find the else block in `getEnvironment()` and change:
+```typescript
+} else {
+  // Default to development for all builds (Debug and Release)
+  cachedEnvironment = 'development';  // or 'production'
+}
+```
+
+**After changing:** Run `npx expo prebuild --clean` and rebuild the app.
+
 ## Related Projects
 
 - **WSIM**: `/Users/jcrombie/ai/wsim` - Backend wallet service
