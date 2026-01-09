@@ -178,19 +178,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             showChevron={false}
             danger
           />
-          {isDevelopment && (
-            <>
-              <View style={styles.separator} />
-              <SettingsRow
-                icon="🔄"
-                title="Reset Device"
-                subtitle="Clear all data and re-verify"
-                onPress={handleDeepSignOut}
-                showChevron={false}
-                danger
-              />
-            </>
-          )}
+          {/* Reset Device: always visible for now (testing), can be gated by isDevelopment later */}
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="🔄"
+            title="Reset Device"
+            subtitle="Sign out and deregister push notifications"
+            onPress={handleDeepSignOut}
+            showChevron={false}
+            danger
+          />
         </View>
 
         {/* Footer */}
