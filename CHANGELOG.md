@@ -2,6 +2,28 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
+
+### Added (Build 72)
+- **Settings Screen Infrastructure**
+  - iOS-style settings screen accessible via gear icon in header
+  - Grouped settings rows: Profile, Account, About, Account Actions
+  - Sign Out button with confirmation dialog
+  - Reset Device option (dev mode) for deep logout with push token deactivation
+
+- **Profile Avatar Component**
+  - Reusable `ProfileAvatar` component with image support and initials fallback
+  - Three sizes: small (32px), medium (64px), large (128px)
+  - Deterministic color generation from user ID for consistent avatar colors
+  - Initials algorithm: single word → first 2 chars, multiple words → first + last initials
+
+- **Environment Badge Relocation**
+  - Moved environment badge (Development/Production) from top-right to under user name
+  - Smaller, inline styling that fits neatly under the greeting
+  - Long-press still shows environment debug info
+
+---
+
 ## [1.5.12] - 2026-01-08 - Payment Received Animation
 
 ### Added (Build 71)
