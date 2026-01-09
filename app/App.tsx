@@ -40,6 +40,7 @@ import { OrderSummary } from './src/components/OrderSummary';
 import { SuccessAnimation } from './src/components/SuccessAnimation';
 import { MerchantPaymentSuccess } from './src/components/MerchantPaymentSuccess';
 import { SettingsScreen } from './src/screens/Settings';
+import { ProfileEditScreen } from './src/screens/ProfileEdit';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
 import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
@@ -62,6 +63,7 @@ type Screen =
   | 'paymentApproval'
   | 'qrScanner'
   | 'settings'
+  | 'profileEdit'
   // P2P screens
   | 'p2pHome'
   | 'p2pEnrollment'
@@ -4583,10 +4585,38 @@ export default function App() {
         onBack={() => setCurrentScreen('home')}
         onSignOut={handleLogout}
         onDeepSignOut={handleDeepLogout}
+        onProfileEdit={() => setCurrentScreen('profileEdit')}
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"
-        buildNumber="73"
+        buildNumber="74"
+      />
+    );
+  }
+
+  // Profile Edit Screen
+  if (currentScreen === 'profileEdit') {
+    const handleSaveProfile = async (displayName: string, imageUri?: string | null) => {
+      // TODO: M-6 will add API integration
+      // For now, just update local state
+      console.log('Saving profile:', { displayName, imageUri });
+      if (user) {
+        setUser({ ...user, name: displayName });
+      }
+    };
+
+    const handlePickImage = async (): Promise<string | null> => {
+      // TODO: M-5 will add expo-image-picker integration
+      Alert.alert('Coming Soon', 'Photo selection will be available in a future update.');
+      return null;
+    };
+
+    return (
+      <ProfileEditScreen
+        user={user}
+        onBack={() => setCurrentScreen('settings')}
+        onSave={handleSaveProfile}
+        onPickImage={handlePickImage}
       />
     );
   }
