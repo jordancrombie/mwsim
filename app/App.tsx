@@ -4155,10 +4155,13 @@ export default function App() {
               <Text style={styles.transferDetailSectionTitle}>
                 {isViewingMerchantPayment ? 'Payment from' : isSent ? 'Sent to' : 'Received from'}
               </Text>
-              <View style={styles.transferDetailInfoCard}>
+              <View style={[
+                styles.transferDetailInfoCard,
+                isViewingMerchantPayment && { flexDirection: 'row', alignItems: 'center' }
+              ]}>
                 <View style={[
                   styles.transferDetailPersonIcon,
-                  isViewingMerchantPayment && { backgroundColor: '#dbeafe' }
+                  isViewingMerchantPayment && { backgroundColor: '#dbeafe', marginBottom: 0, marginRight: 12 }
                 ]}>
                   <Text style={{ fontSize: 24 }}>{isViewingMerchantPayment ? '🏦' : '👤'}</Text>
                 </View>
