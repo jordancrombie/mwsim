@@ -2,6 +2,50 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.7.1] - 2026-01-10 - Bug Fixes
+
+### Fixed
+- **Merchant Description Not Saving**
+  - Fixed: Description field now properly passed to `updateMerchantProfile` API
+  - Added fallback to preserve description in local state if API doesn't return it
+  - Added `description` to `updateMerchantProfile` type signature
+- **Noisy ProfileAvatar Logging**
+  - Removed console.log that fired on every render during text input
+
+---
+
+## [1.7.0] - 2026-01-10 - Business Profile Images (Phase 2)
+
+### Added
+- **Merchant Profile Edit Screen (M-21)**
+  - New screen for editing business name and description
+  - Upload/remove business logo via image picker
+  - Shows read-only category and merchant ID
+  - Green merchant theme (#10B981)
+- **Merchant Logo Upload/Delete API (M-22)**
+  - `uploadMerchantLogo()` - multipart form upload to TransferSim
+  - `deleteMerchantLogo()` - remove logo, revert to initials
+- **Edit Button on Merchant Dashboard Header**
+  - Quick access to merchant profile edit from business mode
+  - Displays merchant logo or initials in header
+
+### Changed
+- **ProfileAvatar Variant Support (M-20)**
+  - Added `variant` prop: 'user' (default) or 'merchant'
+  - Merchants display square avatars with rounded corners (20%)
+  - Users continue to display circular avatars
+- **Improved Layout Spacing**
+  - Reduced padding in merchant dashboard header
+  - Tightened spacing around Personal/Business mode selector
+
+### Types
+- Extended `MerchantProfile` with logo fields:
+  - `logoImageUrl` - CDN URL for merchant logo
+  - `logoThumbnails` - small/medium variants
+  - `initialsColor` - background color for initials fallback
+
+---
+
 ## [1.6.2] - 2026-01-10 - Transfer Detail Layout Fix
 
 ### Fixed

@@ -64,6 +64,25 @@ mwsim enables users to:
   - Detailed transfer view with status and timestamps
 - **QR Code Scanning** - Scan recipient QR codes to send money instantly
 
+### Micro Merchant (via TransferSim)
+- **Merchant Enrollment** - Become a micro merchant to accept payments
+  - Business name and category selection
+  - Link receiving bank account
+- **Business Mode Toggle** - Switch between Personal and Business modes
+  - Separate views for personal transfers and merchant payments
+  - Mode preference persisted across app sessions
+- **Merchant Dashboard** - View business activity at a glance
+  - Today's revenue and transaction count
+  - Recent merchant payments with fee breakdown
+  - Quick access to QR code for receiving payments
+- **Merchant Profile Management**
+  - Edit business name and description
+  - Upload/remove business logo
+  - Square avatars with rounded corners distinguish merchants from users
+- **Accept Payments** - Generate merchant QR codes for customers to scan
+  - Automatic fee calculation ($0.25 for < $200, $0.50 for >= $200)
+  - Payment breakdown showing gross, fee, and net amounts
+
 ### Developer Tools
 - **Environment Switching** - Toggle between Dev/Production servers in iOS Settings
 - **Environment Indicator** - Orange badge shows current environment on home screen
@@ -259,6 +278,18 @@ Configured in `app.json`:
 - [x] Biometric authorization for transfers
 - [ ] Alias verification (email/SMS)
 - [ ] Push notifications for transfers
+
+### Phase 2.6: Micro Merchant (In Progress - 2026-01-10)
+- [x] Merchant enrollment flow
+- [x] Business/Personal mode toggle
+- [x] Merchant dashboard with stats
+- [x] Accept payments via QR code
+- [x] Payment history with fee breakdown
+- [x] Merchant profile edit screen
+- [x] Business logo upload/delete
+- [x] Square avatars for merchant profiles
+- [ ] Merchant logo display in payment confirmation
+- [ ] Push notifications for merchant payments
 
 ### Phase 3: OpenWallet Foundation
 - [ ] OID4VCI (Verifiable Credential Issuance)
