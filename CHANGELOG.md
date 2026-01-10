@@ -2,6 +2,15 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.6.2] - 2026-01-10 - Transfer Detail Layout Fix
+
+### Fixed
+- **"Payment from" Section Layout**
+  - Bank icon and text now display inline (side by side) for merchant payments
+  - Only affects merchant payment view, not other transfer detail sections
+
+---
+
 ## [1.6.1] - 2026-01-10 - Merchant Payment Display Improvements
 
 ### Fixed
