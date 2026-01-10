@@ -292,6 +292,7 @@ export default function App() {
   const [recentTransfers, setRecentTransfers] = useState<Transfer[]>([]);
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
   const [transferDetailReturnScreen, setTransferDetailReturnScreen] = useState<'transferHistory' | 'home' | 'p2pHome'>('transferHistory');
+  const [isViewingMerchantPayment, setIsViewingMerchantPayment] = useState(false);
 
   // Alias Management screen state
   const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
@@ -316,8 +317,10 @@ export default function App() {
 
   // Transfer History screen state
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRefreshing, setHistoryRefreshing] = useState(false); // For pull-to-refresh animation
   const [historyFilter, setHistoryFilter] = useState<'all' | 'sent' | 'received'>('all');
   const [historyTransfers, setHistoryTransfers] = useState<Transfer[]>([]);
+  const [historyViewMode, setHistoryViewMode] = useState<'personal' | 'business'>('personal');
 
   // P2P QR Scanner screen state
   const [p2pQrScanned, setP2pQrScanned] = useState(false);
@@ -413,7 +416,7 @@ export default function App() {
     setHistoryTransfers(recentTransfers);
   }, [recentTransfers]);
 
-  // Function to load transfer history
+  // Function to load transfer history (silent - no pull-down animation)
   const loadHistoryTransfers = useCallback(async () => {
     setHistoryLoading(true);
     try {
@@ -427,12 +430,25 @@ export default function App() {
     }
   }, [historyFilter]);
 
-  // Load transfers when history filter changes (only when on transferHistory screen)
+  // Function to refresh transfer history (shows pull-down animation)
+  const refreshHistoryTransfers = useCallback(async () => {
+    setHistoryRefreshing(true);
+    try {
+      const result = await transferSimApi.getTransfers(historyFilter, 50, 0);
+      setHistoryTransfers(result.transfers);
+    } catch (e: any) {
+      console.error('[History] Refresh failed:', e);
+    } finally {
+      setHistoryRefreshing(false);
+    }
+  }, [historyFilter]);
+
+  // Load transfers when history filter changes (only when on transferHistory screen in personal mode)
   useEffect(() => {
-    if (currentScreen === 'transferHistory') {
+    if (currentScreen === 'transferHistory' && historyViewMode === 'personal') {
       loadHistoryTransfers();
     }
-  }, [historyFilter, currentScreen, loadHistoryTransfers]);
+  }, [historyFilter, currentScreen, historyViewMode, loadHistoryTransfers]);
 
   // Handle deep link for payment requests and Universal Links
   const handleDeepLink = useCallback(async (url: string) => {
@@ -2664,7 +2680,10 @@ export default function App() {
             <View style={styles.p2pSectionHeader}>
               <Text style={styles.sectionTitle}>Recent Transfers</Text>
               {recentTransfers.length > 0 && (
-                <TouchableOpacity onPress={() => setCurrentScreen('transferHistory')}>
+                <TouchableOpacity onPress={() => {
+                  setHistoryViewMode('personal');
+                  setCurrentScreen('transferHistory');
+                }}>
                   <Text style={styles.p2pSeeAllText}>See All</Text>
                 </TouchableOpacity>
               )}
@@ -2681,6 +2700,7 @@ export default function App() {
                   onPress={() => {
                     setSelectedTransfer(transfer);
                     setTransferDetailReturnScreen('p2pHome');
+                    setIsViewingMerchantPayment(false);
                     setCurrentScreen('transferDetail');
                   }}
                   activeOpacity={0.7}
@@ -2846,6 +2866,7 @@ export default function App() {
             <View style={styles.p2pSectionHeader}>
               <Text style={styles.sectionTitle}>Recent Payments</Text>
               <TouchableOpacity onPress={() => {
+                setHistoryViewMode('business');
                 loadMerchantTransfers();
                 setCurrentScreen('transferHistory');
               }}>
@@ -2867,13 +2888,18 @@ export default function App() {
                   onPress={() => {
                     setSelectedTransfer(transfer);
                     setTransferDetailReturnScreen('home');
+                    setIsViewingMerchantPayment(true);
                     setCurrentScreen('transferDetail');
                   }}
                   activeOpacity={0.7}
                 >
+                  <View style={styles.merchantPaymentIcon}>
+                    <Text style={{ fontSize: 20 }}>🏦</Text>
+                  </View>
                   <View style={styles.p2pTransferInfo}>
                     <Text style={styles.p2pTransferName}>
-                      {transfer.senderDisplayName || transfer.senderAlias}
+                      {transfer.senderBankName || 'Bank Transfer'}
+                      {transfer.senderAccountLast4 && ` ****${transfer.senderAccountLast4}`}
                     </Text>
                     <Text style={styles.p2pTransferDate}>
                       {new Date(transfer.createdAt).toLocaleDateString()}
@@ -3852,52 +3878,60 @@ export default function App() {
             >
               <Text style={styles.backButton}>← Back</Text>
             </TouchableOpacity>
-            <Text style={styles.historyTitle}>Transfer History</Text>
+            <Text style={styles.historyTitle}>
+              {historyViewMode === 'business' ? 'Payment History' : 'Transfer History'}
+            </Text>
             <View style={{ width: 50 }} />
           </View>
 
-          {/* Filter Tabs */}
-          <View style={styles.historyFilterTabs}>
-            {(['all', 'sent', 'received'] as const).map((filter) => (
-              <TouchableOpacity
-                key={filter}
-                style={[
-                  styles.historyFilterTab,
-                  historyFilter === filter && styles.historyFilterTabActive
-                ]}
-                onPress={() => setHistoryFilter(filter)}
-                activeOpacity={0.7}
-              >
-                <Text style={[
-                  styles.historyFilterTabText,
-                  historyFilter === filter && styles.historyFilterTabTextActive
-                ]}>
-                  {filter.charAt(0).toUpperCase() + filter.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {/* Filter Tabs - only show for personal mode */}
+          {historyViewMode === 'personal' && (
+            <View style={styles.historyFilterTabs}>
+              {(['all', 'sent', 'received'] as const).map((filter) => (
+                <TouchableOpacity
+                  key={filter}
+                  style={[
+                    styles.historyFilterTab,
+                    historyFilter === filter && styles.historyFilterTabActive
+                  ]}
+                  onPress={() => setHistoryFilter(filter)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.historyFilterTabText,
+                    historyFilter === filter && styles.historyFilterTabTextActive
+                  ]}>
+                    {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* Transfer List */}
           <ScrollView
             style={styles.historyList}
             refreshControl={
               <RefreshControl
-                refreshing={historyLoading}
-                onRefresh={loadHistoryTransfers}
+                refreshing={historyViewMode === 'business' ? historyLoading : historyRefreshing}
+                onRefresh={historyViewMode === 'business' ? loadMerchantTransfers : refreshHistoryTransfers}
               />
             }
           >
-            {historyTransfers.length === 0 ? (
+            {(historyViewMode === 'business' ? merchantTransfers : historyTransfers).length === 0 ? (
               <View style={styles.historyEmpty}>
                 <Text style={styles.historyEmptyIcon}>📋</Text>
-                <Text style={styles.historyEmptyText}>No transfers yet</Text>
+                <Text style={styles.historyEmptyText}>
+                  {historyViewMode === 'business' ? 'No payments yet' : 'No transfers yet'}
+                </Text>
                 <Text style={styles.historyEmptySubtext}>
-                  Your transfer history will appear here
+                  {historyViewMode === 'business'
+                    ? 'Payments you receive will appear here'
+                    : 'Your transfer history will appear here'}
                 </Text>
               </View>
             ) : (
-              historyTransfers.map((transfer) => (
+              (historyViewMode === 'business' ? merchantTransfers : historyTransfers).map((transfer) => (
                 <TouchableOpacity
                   key={transfer.transferId}
                   style={styles.historyItem}
@@ -3905,52 +3939,90 @@ export default function App() {
                   onPress={() => {
                     setSelectedTransfer(transfer);
                     setTransferDetailReturnScreen('transferHistory');
+                    setIsViewingMerchantPayment(historyViewMode === 'business');
                     setCurrentScreen('transferDetail');
                   }}
                 >
-                  {/* Avatar with direction indicator */}
-                  <View style={styles.historyItemAvatarContainer}>
-                    <ProfileAvatar
-                      imageUrl={transfer.direction === 'sent'
-                        ? transfer.recipientProfileImageUrl
-                        : transfer.senderProfileImageUrl}
-                      displayName={transfer.direction === 'sent'
-                        ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
-                        : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
-                      size="small"
-                    />
-                    <View style={[
-                      styles.historyDirectionBadge,
-                      { backgroundColor: transfer.direction === 'sent' ? '#fef2f2' : '#f0fdf4' }
-                    ]}>
-                      <Text style={{ fontSize: 10 }}>
-                        {transfer.direction === 'sent' ? '↗' : '↙'}
-                      </Text>
-                    </View>
-                  </View>
+                  {historyViewMode === 'business' ? (
+                    <>
+                      {/* Bank icon for merchant payments */}
+                      <View style={styles.merchantPaymentIcon}>
+                        <Text style={{ fontSize: 20 }}>🏦</Text>
+                      </View>
 
-                  {/* Details */}
-                  <View style={styles.historyItemDetails}>
-                    <Text style={styles.historyItemName}>
-                      {transfer.direction === 'sent'
-                        ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
-                        : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
-                    </Text>
-                    <View style={styles.historyItemMeta}>
-                      <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
-                      <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
-                        {transfer.status}
-                      </Text>
-                    </View>
-                  </View>
+                      {/* Details */}
+                      <View style={styles.historyItemDetails}>
+                        <Text style={styles.historyItemName}>
+                          {transfer.senderBankName || 'Bank Transfer'}
+                          {transfer.senderAccountLast4 && ` ****${transfer.senderAccountLast4}`}
+                        </Text>
+                        <View style={styles.historyItemMeta}>
+                          <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
+                          <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
+                            {transfer.status}
+                          </Text>
+                        </View>
+                      </View>
 
-                  {/* Amount */}
-                  <Text style={[
-                    styles.historyItemAmount,
-                    { color: transfer.direction === 'sent' ? '#ef4444' : '#22c55e' }
-                  ]}>
-                    {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
-                  </Text>
+                      {/* Amount with fee */}
+                      <View style={styles.merchantTransferAmounts}>
+                        <Text style={[styles.historyItemAmount, { color: '#22c55e' }]}>
+                          +${Number((transfer as TransferWithRecipientType).grossAmount || transfer.amount || 0).toFixed(2)}
+                        </Text>
+                        {(transfer as TransferWithRecipientType).feeAmount && (
+                          <Text style={styles.merchantTransferFee}>
+                            Fee: ${(transfer as TransferWithRecipientType).feeAmount?.toFixed(2)}
+                          </Text>
+                        )}
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      {/* Avatar with direction indicator for personal transfers */}
+                      <View style={styles.historyItemAvatarContainer}>
+                        <ProfileAvatar
+                          imageUrl={transfer.direction === 'sent'
+                            ? transfer.recipientProfileImageUrl
+                            : transfer.senderProfileImageUrl}
+                          displayName={transfer.direction === 'sent'
+                            ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
+                            : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                          size="small"
+                        />
+                        <View style={[
+                          styles.historyDirectionBadge,
+                          { backgroundColor: transfer.direction === 'sent' ? '#fef2f2' : '#f0fdf4' }
+                        ]}>
+                          <Text style={{ fontSize: 10 }}>
+                            {transfer.direction === 'sent' ? '↗' : '↙'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Details */}
+                      <View style={styles.historyItemDetails}>
+                        <Text style={styles.historyItemName}>
+                          {transfer.direction === 'sent'
+                            ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
+                            : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                        </Text>
+                        <View style={styles.historyItemMeta}>
+                          <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
+                          <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
+                            {transfer.status}
+                          </Text>
+                        </View>
+                      </View>
+
+                      {/* Amount */}
+                      <Text style={[
+                        styles.historyItemAmount,
+                        { color: transfer.direction === 'sent' ? '#ef4444' : '#22c55e' }
+                      ]}>
+                        {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
+                      </Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               ))
             )}
@@ -3963,15 +4035,28 @@ export default function App() {
   // Transfer Detail Screen
   if (currentScreen === 'transferDetail' && selectedTransfer) {
     const isSent = selectedTransfer.direction === 'sent';
-    const counterpartyName = isSent
-      ? selectedTransfer.recipientDisplayName || selectedTransfer.recipientAlias || 'Unknown'
-      : selectedTransfer.senderDisplayName || selectedTransfer.senderAlias || 'Unknown';
-    const counterpartyAlias = isSent
-      ? selectedTransfer.recipientAlias
-      : selectedTransfer.senderAlias;
-    const counterpartyBank = isSent
-      ? selectedTransfer.recipientBankName
-      : selectedTransfer.senderBankName;
+    // Use the flag set when navigating to this screen
+    const merchantTransfer = selectedTransfer as TransferWithRecipientType;
+
+    // For merchant payments, show bank info instead of personal info
+    const bankNameWithAccount = selectedTransfer.senderBankName
+      ? `${selectedTransfer.senderBankName}${selectedTransfer.senderAccountLast4 ? ` ****${selectedTransfer.senderAccountLast4}` : ''}`
+      : 'Bank Transfer';
+    const counterpartyName = isViewingMerchantPayment
+      ? bankNameWithAccount
+      : isSent
+        ? selectedTransfer.recipientDisplayName || selectedTransfer.recipientAlias || 'Unknown'
+        : selectedTransfer.senderDisplayName || selectedTransfer.senderAlias || 'Unknown';
+    const counterpartyAlias = isViewingMerchantPayment
+      ? undefined  // Don't show alias for merchant payments
+      : isSent
+        ? selectedTransfer.recipientAlias
+        : selectedTransfer.senderAlias;
+    const counterpartyBank = isViewingMerchantPayment
+      ? undefined  // Bank is already shown as the name
+      : isSent
+        ? selectedTransfer.recipientBankName
+        : selectedTransfer.senderBankName;
 
     const formatFullDate = (dateString: string) => {
       const date = new Date(dateString);
@@ -4068,11 +4153,14 @@ export default function App() {
             {/* Counterparty Info */}
             <View style={styles.transferDetailSection}>
               <Text style={styles.transferDetailSectionTitle}>
-                {isSent ? 'Sent to' : 'Received from'}
+                {isViewingMerchantPayment ? 'Payment from' : isSent ? 'Sent to' : 'Received from'}
               </Text>
               <View style={styles.transferDetailInfoCard}>
-                <View style={styles.transferDetailPersonIcon}>
-                  <Text style={{ fontSize: 24 }}>👤</Text>
+                <View style={[
+                  styles.transferDetailPersonIcon,
+                  isViewingMerchantPayment && { backgroundColor: '#dbeafe' }
+                ]}>
+                  <Text style={{ fontSize: 24 }}>{isViewingMerchantPayment ? '🏦' : '👤'}</Text>
                 </View>
                 <View style={styles.transferDetailPersonInfo}>
                   <Text style={styles.transferDetailPersonName}>{counterpartyName}</Text>
@@ -4085,6 +4173,33 @@ export default function App() {
                 </View>
               </View>
             </View>
+
+            {/* Fee Breakdown for Merchant Payments */}
+            {isViewingMerchantPayment && merchantTransfer.feeAmount !== undefined && (
+              <View style={styles.transferDetailSection}>
+                <Text style={styles.transferDetailSectionTitle}>Payment Breakdown</Text>
+                <View style={styles.transferDetailInfoCard}>
+                  <View style={styles.transferDetailRow}>
+                    <Text style={styles.transferDetailLabel}>Gross Amount</Text>
+                    <Text style={styles.transferDetailValue}>
+                      ${Number(merchantTransfer.grossAmount || selectedTransfer.amount || 0).toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.transferDetailRow}>
+                    <Text style={styles.transferDetailLabel}>Processing Fee</Text>
+                    <Text style={[styles.transferDetailValue, { color: '#ef4444' }]}>
+                      -${merchantTransfer.feeAmount.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={[styles.transferDetailRow, { borderBottomWidth: 0 }]}>
+                    <Text style={[styles.transferDetailLabel, { fontWeight: '600' }]}>Net Amount</Text>
+                    <Text style={[styles.transferDetailValue, { fontWeight: '600', color: '#16a34a' }]}>
+                      ${Number(selectedTransfer.amount || 0).toFixed(2)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
 
             {/* Description/Note */}
             {selectedTransfer.description && (
@@ -7396,6 +7511,15 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
+  },
+  merchantPaymentIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#dbeafe',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   merchantTransferAmounts: {
     alignItems: 'flex-end',
