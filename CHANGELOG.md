@@ -2,6 +2,29 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.6.1] - 2026-01-10 - Merchant Payment Display Improvements
+
+### Fixed
+- **Merchant "See All" Showing Wrong Data**
+  - Fixed: "See All" from merchant dashboard now shows actual merchant payments
+  - Previously was showing personal P2P transfers instead of business payments
+  - Payment History screen now shows correct title and hides filter tabs in business mode
+
+### Changed
+- **Merchant Payment Display**
+  - Merchant payments now show bank name + masked account (e.g., "TD Bank ****1234")
+  - Replaced "Unknown" sender display with originating bank information
+  - Bank icon (🏦) replaces person icon for merchant payments
+  - Added "Payment Breakdown" section showing gross amount, fee, and net amount
+
+### Added
+- **New Transfer Fields for Merchant Payments**
+  - `senderAccountLast4` - Last 4 digits of sender's account
+  - `senderBsimId` - Sender's bank identifier
+  - Updated TransferSim API integration to use new fields from OpenAPI spec
+
+---
+
 ## [1.6.0] - 2026-01-10 - Phase 1 Production Release
 
 ### Added (Build 1)

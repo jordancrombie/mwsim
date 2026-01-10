@@ -52,9 +52,13 @@ function sanitizeTransfer(transfer: Partial<Transfer>): Transfer {
     senderAlias: transfer.senderAlias,
     senderDisplayName: transfer.senderDisplayName,
     senderBankName: transfer.senderBankName,
+    senderAccountLast4: transfer.senderAccountLast4,
+    senderBsimId: transfer.senderBsimId,
+    senderProfileImageUrl: transfer.senderProfileImageUrl,
     recipientAlias: transfer.recipientAlias,
     recipientDisplayName: transfer.recipientDisplayName,
     recipientBankName: transfer.recipientBankName,
+    recipientProfileImageUrl: transfer.recipientProfileImageUrl,
     completedAt: transfer.completedAt,
   };
 }
@@ -74,11 +78,15 @@ function sanitizeTransfers(transfers: unknown): Transfer[] {
 
 /**
  * Sanitizes a merchant transfer (TransferWithRecipientType).
+ * Merchant transactions are always payments RECEIVED by the merchant,
+ * so we force direction to 'received' to ensure the detail screen shows sender info.
  */
 function sanitizeMerchantTransfer(transfer: Partial<TransferWithRecipientType>): TransferWithRecipientType {
   const base = sanitizeTransfer(transfer);
   return {
     ...base,
+    // Force direction to 'received' - merchant transactions are payments TO the merchant
+    direction: 'received',
     recipientType: transfer.recipientType || 'individual',
     merchantName: transfer.merchantName,
     merchantCategory: transfer.merchantCategory,

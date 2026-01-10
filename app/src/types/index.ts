@@ -200,6 +200,8 @@ export interface Transfer {
   senderAlias?: string;
   senderDisplayName?: string;
   senderBankName?: string;
+  senderAccountLast4?: string;     // Last 4 digits of sender's account (for merchant payments)
+  senderBsimId?: string;           // Sender's bank identifier
   senderProfileImageUrl?: string;  // Profile image URL (if available from API)
 
   // Recipient info (for sent transfers)
