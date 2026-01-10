@@ -39,11 +39,12 @@ const AVATAR_COLORS = [
 ];
 
 export type AvatarSize = keyof typeof AVATAR_SIZES;
+export type AvatarVariant = 'user' | 'merchant';
 
 interface ProfileAvatarProps {
   /** URL of the profile image. If not provided, initials will be shown. */
   imageUrl?: string | null;
-  /** Display name used to generate initials. */
+  /** Display name used to generate initials (user name or merchant business name). */
   displayName: string;
   /** Size of the avatar: 'small' (32px), 'medium' (64px), or 'large' (128px). */
   size?: AvatarSize;
@@ -51,6 +52,8 @@ interface ProfileAvatarProps {
   userId?: string;
   /** Override the automatically generated initials color. */
   initialsColor?: string;
+  /** Avatar variant: 'user' for personal profiles, 'merchant' for business logos. Default: 'user' */
+  variant?: AvatarVariant;
 }
 
 /**
@@ -108,6 +111,7 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
   size = 'medium',
   userId,
   initialsColor,
+  variant = 'user',
 }) => {
   const [isLoading, setIsLoading] = useState(!!imageUrl);
   const [hasError, setHasError] = useState(false);
@@ -177,7 +181,10 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
 
   const sizeValue = AVATAR_SIZES[size];
   const fontSize = Math.round(sizeValue * FONT_SIZE_RATIO);
-  const borderRadius = sizeValue / 2; // Circular avatar
+  // Circular for users, rounded square for merchants
+  const borderRadius = variant === 'merchant'
+    ? Math.round(sizeValue * 0.2) // 20% of size for rounded corners
+    : sizeValue / 2; // Full circle for users
 
   const initials = generateInitials(displayName);
   const backgroundColor = initialsColor || generateAvatarColor(userId || displayName);
