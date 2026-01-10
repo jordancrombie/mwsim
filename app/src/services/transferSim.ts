@@ -487,6 +487,7 @@ export const transferSimApi = {
    */
   async updateMerchantProfile(updates: {
     merchantName?: string;
+    description?: string;
     merchantCategory?: MerchantCategory;
     receivingAccountId?: string;
   }): Promise<MerchantProfile> {

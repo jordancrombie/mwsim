@@ -4969,6 +4969,7 @@ export default function App() {
         // Update merchant profile
         const updatedProfile = await transferSimApi.updateMerchantProfile({
           merchantName: updates.merchantName,
+          description: updates.description,
         });
 
         // Update local state

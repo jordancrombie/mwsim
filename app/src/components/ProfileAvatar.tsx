@@ -118,8 +118,7 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
   const [resolvedUri, setResolvedUri] = useState<string | null>(null);
   const [isCached, setIsCached] = useState(false);
 
-  // Debug logging to trace what URL is being rendered
-  console.log(`[ProfileAvatar] Rendering size=${size} imageUrl=${imageUrl ? imageUrl.substring(imageUrl.lastIndexOf('/') + 1) : 'null'} cached=${isCached}`);
+  // Debug logging - only log when imageUrl changes (not on every render)
 
   // Check cache and resolve image URI when imageUrl changes
   useEffect(() => {
