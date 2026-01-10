@@ -4972,9 +4972,12 @@ export default function App() {
           description: updates.description,
         });
 
-        // Update local state
+        console.log('Merchant profile API response:', JSON.stringify(updatedProfile, null, 2));
+
+        // Update local state - preserve description if API doesn't return it
         setMerchantProfile({
           ...updatedProfile,
+          description: updatedProfile.description ?? updates.description,
           logoImageUrl: newLogoUrl,
         });
       } catch (error: any) {
