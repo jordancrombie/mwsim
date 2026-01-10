@@ -42,6 +42,7 @@ import { SuccessAnimation } from './src/components/SuccessAnimation';
 import { MerchantPaymentSuccess } from './src/components/MerchantPaymentSuccess';
 import { SettingsScreen } from './src/screens/Settings';
 import { ProfileEditScreen } from './src/screens/ProfileEdit';
+import { MerchantProfileEditScreen } from './src/screens/MerchantProfileEdit';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
 import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
@@ -79,7 +80,8 @@ type Screen =
   | 'merchantEnrollment'
   | 'merchantDashboard'
   | 'merchantHistory'
-  | 'merchantProfile';
+  | 'merchantProfile'
+  | 'merchantProfileEdit';
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
@@ -2766,12 +2768,30 @@ export default function App() {
         <>
           {/* Merchant Header */}
           <View style={styles.merchantDashboardHeader}>
-            <Text style={styles.merchantBusinessName}>
-              {merchantProfile?.merchantName || 'My Business'}
-            </Text>
-            <Text style={styles.merchantAlias}>
-              {aliases.find(a => a.isPrimary)?.value || '@business'}
-            </Text>
+            <View style={styles.merchantHeaderRow}>
+              <ProfileAvatar
+                imageUrl={merchantProfile?.logoImageUrl}
+                displayName={merchantProfile?.merchantName || 'Business'}
+                size="medium"
+                userId={merchantProfile?.merchantId}
+                variant="merchant"
+                initialsColor={merchantProfile?.initialsColor}
+              />
+              <View style={styles.merchantHeaderInfo}>
+                <Text style={styles.merchantBusinessName}>
+                  {merchantProfile?.merchantName || 'My Business'}
+                </Text>
+                <Text style={styles.merchantAlias}>
+                  {aliases.find(a => a.isPrimary)?.value || '@business'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.merchantEditButton}
+                onPress={() => setCurrentScreen('merchantProfileEdit')}
+              >
+                <Text style={styles.merchantEditButtonText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
             <View style={styles.merchantBadge}>
               <Text style={styles.merchantBadgeText}>Micro Merchant</Text>
             </View>
@@ -4923,6 +4943,131 @@ export default function App() {
     );
   }
 
+  // Merchant Profile Edit Screen
+  if (currentScreen === 'merchantProfileEdit' && merchantProfile) {
+    const handleSaveMerchantProfile = async (
+      updates: { merchantName: string; description?: string },
+      logoUri?: string | null
+    ) => {
+      console.log('Saving merchant profile:', { updates, logoUri });
+
+      try {
+        let newLogoUrl: string | undefined = merchantProfile.logoImageUrl;
+
+        // Handle logo changes
+        if (logoUri === '__REMOVE__') {
+          // Delete logo
+          await transferSimApi.deleteMerchantLogo();
+          newLogoUrl = undefined;
+        } else if (logoUri) {
+          // Upload new logo
+          const uploadResult = await transferSimApi.uploadMerchantLogo(logoUri);
+          console.log('Logo upload result:', uploadResult);
+          newLogoUrl = uploadResult.logoImageUrl;
+        }
+
+        // Update merchant profile
+        const updatedProfile = await transferSimApi.updateMerchantProfile({
+          merchantName: updates.merchantName,
+        });
+
+        // Update local state
+        setMerchantProfile({
+          ...updatedProfile,
+          logoImageUrl: newLogoUrl,
+        });
+      } catch (error: any) {
+        console.error('Merchant profile save error:', error);
+        throw error;
+      }
+    };
+
+    const handlePickMerchantLogo = async (): Promise<string | null> => {
+      return new Promise((resolve) => {
+        Alert.alert(
+          'Change Business Logo',
+          'Choose how you want to add a logo',
+          [
+            {
+              text: 'Take Photo',
+              onPress: async () => {
+                try {
+                  const { status } = await ImagePicker.requestCameraPermissionsAsync();
+                  if (status !== 'granted') {
+                    Alert.alert('Permission Required', 'Camera access is needed to take a photo.');
+                    resolve(null);
+                    return;
+                  }
+
+                  const result = await ImagePicker.launchCameraAsync({
+                    mediaTypes: 'images',
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.8,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    resolve(result.assets[0].uri);
+                  } else {
+                    resolve(null);
+                  }
+                } catch (error) {
+                  console.error('Camera error:', error);
+                  Alert.alert('Error', 'Failed to take photo.');
+                  resolve(null);
+                }
+              },
+            },
+            {
+              text: 'Choose from Library',
+              onPress: async () => {
+                try {
+                  const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+                  if (status !== 'granted') {
+                    Alert.alert('Permission Required', 'Photo library access is needed.');
+                    resolve(null);
+                    return;
+                  }
+
+                  const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: 'images',
+                    allowsEditing: true,
+                    aspect: [1, 1],
+                    quality: 0.8,
+                  });
+
+                  if (!result.canceled && result.assets[0]) {
+                    resolve(result.assets[0].uri);
+                  } else {
+                    resolve(null);
+                  }
+                } catch (error) {
+                  console.error('Image picker error:', error);
+                  Alert.alert('Error', 'Failed to access photo library.');
+                  resolve(null);
+                }
+              },
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(null),
+            },
+          ]
+        );
+      });
+    };
+
+    return (
+      <MerchantProfileEditScreen
+        merchant={merchantProfile}
+        onBack={() => setCurrentScreen('home')}
+        onSave={handleSaveMerchantProfile}
+        onPickImage={handlePickMerchantLogo}
+      />
+    );
+  }
+
   // Card Details Screen
   if (currentScreen === 'cardDetails' && selectedCard) {
     const cardColor = selectedCard.cardType === 'VISA' ? '#1a1f71' : '#eb001b';
@@ -5554,7 +5699,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 20,
+    paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
@@ -6263,7 +6408,9 @@ const styles = StyleSheet.create({
   },
   p2pContent: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
   },
   p2pQuickActions: {
     flexDirection: 'row',
@@ -7303,7 +7450,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f3f4f6',
     borderRadius: 12,
     padding: 4,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   p2pModeButton: {
     flex: 1,
@@ -7382,21 +7529,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#D1FAE5',
     borderRadius: 16,
-    padding: 24,
-    marginBottom: 24,
+    padding: 16,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#6EE7B7',
   },
+  merchantHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 8,
+  },
+  merchantHeaderInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  merchantEditButton: {
+    backgroundColor: '#10B981',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  merchantEditButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
   merchantBusinessName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#065F46',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   merchantAlias: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#047857',
-    marginBottom: 12,
   },
   merchantBadge: {
     backgroundColor: '#10B981',

@@ -300,11 +300,19 @@ export interface MerchantProfile {
   merchantId: string;
   merchantName: string;
   merchantCategory: MerchantCategory;
+  description?: string;              // Business description
   primaryAlias: string;              // e.g., "@javajoes"
   receivingAccountId: string;        // Bank account for receiving payments
   receivingBankName: string;
   isActive: boolean;
   createdAt: string;
+  // Logo fields (Phase 2)
+  logoImageUrl?: string;             // CDN URL for merchant logo
+  logoThumbnails?: {
+    small: string;                   // 64x64
+    medium: string;                  // 128x128
+  };
+  initialsColor?: string;            // Background color for initials fallback
   // Stats (optional, for dashboard)
   todayRevenue?: number;
   todayTransactionCount?: number;
@@ -328,6 +336,7 @@ export interface ResolvedMerchantToken extends ResolvedToken {
   recipientType: RecipientType;
   merchantName?: string;
   merchantCategory?: MerchantCategory;
+  logoImageUrl?: string;             // Merchant logo URL (Phase 2)
   feeAmount?: number;                // Calculated fee for display
 }
 

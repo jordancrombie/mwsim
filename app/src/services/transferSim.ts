@@ -503,6 +503,90 @@ export const transferSimApi = {
   },
 
   /**
+   * Upload merchant logo
+   * POST /api/v1/micro-merchants/me/profile/logo
+   *
+   * Uploads a logo image for the merchant profile. Image is processed server-side
+   * (resized to 512x512, thumbnails generated, EXIF stripped).
+   *
+   * @param imageUri Local file URI from expo-image-picker (e.g., file:///path/to/image.jpg)
+   * @returns Logo URLs (primary and thumbnails)
+   */
+  async uploadMerchantLogo(imageUri: string): Promise<{
+    success: boolean;
+    logoImageUrl: string;
+    thumbnails?: {
+      small: string;
+      medium: string;
+    };
+  }> {
+    console.log('[TransferSim] uploadMerchantLogo - uploading...');
+    console.log('[TransferSim] uploadMerchantLogo - imageUri:', imageUri);
+
+    // Create form data for multipart upload
+    const formData = new FormData();
+
+    // Extract filename and determine mime type
+    const filename = imageUri.split('/').pop() || 'logo.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1].toLowerCase()}` : 'image/jpeg';
+
+    console.log('[TransferSim] uploadMerchantLogo - filename:', filename);
+    console.log('[TransferSim] uploadMerchantLogo - mime type:', type);
+
+    // Append file to form data
+    formData.append('logo', {
+      uri: imageUri,
+      name: filename,
+      type,
+    } as any);
+
+    console.log('[TransferSim] uploadMerchantLogo - FormData created, sending to server...');
+
+    try {
+      const { data } = await getTransferSimClient().post(
+        '/api/v1/micro-merchants/me/profile/logo',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        }
+      );
+
+      console.log('[TransferSim] uploadMerchantLogo - success:', data.logoImageUrl);
+
+      return {
+        success: true,
+        logoImageUrl: data.logoImageUrl,
+        thumbnails: data.thumbnails,
+      };
+    } catch (error: any) {
+      console.error('[TransferSim] uploadMerchantLogo - failed:', error.response?.status, error.response?.data);
+      throw error;
+    }
+  },
+
+  /**
+   * Delete merchant logo
+   * DELETE /api/v1/micro-merchants/me/profile/logo
+   *
+   * Removes the merchant's logo, reverting to initials avatar.
+   */
+  async deleteMerchantLogo(): Promise<{ success: boolean }> {
+    console.log('[TransferSim] deleteMerchantLogo - deleting...');
+
+    try {
+      await getTransferSimClient().delete('/api/v1/micro-merchants/me/profile/logo');
+      console.log('[TransferSim] deleteMerchantLogo - success');
+      return { success: true };
+    } catch (error: any) {
+      console.error('[TransferSim] deleteMerchantLogo - failed:', error.response?.status, error.response?.data);
+      throw error;
+    }
+  },
+
+  /**
    * Generate a merchant receive token (for QR code display)
    * Uses the standard token endpoint with asMerchant: true
    * POST /api/v1/tokens/receive
