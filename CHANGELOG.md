@@ -2,6 +2,25 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.6.0] - 2026-01-10 - Phase 1 Production Release
+
+### Added (Build 1)
+- **Clickable Recent Transfers on P2P Page**
+  - Recent transfers on the P2P tab are now tappable to view transfer details
+  - Matches the behavior of the full transfer history screen
+- **Improved Back Navigation from Transfer Details**
+  - When viewing transfer details from the P2P page, pressing back now returns to the P2P tab
+  - Previously, back navigation always returned to the Cards tab regardless of origin
+
+### Included from 1.5.12
+- User Profile Phase 1 complete (Settings, Profile edit, image upload)
+- ProfileAvatar with initials fallback
+- Profile images in transaction history and payment screens
+- Offline image caching (7-day expiry, 50 MB limit)
+- Profile image loads immediately after login
+
+---
+
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
 ### Fixed (Build 82)

@@ -291,7 +291,7 @@ export default function App() {
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [recentTransfers, setRecentTransfers] = useState<Transfer[]>([]);
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
-  const [transferDetailReturnScreen, setTransferDetailReturnScreen] = useState<'transferHistory' | 'home'>('transferHistory');
+  const [transferDetailReturnScreen, setTransferDetailReturnScreen] = useState<'transferHistory' | 'home' | 'p2pHome'>('transferHistory');
 
   // Alias Management screen state
   const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
@@ -2675,7 +2675,16 @@ export default function App() {
               </View>
             ) : (
               recentTransfers.slice(0, 5).map((transfer) => (
-                <View key={transfer.transferId} style={styles.p2pTransferItem}>
+                <TouchableOpacity
+                  key={transfer.transferId}
+                  style={styles.p2pTransferItem}
+                  onPress={() => {
+                    setSelectedTransfer(transfer);
+                    setTransferDetailReturnScreen('p2pHome');
+                    setCurrentScreen('transferDetail');
+                  }}
+                  activeOpacity={0.7}
+                >
                   <ProfileAvatar
                     imageUrl={transfer.direction === 'sent'
                       ? transfer.recipientProfileImageUrl
@@ -2703,7 +2712,7 @@ export default function App() {
                   >
                     {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
@@ -4014,7 +4023,12 @@ export default function App() {
             <TouchableOpacity
               onPress={() => {
                 setSelectedTransfer(null);
-                setCurrentScreen(transferDetailReturnScreen);
+                if (transferDetailReturnScreen === 'p2pHome') {
+                  setActiveHomeTab('p2p');
+                  setCurrentScreen('home');
+                } else {
+                  setCurrentScreen(transferDetailReturnScreen);
+                }
               }}
             >
               <Text style={styles.backButton}>← Back</Text>
