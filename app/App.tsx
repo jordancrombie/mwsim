@@ -901,6 +901,15 @@ export default function App() {
           setCards(summary.cards || []);
           setCurrentScreen('home');
 
+          // Fetch profile to get profileImageUrl (not returned by wallet summary)
+          console.log('[initializeApp] Fetching profile for image URL...');
+          api.getProfile().then((profileData) => {
+            if (profileData.profile?.profileImageUrl) {
+              console.log('[initializeApp] Got profile image URL, updating user');
+              setUser((prev) => prev ? { ...prev, profileImageUrl: profileData.profile.profileImageUrl } : prev);
+            }
+          }).catch((e) => console.log('[initializeApp] Profile fetch failed (non-blocking):', e));
+
           // Check P2P enrollment status after login
           console.log('[initializeApp] Checking P2P enrollment...');
           checkP2PEnrollment().catch((e) => console.log('[initializeApp] P2P enrollment check failed:', e));
@@ -1173,6 +1182,14 @@ export default function App() {
       // Go to home
       setCurrentScreen('home');
 
+      // Fetch profile to get profileImageUrl (not returned by login response)
+      api.getProfile().then((profileData) => {
+        if (profileData.profile?.profileImageUrl) {
+          console.log('[Login] Got profile image URL, updating user');
+          setUser((prev) => prev ? { ...prev, profileImageUrl: profileData.profile.profileImageUrl } : prev);
+        }
+      }).catch((e) => console.log('[Login] Profile fetch failed (non-blocking):', e));
+
       // Check P2P enrollment in background after login
       // This ensures P2P data is fresh when user switches to P2P tab
       checkP2PEnrollment().catch((e) => {
@@ -1217,6 +1234,14 @@ export default function App() {
       }
 
       setCurrentScreen('home');
+
+      // Fetch profile to get profileImageUrl (not returned by login response)
+      api.getProfile().then((profileData) => {
+        if (profileData.profile?.profileImageUrl) {
+          console.log('[VerifyCode] Got profile image URL, updating user');
+          setUser((prev) => prev ? { ...prev, profileImageUrl: profileData.profile.profileImageUrl } : prev);
+        }
+      }).catch((e) => console.log('[VerifyCode] Profile fetch failed (non-blocking):', e));
 
       // Check P2P enrollment in background after login
       // This ensures P2P data is fresh when user switches to P2P tab

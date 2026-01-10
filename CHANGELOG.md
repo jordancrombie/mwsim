@@ -4,6 +4,13 @@ All notable changes to the mwsim (Mobile Wallet Simulator) project will be docum
 
 ## [1.5.12] - 2026-01-09 - Settings Screen & UI Improvements
 
+### Fixed (Build 82)
+- **Profile Image Not Loading on Initial Login**
+  - Fixed: Profile avatar now shows image immediately after login (instead of initials)
+  - Root cause: `getWalletSummary()` and login endpoints don't return `profileImageUrl`
+  - Solution: Added non-blocking `getProfile()` call after login to fetch profile image URL
+  - Applied to all three login paths: app initialization, email login, and code verification
+
 ### TestFlight (Build 81)
 - **Phase 1 User Profile Integration Testing Build**
   - All M-1 through M-10 tasks complete
