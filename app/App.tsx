@@ -4177,11 +4177,12 @@ export default function App() {
               </Text>
               <View style={[
                 styles.transferDetailInfoCard,
-                isViewingMerchantPayment && { flexDirection: 'row', alignItems: 'center' }
+                { flexDirection: 'row', alignItems: 'center' }
               ]}>
                 <View style={[
                   styles.transferDetailPersonIcon,
-                  isViewingMerchantPayment && { backgroundColor: '#dbeafe', marginBottom: 0, marginRight: 12 }
+                  { marginBottom: 0, marginRight: 12 },
+                  isViewingMerchantPayment && { backgroundColor: '#dbeafe' }
                 ]}>
                   <Text style={{ fontSize: 24 }}>{isViewingMerchantPayment ? '🏦' : '👤'}</Text>
                 </View>
