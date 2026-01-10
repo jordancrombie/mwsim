@@ -2,6 +2,16 @@
 
 All notable changes to the mwsim (Mobile Wallet Simulator) project will be documented in this file.
 
+## [1.7.2] - 2026-01-10 - Transfer Detail Layout
+
+### Changed
+- **Consistent Counterparty Info Layout**
+  - "Sent to", "Received from", and "Payment from" sections now use same horizontal layout
+  - Icon displays on left with name/alias/bank info aligned to the right
+  - Previously only merchant payments used this inline layout
+
+---
+
 ## [1.7.1] - 2026-01-10 - Bug Fixes
 
 ### Fixed
