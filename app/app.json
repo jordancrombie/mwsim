@@ -25,6 +25,8 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes and take profile photos",
         "NSPhotoLibraryUsageDescription": "mwsim needs access to your photo library to select a profile photo",
+        "NSBluetoothAlwaysUsageDescription": "mwsim uses Bluetooth to discover nearby users for quick P2P transfers",
+        "NSBluetoothPeripheralUsageDescription": "mwsim uses Bluetooth to let nearby users discover you for transfers",
         "LSApplicationQueriesSchemes": [
           "googlechrome",
           "googlechromes",
@@ -56,6 +58,14 @@
           "icon": "./assets/notification-icon.png",
           "color": "#1976D2",
           "sounds": []
+        }
+      ],
+      [
+        "@sfourdrinier/react-native-ble-plx",
+        {
+          "isBackgroundEnabled": true,
+          "modes": ["peripheral", "central"],
+          "bluetoothAlwaysPermission": "mwsim uses Bluetooth to discover nearby users for quick P2P transfers"
         }
       ],
       "./plugins/withSettingsBundle",
