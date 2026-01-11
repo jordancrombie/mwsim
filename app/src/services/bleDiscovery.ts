@@ -7,9 +7,71 @@
 
 import { BleManager, State, Device, BleError } from '@sfourdrinier/react-native-ble-plx';
 import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
+import axios, { AxiosInstance } from 'axios';
+import { secureStorage } from './secureStorage';
+import { getTransferSimUrl } from './environment';
+import type { AliasType, MerchantCategory } from '../types';
 
 // mwsim's unique iBeacon UUID (used to identify our app's beacons)
 export const MWSIM_BEACON_UUID = 'E2C56DB5-DFFB-48D2-B060-D0F5A71096E0';
+
+// ============================================================================
+// TransferSim Discovery API Client
+// ============================================================================
+
+// TransferSim API key (same as transferSim.ts)
+const TRANSFERSIM_API_KEY = 'tsim_1c34f53eabdeb18474b87ec27b093d5c481ff08a0b5e07267dcaf183d1ee52af';
+
+// Lazy-initialized Discovery API client
+let _discoveryClient: AxiosInstance | null = null;
+
+function getDiscoveryClient(): AxiosInstance {
+  if (_discoveryClient) {
+    return _discoveryClient;
+  }
+
+  const baseURL = getTransferSimUrl();
+  console.log(`[BLE Discovery] Initializing client: ${baseURL}`);
+
+  const client = axios.create({
+    baseURL,
+    timeout: 10000, // Shorter timeout for discovery calls
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': TRANSFERSIM_API_KEY,
+    },
+  });
+
+  // Request interceptor - add user authorization
+  client.interceptors.request.use(async (requestConfig) => {
+    const userContext = await secureStorage.getP2PUserContext();
+    if (userContext) {
+      requestConfig.headers.Authorization = `Bearer ${userContext.userId}:${userContext.bsimId}`;
+    }
+    return requestConfig;
+  });
+
+  // Response interceptor - log errors
+  client.interceptors.response.use(
+    (response) => response,
+    async (error) => {
+      console.log('[BLE Discovery] API Error:', {
+        url: error.config?.url,
+        status: error.response?.status,
+        data: error.response?.data,
+        message: error.message,
+      });
+      return Promise.reject(error);
+    }
+  );
+
+  _discoveryClient = client;
+  return client;
+}
+
+// ============================================================================
+// Singleton BleManager
+// ============================================================================
 
 // Singleton BleManager instance
 let bleManager: BleManager | null = null;
@@ -252,6 +314,18 @@ export function hexToToken(hex: string): number {
 // Types
 // ============================================================================
 
+export type DiscoveryContext = 'P2P_RECEIVE' | 'MERCHANT_RECEIVE';
+
+/** Response from beacon registration */
+export interface BeaconRegistration {
+  beaconToken: string;  // 8-char hex token
+  major: number;
+  minor: number;
+  expiresAt: string;    // ISO timestamp
+  ttlSeconds: number;
+}
+
+/** Discovered beacon from BLE scanning */
 export interface DiscoveredBeacon {
   token: string;        // 8-char hex token
   major: number;
@@ -262,16 +336,57 @@ export interface DiscoveredBeacon {
   timestamp: number;    // Discovery timestamp
 }
 
-export interface NearbyUser {
-  userId: string;
-  bsimId: string;
+/** Recipient info from beacon lookup */
+export interface BeaconRecipient {
   displayName: string;
+  bankName?: string;
+  profileImageUrl?: string;
+  initialsColor?: string;
+  isMerchant?: boolean;
+  merchantLogoUrl?: string;
+  merchantName?: string;
+  merchantCategory?: MerchantCategory;
+  recipientAlias?: string;
+  aliasType?: AliasType;
+}
+
+/** Single token lookup result */
+export interface BeaconLookupResult {
+  token: string;
+  found: boolean;
+  context?: DiscoveryContext;
+  recipient?: BeaconRecipient;
+  metadata?: {
+    amount?: number;
+    description?: string;
+  };
+}
+
+/** Batch lookup response */
+export interface BeaconLookupResponse {
+  results: BeaconLookupResult[];
+  rateLimitRemaining?: number;
+  rateLimitReset?: string;
+}
+
+/** Nearby user (beacon + resolved info) for UI display */
+export interface NearbyUser {
+  token: string;
+  displayName: string;
+  bankName?: string;
   profileImageUrl?: string;
   initialsColor?: string;
   isMerchant: boolean;
   merchantLogoUrl?: string;
   merchantName?: string;
-  merchantCategory?: string;
+  merchantCategory?: MerchantCategory;
+  recipientAlias?: string;
+  aliasType?: AliasType;
+  context: DiscoveryContext;
+  metadata?: {
+    amount?: number;
+    description?: string;
+  };
   rssi: number;
   distance: number;
   lastSeen: number;
@@ -312,48 +427,497 @@ export function getProximityDescription(distance: number): string {
 }
 
 // ============================================================================
-// Placeholder functions for backend integration
-// These will be implemented once TransferSim's Discovery Service is ready
+// Discovery Service API
 // ============================================================================
 
 /**
  * Register as a discoverable user (get beacon token from backend)
- * Placeholder - requires TransferSim Discovery Service
+ *
+ * POST /api/v1/discovery/beacon/register
  */
 export async function registerForDiscovery(
-  _context: 'P2P_SEND' | 'P2P_RECEIVE' | 'MERCHANT_RECEIVE'
-): Promise<{ token: string; major: number; minor: number; expiresAt: number } | null> {
-  console.warn('[BLE] registerForDiscovery: Not yet implemented - waiting for TransferSim Discovery Service');
-  return null;
+  context: DiscoveryContext,
+  options?: {
+    expiresIn?: number;  // TTL in seconds (default 300, max 600)
+    amount?: number;
+    description?: string;
+  }
+): Promise<BeaconRegistration | null> {
+  try {
+    console.log('[BLE Discovery] Registering beacon:', { context, options });
+
+    const { data } = await getDiscoveryClient().post<BeaconRegistration>(
+      '/api/v1/discovery/beacon/register',
+      {
+        context,
+        expiresIn: options?.expiresIn ?? 300,
+        metadata: options?.amount || options?.description
+          ? { amount: options.amount, description: options.description }
+          : undefined,
+      }
+    );
+
+    console.log('[BLE Discovery] Registered beacon:', {
+      token: data.beaconToken,
+      major: data.major,
+      minor: data.minor,
+      expiresAt: data.expiresAt,
+    });
+
+    return data;
+  } catch (error: any) {
+    console.error('[BLE Discovery] Registration failed:', error.response?.data || error.message);
+    return null;
+  }
 }
 
 /**
+ * Lookup multiple beacon tokens (batch)
+ *
+ * POST /api/v1/discovery/beacon/lookup
+ */
+export async function lookupBeaconTokens(
+  tokens: string[],
+  options?: {
+    minRssi?: number;
+  }
+): Promise<BeaconLookupResponse | null> {
+  if (tokens.length === 0) {
+    return { results: [] };
+  }
+
+  // Limit to 20 tokens per request (rate limit)
+  const batchTokens = tokens.slice(0, 20);
+
+  try {
+    console.log('[BLE Discovery] Looking up tokens:', batchTokens.length);
+
+    const { data } = await getDiscoveryClient().post<BeaconLookupResponse>(
+      '/api/v1/discovery/beacon/lookup',
+      {
+        tokens: batchTokens,
+        rssiFilter: options?.minRssi ? { minRssi: options.minRssi } : undefined,
+      }
+    );
+
+    console.log('[BLE Discovery] Lookup results:', {
+      found: data.results.filter(r => r.found).length,
+      total: data.results.length,
+      rateLimitRemaining: data.rateLimitRemaining,
+    });
+
+    return data;
+  } catch (error: any) {
+    console.error('[BLE Discovery] Lookup failed:', error.response?.data || error.message);
+    return null;
+  }
+}
+
+/**
+ * Deregister a beacon token (when stopping broadcast)
+ *
+ * DELETE /api/v1/discovery/beacon/{token}
+ */
+export async function deregisterBeacon(token: string): Promise<boolean> {
+  try {
+    console.log('[BLE Discovery] Deregistering beacon:', token);
+    await getDiscoveryClient().delete(`/api/v1/discovery/beacon/${token}`);
+    console.log('[BLE Discovery] Beacon deregistered');
+    return true;
+  } catch (error: any) {
+    console.error('[BLE Discovery] Deregistration failed:', error.response?.data || error.message);
+    return false;
+  }
+}
+
+/**
+ * Convert beacon lookup results to NearbyUser objects for UI display
+ */
+export function beaconResultsToNearbyUsers(
+  results: BeaconLookupResult[],
+  beaconRssi: Map<string, { rssi: number; timestamp: number }>
+): NearbyUser[] {
+  return results
+    .filter((r): r is BeaconLookupResult & { found: true; recipient: BeaconRecipient; context: DiscoveryContext } =>
+      r.found && !!r.recipient && !!r.context
+    )
+    .map((result) => {
+      const rssiData = beaconRssi.get(result.token) || { rssi: -70, timestamp: Date.now() };
+      const distance = estimateDistance(rssiData.rssi);
+
+      return {
+        token: result.token,
+        displayName: result.recipient.displayName,
+        bankName: result.recipient.bankName,
+        profileImageUrl: result.recipient.profileImageUrl,
+        initialsColor: result.recipient.initialsColor,
+        isMerchant: result.recipient.isMerchant || false,
+        merchantLogoUrl: result.recipient.merchantLogoUrl,
+        merchantName: result.recipient.merchantName,
+        merchantCategory: result.recipient.merchantCategory,
+        recipientAlias: result.recipient.recipientAlias,
+        aliasType: result.recipient.aliasType,
+        context: result.context,
+        metadata: result.metadata,
+        rssi: rssiData.rssi,
+        distance,
+        lastSeen: rssiData.timestamp,
+      };
+    })
+    .sort((a, b) => b.rssi - a.rssi); // Sort by signal strength (closest first)
+}
+
+// ============================================================================
+// BLE Advertising (Peripheral Mode)
+// TODO: Implement actual iBeacon advertising
+// ============================================================================
+
+// Current advertising state
+let currentAdvertisingToken: string | null = null;
+
+/**
  * Start advertising our beacon
- * Placeholder - requires backend token first
+ * NOTE: iOS CoreBluetooth can advertise as peripheral but not as true iBeacon
+ * from a third-party app. We'll use a service UUID + characteristics approach.
  */
 export async function startAdvertising(
-  _token: string,
-  _major: number,
-  _minor: number
+  registration: BeaconRegistration
 ): Promise<boolean> {
-  console.warn('[BLE] startAdvertising: Not yet implemented');
-  return false;
+  try {
+    console.log('[BLE Discovery] Starting advertising:', {
+      token: registration.beaconToken,
+      major: registration.major,
+      minor: registration.minor,
+    });
+
+    // TODO: Implement actual BLE advertising using react-native-ble-plx
+    // For now, just track the state
+    currentAdvertisingToken = registration.beaconToken;
+
+    console.warn('[BLE Discovery] Advertising not yet fully implemented - token registered but not broadcasting');
+    return true;
+  } catch (error) {
+    console.error('[BLE Discovery] Failed to start advertising:', error);
+    return false;
+  }
 }
 
 /**
  * Stop advertising
  */
 export async function stopAdvertising(): Promise<void> {
-  console.warn('[BLE] stopAdvertising: Not yet implemented');
+  if (currentAdvertisingToken) {
+    console.log('[BLE Discovery] Stopping advertising:', currentAdvertisingToken);
+
+    // Deregister from backend
+    await deregisterBeacon(currentAdvertisingToken);
+
+    // TODO: Stop actual BLE advertising
+    currentAdvertisingToken = null;
+  }
 }
 
 /**
- * Lookup a discovered beacon token to get user info
- * Placeholder - requires TransferSim Discovery Service
+ * Check if currently advertising
  */
-export async function lookupBeaconToken(
-  _token: string
-): Promise<NearbyUser | null> {
-  console.warn('[BLE] lookupBeaconToken: Not yet implemented - waiting for TransferSim Discovery Service');
-  return null;
+export function isAdvertising(): boolean {
+  return currentAdvertisingToken !== null;
+}
+
+/**
+ * Get current advertising token
+ */
+export function getCurrentAdvertisingToken(): string | null {
+  return currentAdvertisingToken;
+}
+
+// ============================================================================
+// BLE Scanning (Central Mode)
+// ============================================================================
+
+// Scanning state
+let isScanning = false;
+let scanSubscription: { remove: () => void } | null = null;
+let discoveredBeacons: Map<string, DiscoveredBeacon> = new Map();
+
+// Callbacks for scan results
+type ScanCallback = (beacons: DiscoveredBeacon[]) => void;
+let scanCallbacks: Set<ScanCallback> = new Set();
+
+// Debounce timer for batch updates
+let debounceTimer: NodeJS.Timeout | null = null;
+const SCAN_DEBOUNCE_MS = 2000; // 2 second debounce per proposal
+
+// Beacon timeout (remove beacons not seen recently)
+const BEACON_TIMEOUT_MS = 10000; // 10 seconds
+
+/**
+ * Extract beacon token from device advertisement data
+ * This parses iBeacon format to extract major/minor values
+ */
+function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
+  try {
+    // Check if this is our beacon UUID
+    const manufacturerData = device.manufacturerData;
+    if (!manufacturerData) {
+      return null;
+    }
+
+    // Decode base64 manufacturer data
+    const buffer = Buffer.from(manufacturerData, 'base64');
+
+    // iBeacon format (after Apple company ID):
+    // Byte 0-1: Apple company ID (0x004C) - handled by BLE stack
+    // Byte 2: iBeacon type (0x02)
+    // Byte 3: Data length (0x15 = 21)
+    // Byte 4-19: UUID (16 bytes)
+    // Byte 20-21: Major (big-endian)
+    // Byte 22-23: Minor (big-endian)
+    // Byte 24: TX Power (signed int8)
+
+    if (buffer.length < 25) {
+      return null;
+    }
+
+    // Check iBeacon type marker
+    if (buffer[0] !== 0x02 || buffer[1] !== 0x15) {
+      return null;
+    }
+
+    // Extract UUID and compare
+    const uuidBytes = buffer.slice(2, 18);
+    const uuid = [
+      uuidBytes.slice(0, 4).toString('hex'),
+      uuidBytes.slice(4, 6).toString('hex'),
+      uuidBytes.slice(6, 8).toString('hex'),
+      uuidBytes.slice(8, 10).toString('hex'),
+      uuidBytes.slice(10, 16).toString('hex'),
+    ].join('-').toUpperCase();
+
+    // Check if it's our beacon UUID
+    if (uuid !== MWSIM_BEACON_UUID) {
+      return null;
+    }
+
+    // Extract major and minor
+    const major = buffer.readUInt16BE(18);
+    const minor = buffer.readUInt16BE(20);
+
+    // Combine to get token
+    const token = majorMinorToToken(major, minor);
+    const tokenHex = tokenToHex(token);
+
+    const rssi = device.rssi || -100;
+
+    return {
+      token: tokenHex,
+      major,
+      minor,
+      rssi,
+      distance: estimateDistance(rssi),
+      deviceId: device.id,
+      timestamp: Date.now(),
+    };
+  } catch (error) {
+    console.error('[BLE Discovery] Failed to parse beacon:', error);
+    return null;
+  }
+}
+
+/**
+ * Clean up old beacons that haven't been seen recently
+ */
+function cleanupOldBeacons(): void {
+  const now = Date.now();
+  const toRemove: string[] = [];
+
+  discoveredBeacons.forEach((beacon, token) => {
+    if (now - beacon.timestamp > BEACON_TIMEOUT_MS) {
+      toRemove.push(token);
+    }
+  });
+
+  toRemove.forEach((token) => discoveredBeacons.delete(token));
+
+  if (toRemove.length > 0) {
+    console.log('[BLE Discovery] Cleaned up', toRemove.length, 'stale beacons');
+  }
+}
+
+/**
+ * Notify all registered callbacks with current beacon list
+ */
+function notifyCallbacks(): void {
+  // Clean up old beacons first
+  cleanupOldBeacons();
+
+  const beacons = Array.from(discoveredBeacons.values());
+  scanCallbacks.forEach((callback) => callback(beacons));
+}
+
+/**
+ * Schedule a debounced callback notification
+ */
+function scheduleCallbackNotification(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+  }
+
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    notifyCallbacks();
+  }, SCAN_DEBOUNCE_MS);
+}
+
+/**
+ * Start scanning for nearby beacons
+ *
+ * @param onBeaconsFound - Callback when beacons are discovered (debounced)
+ * @param options - Scan options
+ */
+export async function startScanning(
+  onBeaconsFound: ScanCallback,
+  options?: {
+    minRssi?: number;  // Filter by minimum signal strength (default -80)
+  }
+): Promise<boolean> {
+  try {
+    const minRssi = options?.minRssi ?? -80;
+
+    // Initialize BLE if needed
+    const initialized = await initializeBle();
+    if (!initialized) {
+      console.error('[BLE Discovery] Cannot start scanning - BLE not initialized');
+      return false;
+    }
+
+    // Add callback
+    scanCallbacks.add(onBeaconsFound);
+
+    // If already scanning, just register the callback
+    if (isScanning) {
+      console.log('[BLE Discovery] Already scanning, callback registered');
+      return true;
+    }
+
+    console.log('[BLE Discovery] Starting beacon scan, minRssi:', minRssi);
+    isScanning = true;
+    discoveredBeacons.clear();
+
+    const manager = getBleManager();
+
+    // Start scanning for devices
+    manager.startDeviceScan(
+      null, // Scan for all devices (filter by manufacturer data)
+      {
+        allowDuplicates: true, // We want RSSI updates
+      },
+      (error, device) => {
+        if (error) {
+          console.error('[BLE Discovery] Scan error:', error);
+          return;
+        }
+
+        if (!device || !device.manufacturerData) {
+          return;
+        }
+
+        // Check RSSI threshold
+        if (device.rssi && device.rssi < minRssi) {
+          return;
+        }
+
+        // Try to parse as beacon
+        const beacon = parseBeaconFromDevice(device);
+        if (beacon) {
+          // Update or add beacon
+          const existing = discoveredBeacons.get(beacon.token);
+          if (existing) {
+            // Update with new RSSI (could do averaging for stability)
+            existing.rssi = beacon.rssi;
+            existing.distance = beacon.distance;
+            existing.timestamp = beacon.timestamp;
+          } else {
+            console.log('[BLE Discovery] New beacon found:', beacon.token, 'RSSI:', beacon.rssi);
+            discoveredBeacons.set(beacon.token, beacon);
+          }
+
+          // Schedule debounced callback
+          scheduleCallbackNotification();
+        }
+      }
+    );
+
+    // Store subscription reference (BleManager.startDeviceScan returns void, we track state separately)
+    scanSubscription = {
+      remove: () => {
+        manager.stopDeviceScan();
+      },
+    };
+
+    return true;
+  } catch (error) {
+    console.error('[BLE Discovery] Failed to start scanning:', error);
+    isScanning = false;
+    return false;
+  }
+}
+
+/**
+ * Stop scanning for beacons
+ */
+export function stopScanning(): void {
+  console.log('[BLE Discovery] Stopping scan');
+
+  if (scanSubscription) {
+    scanSubscription.remove();
+    scanSubscription = null;
+  }
+
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+
+  isScanning = false;
+  scanCallbacks.clear();
+  discoveredBeacons.clear();
+}
+
+/**
+ * Remove a specific scan callback
+ */
+export function removeScanCallback(callback: ScanCallback): void {
+  scanCallbacks.delete(callback);
+
+  // If no more callbacks, stop scanning
+  if (scanCallbacks.size === 0 && isScanning) {
+    stopScanning();
+  }
+}
+
+/**
+ * Check if currently scanning
+ */
+export function isScanningActive(): boolean {
+  return isScanning;
+}
+
+/**
+ * Get currently discovered beacons
+ */
+export function getDiscoveredBeacons(): DiscoveredBeacon[] {
+  cleanupOldBeacons();
+  return Array.from(discoveredBeacons.values());
+}
+
+/**
+ * Get RSSI map for batch lookup
+ */
+export function getBeaconRssiMap(): Map<string, { rssi: number; timestamp: number }> {
+  const rssiMap = new Map<string, { rssi: number; timestamp: number }>();
+  discoveredBeacons.forEach((beacon, token) => {
+    rssiMap.set(token, { rssi: beacon.rssi, timestamp: beacon.timestamp });
+  });
+  return rssiMap;
 }
