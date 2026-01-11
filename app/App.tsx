@@ -44,6 +44,15 @@ import { SettingsScreen } from './src/screens/Settings';
 import { ProfileEditScreen } from './src/screens/ProfileEdit';
 import { MerchantProfileEditScreen } from './src/screens/MerchantProfileEdit';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
+import { NearbyUsersPanel } from './src/components/NearbyUsersPanel';
+import {
+  registerForDiscovery,
+  startAdvertising,
+  stopAdvertising,
+  isAdvertising,
+  type NearbyUser,
+  type BeaconRegistration,
+} from './src/services/bleDiscovery';
 import QRCode from 'react-native-qrcode-svg';
 import type { User, Card, Bank, PaymentRequest, PaymentCard, Alias, AliasLookupResult, P2PEnrollment, BankAccount, Transfer, ResolvedToken, ResolvedMerchantToken, P2PMode, MerchantProfile, MerchantCategory, TransferWithRecipientType } from './src/types';
 import { MERCHANT_CATEGORIES, P2P_THEME_COLORS } from './src/types';
@@ -305,9 +314,12 @@ export default function App() {
   // Receive Money screen state
   const [receiveLoading, setReceiveLoading] = useState(false);
   const [receiveToken, setReceiveToken] = useState<{ tokenId: string; qrPayload: string; expiresAt: string } | null>(null);
+  const [nearbyBroadcastEnabled, setNearbyBroadcastEnabled] = useState(false);
+  const [nearbyBeaconRegistration, setNearbyBeaconRegistration] = useState<BeaconRegistration | null>(null);
 
   // Send Money screen state
   const [sendStep, setSendStep] = useState<'input' | 'confirm' | 'success'>('input');
+  const [sendInputMode, setSendInputMode] = useState<'alias' | 'nearby'>('alias');
   const [recipientAlias, setRecipientAlias] = useState('');
   const [sendAmount, setSendAmount] = useState('');
   const [sendNote, setSendNote] = useState('');
@@ -316,6 +328,7 @@ export default function App() {
   const [sendLoading, setSendLoading] = useState(false);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [completedTransfer, setCompletedTransfer] = useState<{ transferId: string; status: string } | null>(null);
+  const [selectedNearbyUser, setSelectedNearbyUser] = useState<NearbyUser | null>(null);
 
   // Transfer History screen state
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1469,27 +1482,19 @@ export default function App() {
     );
   };
 
+  // Note: Settings screen handles the confirmation dialog before calling this
   const handleLogout = async () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.logout();
-          } catch (e) {
-            // Continue anyway
-          }
-          setUser(null);
-          setCards([]);
-          setEmail('');
-          setName('');
-          setVerificationCode('');
-          setCurrentScreen('welcome');
-        },
-      },
-    ]);
+    try {
+      await api.logout();
+    } catch (e) {
+      // Continue anyway
+    }
+    setUser(null);
+    setCards([]);
+    setEmail('');
+    setName('');
+    setVerificationCode('');
+    setCurrentScreen('welcome');
   };
 
   // Deep logout: deactivates push token and clears all device data
@@ -3345,7 +3350,13 @@ export default function App() {
           {/* Header */}
           <View style={styles.receiveHeader}>
             <TouchableOpacity
-              onPress={() => {
+              onPress={async () => {
+                // Stop nearby broadcast if active
+                if (nearbyBroadcastEnabled) {
+                  await stopAdvertising();
+                  setNearbyBroadcastEnabled(false);
+                  setNearbyBeaconRegistration(null);
+                }
                 setActiveHomeTab('p2p');
                 setCurrentScreen('home');
                 setReceiveToken(null);
@@ -3449,6 +3460,74 @@ export default function App() {
                 </>
               )}
             </View>
+
+            {/* Nearby Discovery Section */}
+            <View style={styles.receiveOrSection}>
+              <View style={styles.receiveOrLine} />
+              <Text style={styles.receiveOrText}>OR</Text>
+              <View style={styles.receiveOrLine} />
+            </View>
+
+            <View style={styles.receiveAliasSection}>
+              <Text style={styles.receiveAliasTitle}>Nearby Discovery</Text>
+              <Text style={styles.receiveNoAliasText}>
+                Let people nearby discover you via Bluetooth
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.nearbyToggleButton,
+                  nearbyBroadcastEnabled && styles.nearbyToggleButtonActive
+                ]}
+                onPress={async () => {
+                  if (nearbyBroadcastEnabled) {
+                    // Stop broadcasting
+                    await stopAdvertising();
+                    setNearbyBroadcastEnabled(false);
+                    setNearbyBeaconRegistration(null);
+                  } else {
+                    // Start broadcasting
+                    const registration = await registerForDiscovery('P2P_RECEIVE');
+                    if (registration) {
+                      const started = await startAdvertising(registration);
+                      if (started) {
+                        setNearbyBroadcastEnabled(true);
+                        setNearbyBeaconRegistration(registration);
+                      } else {
+                        Alert.alert('Error', 'Failed to start nearby broadcast');
+                      }
+                    } else {
+                      Alert.alert('Error', 'Failed to register for nearby discovery. Please try again.');
+                    }
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.nearbyToggleContent}>
+                  <Text style={styles.nearbyToggleIcon}>
+                    {nearbyBroadcastEnabled ? '\u2713' : '\uD83D\uDCE1'}
+                  </Text>
+                  <View style={styles.nearbyToggleText}>
+                    <Text style={[
+                      styles.nearbyToggleTitle,
+                      nearbyBroadcastEnabled && styles.nearbyToggleTitleActive
+                    ]}>
+                      {nearbyBroadcastEnabled ? 'Broadcasting' : 'Enable Nearby'}
+                    </Text>
+                    <Text style={styles.nearbyToggleSubtitle}>
+                      {nearbyBroadcastEnabled
+                        ? `Expires: ${nearbyBeaconRegistration ? new Date(nearbyBeaconRegistration.expiresAt).toLocaleTimeString() : ''}`
+                        : 'Others can find you via Bluetooth'
+                      }
+                    </Text>
+                  </View>
+                  {nearbyBroadcastEnabled && (
+                    <View style={styles.nearbyBroadcastIndicator}>
+                      <View style={styles.nearbyBroadcastDot} />
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </View>
       </View>
@@ -3479,7 +3558,12 @@ export default function App() {
     };
 
     const handleProceedToConfirm = () => {
-      if (!recipientInfo?.found) {
+      // In nearby mode, selectedNearbyUser is valid (recipientInfo is set async)
+      const hasValidRecipient = sendInputMode === 'nearby'
+        ? !!selectedNearbyUser
+        : recipientInfo?.found;
+
+      if (!hasValidRecipient) {
         Alert.alert('Error', 'Please look up a valid recipient first');
         return;
       }
@@ -3511,12 +3595,15 @@ export default function App() {
 
       setSendLoading(true);
       try {
+        // Get alias type from recipientInfo (set from lookup or nearby user selection)
+        const aliasType = recipientInfo?.aliasType;
         const result = await transferSimApi.sendMoney(
           recipientAlias.trim(),
           parseFloat(sendAmount),
           selectedAccount.accountId,
           selectedAccount.bsimId,
-          sendNote.trim() || undefined
+          sendNote.trim() || undefined,
+          aliasType
         );
         setCompletedTransfer(result);
         setSendStep('success');
@@ -3710,6 +3797,8 @@ export default function App() {
               onPress={() => {
                 setActiveHomeTab('p2p');
                 setCurrentScreen('home');
+                setSendInputMode('alias');
+                setSelectedNearbyUser(null);
               }}
             >
               <Text style={styles.backButton}>← Back</Text>
@@ -3718,6 +3807,147 @@ export default function App() {
             <View style={{ width: 50 }} />
           </View>
 
+          {/* Tab Selector: Alias | Nearby */}
+          <View style={styles.sendTabContainer}>
+            <TouchableOpacity
+              style={[
+                styles.sendTab,
+                sendInputMode === 'alias' && styles.sendTabActive
+              ]}
+              onPress={() => {
+                setSendInputMode('alias');
+                setSelectedNearbyUser(null);
+              }}
+            >
+              <Text style={[
+                styles.sendTabText,
+                sendInputMode === 'alias' && styles.sendTabTextActive
+              ]}>Alias</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.sendTab,
+                sendInputMode === 'nearby' && styles.sendTabActive
+              ]}
+              onPress={() => {
+                setSendInputMode('nearby');
+                setRecipientInfo(null);
+                setRecipientAlias('');
+              }}
+            >
+              <Text style={[
+                styles.sendTabText,
+                sendInputMode === 'nearby' && styles.sendTabTextActive
+              ]}>Nearby</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Nearby Users Panel */}
+          {sendInputMode === 'nearby' ? (
+            <View style={{ flex: 1 }}>
+              {selectedNearbyUser ? (
+                <ScrollView style={styles.sendScrollContent} showsVerticalScrollIndicator={false}>
+                  {/* Selected Nearby User */}
+                  <View style={styles.sendSection}>
+                    <Text style={styles.sendSectionLabel}>Send to</Text>
+                    <View style={styles.recipientInfoCard}>
+                      <View style={{ marginRight: 12 }}>
+                        <ProfileAvatar
+                          imageUrl={selectedNearbyUser.isMerchant ? selectedNearbyUser.merchantLogoUrl || selectedNearbyUser.profileImageUrl : selectedNearbyUser.profileImageUrl}
+                          displayName={selectedNearbyUser.isMerchant && selectedNearbyUser.merchantName ? selectedNearbyUser.merchantName : selectedNearbyUser.displayName}
+                          size="small"
+                          initialsColor={selectedNearbyUser.initialsColor}
+                          variant={selectedNearbyUser.isMerchant ? 'merchant' : 'user'}
+                        />
+                      </View>
+                      <View style={styles.recipientInfoDetails}>
+                        <Text style={styles.recipientInfoName}>
+                          {selectedNearbyUser.isMerchant && selectedNearbyUser.merchantName ? selectedNearbyUser.merchantName : selectedNearbyUser.displayName}
+                        </Text>
+                        <Text style={styles.recipientInfoBank}>{selectedNearbyUser.bankName || 'Nearby'}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setSelectedNearbyUser(null)}>
+                        <Text style={{ fontSize: 20, color: '#6b7280' }}>x</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Amount Input */}
+                  <View style={styles.sendSection}>
+                    <Text style={styles.sendSectionLabel}>Amount</Text>
+                    <View style={styles.amountInputContainer}>
+                      <Text style={styles.amountCurrency}>$</Text>
+                      <TextInput
+                        style={styles.amountInput}
+                        placeholder="0.00"
+                        value={sendAmount}
+                        onChangeText={setSendAmount}
+                        keyboardType="decimal-pad"
+                      />
+                      <Text style={styles.amountCurrencyCode}>CAD</Text>
+                    </View>
+                  </View>
+
+                  {/* Source Account */}
+                  <View style={styles.sendSection}>
+                    <Text style={styles.sendSectionLabel}>From account</Text>
+                    {bankAccounts.map((account) => (
+                      <TouchableOpacity
+                        key={account.accountId}
+                        style={[
+                          styles.accountOption,
+                          selectedAccount?.accountId === account.accountId && styles.accountOptionSelected
+                        ]}
+                        onPress={() => setSelectedAccount(account)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={styles.accountOptionInfo}>
+                          <Text style={styles.accountOptionName}>{account.displayName}</Text>
+                          <Text style={styles.accountOptionBank}>{account.bankName}</Text>
+                        </View>
+                        <View style={styles.accountOptionBalance}>
+                          <Text style={styles.accountOptionBalanceAmount}>
+                            ${account.balance?.toFixed(2) || '—'}
+                          </Text>
+                          {selectedAccount?.accountId === account.accountId && (
+                            <Text style={styles.accountOptionCheck}>✓</Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Note Input */}
+                  <View style={styles.sendSection}>
+                    <Text style={styles.sendSectionLabel}>Note (optional)</Text>
+                    <TextInput
+                      style={[styles.input, { height: 80, textAlignVertical: 'top', paddingTop: 12 }]}
+                      placeholder="What's this for?"
+                      value={sendNote}
+                      onChangeText={setSendNote}
+                      multiline
+                      maxLength={140}
+                    />
+                  </View>
+                </ScrollView>
+              ) : (
+                <NearbyUsersPanel
+                  isActive={sendInputMode === 'nearby'}
+                  onSelectUser={(user) => {
+                    setSelectedNearbyUser(user);
+                    // If user has a recipientAlias, set it for the transfer
+                    if (user.recipientAlias) {
+                      setRecipientAlias(user.recipientAlias);
+                    }
+                    // Pre-fill amount if available from beacon metadata
+                    if (user.metadata?.amount) {
+                      setSendAmount(user.metadata.amount.toString());
+                    }
+                  }}
+                />
+              )}
+            </View>
+          ) : (
           <ScrollView style={styles.sendScrollContent} showsVerticalScrollIndicator={false}>
             {/* Recipient Input */}
             <View style={styles.sendSection}>
@@ -3756,8 +3986,14 @@ export default function App() {
                 ]}>
                   {recipientInfo.found ? (
                     <>
-                      <View style={styles.recipientInfoIcon}>
-                        <Text style={{ fontSize: 24 }}>👤</Text>
+                      <View style={{ marginRight: 12 }}>
+                        <ProfileAvatar
+                          imageUrl={recipientInfo.profileImageUrl || recipientInfo.merchantLogoUrl}
+                          displayName={recipientInfo.displayName || recipientAlias}
+                          size="small"
+                          initialsColor={recipientInfo.initialsColor}
+                          variant={recipientInfo.isMerchant && !recipientInfo.profileImageUrl ? 'merchant' : 'user'}
+                        />
                       </View>
                       <View style={styles.recipientInfoDetails}>
                         <Text style={styles.recipientInfoName}>{recipientInfo.displayName}</Text>
@@ -3832,16 +4068,46 @@ export default function App() {
               />
             </View>
           </ScrollView>
+          )}
 
           {/* Continue Button */}
           <View style={styles.sendActions}>
             <TouchableOpacity
               style={[
                 styles.primaryButton,
-                (!recipientInfo?.found || !sendAmount || !selectedAccount) && styles.buttonDisabled
+                (sendInputMode === 'nearby'
+                  ? (!selectedNearbyUser || !sendAmount || !selectedAccount)
+                  : (!recipientInfo?.found || !sendAmount || !selectedAccount)
+                ) && styles.buttonDisabled
               ]}
-              onPress={handleProceedToConfirm}
-              disabled={!recipientInfo?.found || !sendAmount || !selectedAccount}
+              onPress={() => {
+                if (sendInputMode === 'nearby' && selectedNearbyUser) {
+                  // For nearby mode, create a mock recipientInfo and proceed
+                  // Default to 'ALIAS' type if not provided by discovery API
+                  setRecipientInfo({
+                    found: true,
+                    displayName: selectedNearbyUser.isMerchant && selectedNearbyUser.merchantName
+                      ? selectedNearbyUser.merchantName
+                      : selectedNearbyUser.displayName,
+                    bankName: selectedNearbyUser.bankName,
+                    aliasType: selectedNearbyUser.aliasType || 'ALIAS',
+                    profileImageUrl: selectedNearbyUser.profileImageUrl,
+                    initialsColor: selectedNearbyUser.initialsColor,
+                    isMerchant: selectedNearbyUser.isMerchant,
+                    merchantLogoUrl: selectedNearbyUser.merchantLogoUrl,
+                  });
+                  // Use recipientAlias if available (set when user was selected)
+                  if (!recipientAlias && selectedNearbyUser.recipientAlias) {
+                    setRecipientAlias(selectedNearbyUser.recipientAlias);
+                  }
+                }
+                handleProceedToConfirm();
+              }}
+              disabled={
+                sendInputMode === 'nearby'
+                  ? (!selectedNearbyUser || !sendAmount || !selectedAccount)
+                  : (!recipientInfo?.found || !sendAmount || !selectedAccount)
+              }
               activeOpacity={0.7}
             >
               <Text style={styles.primaryButtonText}>Continue</Text>
@@ -6832,6 +7098,52 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  nearbyToggleButton: {
+    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 16,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    width: '100%',
+  },
+  nearbyToggleButtonActive: {
+    backgroundColor: '#dcfce7',
+    borderColor: '#22c55e',
+  },
+  nearbyToggleContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nearbyToggleIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  nearbyToggleText: {
+    flex: 1,
+  },
+  nearbyToggleTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  nearbyToggleTitleActive: {
+    color: '#15803d',
+  },
+  nearbyToggleSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  nearbyBroadcastIndicator: {
+    marginLeft: 8,
+  },
+  nearbyBroadcastDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#22c55e',
+  },
   // Send Money styles
   sendContent: {
     flex: 1,
@@ -6850,6 +7162,33 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#111827',
+  },
+  sendTabContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#f9fafb',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  sendTab: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+    marginHorizontal: 4,
+    backgroundColor: 'transparent',
+  },
+  sendTabActive: {
+    backgroundColor: '#1d4ed8',
+  },
+  sendTabText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  sendTabTextActive: {
+    color: '#ffffff',
   },
   sendScrollContent: {
     flex: 1,
