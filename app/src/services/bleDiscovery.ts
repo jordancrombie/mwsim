@@ -8,6 +8,7 @@
 import { BleManager, State, Device, BleError } from '@sfourdrinier/react-native-ble-plx';
 import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
 import axios, { AxiosInstance } from 'axios';
+import { Buffer } from 'buffer';
 import { secureStorage } from './secureStorage';
 import { getTransferSimUrl } from './environment';
 import type { AliasType, MerchantCategory } from '../types';
