@@ -98,6 +98,7 @@ export const NearbyUsersPanel: React.FC<NearbyUsersPanelProps> = ({
       setState('initializing');
       setErrorMessage('');
 
+      // Initialize BLE
       const initialized = await initializeBle();
       if (!initialized) {
         if (mounted) {
@@ -107,6 +108,7 @@ export const NearbyUsersPanel: React.FC<NearbyUsersPanelProps> = ({
         return;
       }
 
+      // Start BLE scanning for iBeacons
       const started = await startScanning(handleBeaconsFound, { minRssi });
       if (!started && mounted) {
         setState('error');
@@ -127,7 +129,7 @@ export const NearbyUsersPanel: React.FC<NearbyUsersPanelProps> = ({
   // Manual refresh
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    // Re-initialize scanning
+    // Restart BLE scanning
     stopScanning();
     const started = await startScanning(handleBeaconsFound, { minRssi });
     if (!started) {

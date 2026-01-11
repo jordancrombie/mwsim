@@ -31,6 +31,7 @@
     "nativewind": "^4.2.1",
     "react": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-ble-advertise": "^2.0.5",
     "react-native-gesture-handler": "^2.29.1",
     "react-native-get-random-values": "^2.0.0",
     "react-native-qrcode-svg": "^6.3.21",
