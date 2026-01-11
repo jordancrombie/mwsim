@@ -1469,27 +1469,19 @@ export default function App() {
     );
   };
 
+  // Note: Settings screen handles the confirmation dialog before calling this
   const handleLogout = async () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.logout();
-          } catch (e) {
-            // Continue anyway
-          }
-          setUser(null);
-          setCards([]);
-          setEmail('');
-          setName('');
-          setVerificationCode('');
-          setCurrentScreen('welcome');
-        },
-      },
-    ]);
+    try {
+      await api.logout();
+    } catch (e) {
+      // Continue anyway
+    }
+    setUser(null);
+    setCards([]);
+    setEmail('');
+    setName('');
+    setVerificationCode('');
+    setCurrentScreen('welcome');
   };
 
   // Deep logout: deactivates push token and clears all device data
@@ -3756,8 +3748,14 @@ export default function App() {
                 ]}>
                   {recipientInfo.found ? (
                     <>
-                      <View style={styles.recipientInfoIcon}>
-                        <Text style={{ fontSize: 24 }}>👤</Text>
+                      <View style={{ marginRight: 12 }}>
+                        <ProfileAvatar
+                          imageUrl={recipientInfo.profileImageUrl || recipientInfo.merchantLogoUrl}
+                          displayName={recipientInfo.displayName || recipientAlias}
+                          size="small"
+                          initialsColor={recipientInfo.initialsColor}
+                          variant={recipientInfo.isMerchant && !recipientInfo.profileImageUrl ? 'merchant' : 'user'}
+                        />
                       </View>
                       <View style={styles.recipientInfoDetails}>
                         <Text style={styles.recipientInfoName}>{recipientInfo.displayName}</Text>
