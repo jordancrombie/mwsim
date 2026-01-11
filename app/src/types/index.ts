@@ -219,6 +219,10 @@ export interface AliasLookupResult {
   displayName?: string;   // Partial name (e.g., "John D.")
   bankName?: string;
   aliasType?: AliasType;
+  profileImageUrl?: string;   // Recipient's personal profile image URL (from WSIM)
+  initialsColor?: string;     // Hex color for initials avatar fallback (e.g., "#3949AB")
+  isMerchant?: boolean;       // Whether recipient is a registered Micro Merchant
+  merchantLogoUrl?: string;   // Merchant logo URL (only if isMerchant: true)
 }
 
 export interface ReceiveToken {
