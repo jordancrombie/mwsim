@@ -1,311 +1,43 @@
-# mwsim - Mobile Wallet Simulator
+# mwsim
 
-A React Native mobile wallet application for iOS and Android that works with the [wsim](../wsim) web wallet simulator.
-
-## Overview
-
-mwsim enables users to:
-- Create wallet accounts with email verification
-- Enroll payment cards from banking simulators (BSIMs) via OAuth
-- Manage their digital wallet
-- Authorize payments from merchant checkouts via deep links
-- Use biometric authentication (Face ID / Touch ID)
+Mobile wallet simulator app built with React Native and Expo SDK 54.
 
 ## Features
 
-### Authentication
-- **Account Creation** - Create a new wallet account with email and name
-- **Email Verification** - Secure login via email verification codes
-- **Biometric Setup** - Optional Face ID / Touch ID authentication
-- **Device Binding** - Secure device registration with unique device IDs
+- **P2P Transfers**: Send and receive money between users
+- **BLE Proximity Discovery**: Find nearby iOS users via Bluetooth for quick transfers
+- **QR Code Payments**: Scan or display QR codes for transfers
+- **Biometric Authentication**: Face ID / Touch ID for secure transactions
+- **Multi-bank Support**: Connect multiple bank accounts via BSIM
 
-### Bank Enrollment
-- **Bank Selection** - Browse available banks for card enrollment
-- **OAuth Flow** - Secure bank authentication via system browser (Safari/Chrome)
-- **Card Import** - Automatic import of cards after successful enrollment
-- **Deep Link Handling** - Seamless return to app after OAuth completion (`mwsim://` scheme)
-
-### Wallet Management
-- **Card List** - View all enrolled cards with card type and bank info
-- **Card Details** - Tap a card to view details with management options
-- **Set Default Card** - Choose which card is used for payments
-- **Remove Card** - Remove cards from wallet (with confirmation)
-- **Default Card Indicator** - Visual badge for default payment card
-- **Pull to Refresh** - Refresh wallet data from server
-- **Add More Banks** - Enroll additional banks at any time
-
-### Payment Authorization
-- **QR Code Scanner** - Scan merchant QR codes to initiate payments
-  - Camera-based scanner with torch toggle for low-light conditions
-  - Supports Universal Links (`https://wsim.banksim.ca/pay/{requestId}`)
-  - Supports Deep Links (`mwsim://payment/{requestId}`)
-- **Deep Link Payments** - Receive payment requests via `mwsim://payment/:requestId`
-- **Payment Approval Screen** - Review merchant, amount, and select card
-- **Biometric Confirmation** - Face ID / Touch ID required to approve payments
-- **Browser-Aware Return** - Returns user to the same browser they started from (Safari, Chrome, Firefox, Edge, etc.)
-- **Return to Store** - Seamless return to merchant checkout after approval
-
-### P2P Transfers (via TransferSim)
-- **P2P Enrollment** - One-tap enrollment using connected bank accounts
-- **Send Money** - Send funds by alias (username, email, phone) or QR scan
-  - Recipient lookup with preview
-  - Amount entry with currency formatting
-  - Optional note/memo
-  - Biometric authorization (Face ID/Touch ID) required
-- **Receive Money** - Generate QR codes for others to scan and pay you
-  - Share your alias via share sheet
-  - QR token expiration handling
-- **Alias Management** - Register and manage payment aliases
-  - Username (@handle), email, or phone number
-  - Set primary alias for receiving
-  - Delete aliases with confirmation
-- **Transfer History** - View sent and received transfers
-  - Filter by direction (All/Sent/Received)
-  - Detailed transfer view with status and timestamps
-- **QR Code Scanning** - Scan recipient QR codes to send money instantly
-
-### Micro Merchant (via TransferSim)
-- **Merchant Enrollment** - Become a micro merchant to accept payments
-  - Business name and category selection
-  - Link receiving bank account
-- **Business Mode Toggle** - Switch between Personal and Business modes
-  - Separate views for personal transfers and merchant payments
-  - Mode preference persisted across app sessions
-- **Merchant Dashboard** - View business activity at a glance
-  - Today's revenue and transaction count
-  - Recent merchant payments with fee breakdown
-  - Quick access to QR code for receiving payments
-- **Merchant Profile Management**
-  - Edit business name and description
-  - Upload/remove business logo
-  - Square avatars with rounded corners distinguish merchants from users
-- **Accept Payments** - Generate merchant QR codes for customers to scan
-  - Automatic fee calculation ($0.25 for < $200, $0.50 for >= $200)
-  - Payment breakdown showing gross, fee, and net amounts
-
-### Developer Tools
-- **Environment Switching** - Toggle between Dev/Production servers in iOS Settings
-- **Environment Indicator** - Orange badge shows current environment on home screen
-- **Reset Device** - Generate new device ID for testing (dev mode)
-- **Debug Logging** - Console logs for enrollment and API debugging
-
-## Project Structure
-
-```
-mwsim/
-├── app/                    # React Native application
-│   ├── App.tsx             # Main app component with all screens
-│   ├── app.json            # Expo configuration (scheme, bundle ID)
-│   ├── plugins/            # Custom Expo config plugins
-│   │   ├── withSettingsBundle.js   # Creates iOS Settings.bundle
-│   │   ├── withSettingsDefaults.js # Registers Settings defaults in AppDelegate
-│   │   └── withSigningTeam.js      # Sets iOS code signing team
-│   ├── src/
-│   │   ├── screens/        # Screen components (for future navigation)
-│   │   ├── components/     # Reusable UI components
-│   │   ├── services/       # API, auth, storage services
-│   │   │   ├── api.ts      # Axios API client with JWT auth
-│   │   │   ├── biometric.ts # Biometric authentication
-│   │   │   ├── environment.ts # Environment config (reads iOS Settings)
-│   │   │   ├── secureStorage.ts # Expo Secure Store wrapper
-│   │   │   └── transferSim.ts # TransferSim P2P API client
-│   │   ├── store/          # Zustand state management
-│   │   ├── types/          # TypeScript types
-│   │   └── config/         # App configuration
-│   └── package.json
-├── docs/                   # Documentation
-│   └── WSIM_API_PROPOSAL.md
-├── PLAN.md                 # Implementation plan
-├── TODO.md                 # Development roadmap
-├── CHANGELOG.md            # Version history
-└── README.md
-```
-
-## Tech Stack
-
-- **React Native** (Expo SDK 54) - Cross-platform mobile framework
-- **TypeScript** - Type safety
-- **Axios** - HTTP client with JWT interceptors
-- **Zustand** - State management
-- **Expo Secure Store** - Secure credential storage
-- **Expo Local Authentication** - Biometrics (Face ID / Touch ID)
-- **Expo Web Browser** - System browser for OAuth flows
-- **Expo Camera** - QR code scanning for payments
-
-## Custom Expo Plugins
-
-The app uses custom Expo config plugins in `app/plugins/` to handle native iOS configuration:
-
-### withSettingsBundle
-Creates an iOS Settings.bundle that appears in the iOS Settings app. Allows users to:
-- Switch between Development and Production servers
-- View app version and build number
-
-### withSettingsDefaults
-Registers Settings.bundle default values in AppDelegate at app startup. This ensures:
-- `UserDefaults.standard.register(defaults:)` is called before React Native loads
-- iOS Settings values are readable via React Native's `Settings.get()` API
-- Environment selection works correctly on first launch
-
-### withSigningTeam
-Automatically configures the iOS code signing team for builds, ensuring `DEVELOPMENT_TEAM` is set correctly across `expo prebuild --clean` operations.
-
-## Getting Started
+## Development
 
 ### Prerequisites
 
 - Node.js 18+
-- npm or yarn
-- Expo CLI (`npm install -g expo-cli`)
-- iOS Simulator (Mac) or Android Emulator
-- wsim backend running (see [wsim setup](../wsim/README.md))
+- Xcode 15+ (for iOS)
+- CocoaPods
 
-### Installation
+### Setup
 
 ```bash
-# Navigate to app directory
 cd app
-
-# Install dependencies
 npm install
-
-# Start the development server
-npm start
-
-# Run on iOS simulator
-npm run ios
-
-# Run on Android emulator
-npm run android
+npx expo prebuild --clean
 ```
 
-### Configuration
+### Run on iOS Device
 
-Update the API URLs in `app/src/config/env.ts` to point to your wsim backend:
-
-```typescript
-export const config = {
-  apiUrl: 'https://wsim-dev.banksim.ca/api',
-  apiTimeout: 30000,
-};
+```bash
+npx expo run:ios --device
 ```
 
-## API Integration
+### TestFlight Upload
 
-The app integrates with the wsim backend via these endpoints:
+See `CLAUDE.md` for detailed instructions.
 
-### Authentication
-- `POST /mobile/device/register` - Register device
-- `POST /mobile/auth/register` - Create account
-- `POST /mobile/auth/login` - Initiate login
-- `POST /mobile/auth/login/verify` - Verify login code
-- `POST /mobile/auth/biometric/setup` - Setup biometrics
+## Related Projects
 
-### Wallet
-- `GET /mobile/wallet/summary` - Get wallet summary with cards
-- `POST /mobile/wallet/cards/:cardId/default` - Set card as default
-- `DELETE /mobile/wallet/cards/:cardId` - Remove card from wallet
-
-### Enrollment
-- `GET /mobile/enrollment/banks` - List available banks
-- `POST /mobile/enrollment/start/:bsimId` - Start OAuth enrollment (returns authUrl)
-- OAuth callback redirects to `mwsim://enrollment/callback?success=true|false`
-
-### Payment
-- `GET /mobile/payment/:requestId` - Get payment request details
-- `POST /mobile/payment/:requestId/approve` - Approve payment with selected card
-- `POST /mobile/payment/:requestId/cancel` - Cancel payment request
-- `GET /mobile/payment/pending` - List pending payment requests
-
-## Deep Linking
-
-The app uses the `mwsim://` URL scheme:
-
-**Enrollment Callbacks:**
-- **Success**: `mwsim://enrollment/callback?success=true`
-- **Error**: `mwsim://enrollment/callback?success=false&error=<message>`
-
-**Payment Approval:**
-- **Payment Request**: `mwsim://payment/:requestId` - Opens payment approval screen
-
-Configured in `app.json`:
-```json
-{
-  "expo": {
-    "scheme": "mwsim",
-    "ios": {
-      "bundleIdentifier": "com.banksim.wsim"
-    },
-    "android": {
-      "package": "com.banksim.wsim"
-    }
-  }
-}
-```
-
-## Development Status
-
-### Phase 1: Customer Onboarding (Complete)
-- [x] Project setup and structure
-- [x] Welcome screen
-- [x] Account creation flow
-- [x] Email login flow
-- [x] Biometric setup (graceful fallback if unavailable)
-- [x] Bank selection screen
-- [x] OAuth enrollment via system browser
-- [x] Deep link callback handling
-- [x] Wallet home screen with cards
-- [x] Device reset for testing
-
-### Phase 2: Wallet Management & Payments (Complete)
-- [x] Card management (set default, remove)
-- [x] Payment authorization flow (deep link, approval screen, biometric)
-- [x] Return URL context parameter for SSIM integration
-- [x] Browser-aware return flow (Safari, Chrome, Firefox, Edge, Brave)
-- [x] End-to-end checkout flow tested with Safari and Chrome (2025-12-15)
-- [ ] Transaction history
-- [ ] Push notifications
-
-### Phase 2.5: P2P Transfers (Complete - 2025-12-27)
-- [x] TransferSim API integration with environment-aware URLs
-- [x] P2P enrollment flow
-- [x] Alias management (create, delete, set primary)
-- [x] Send money by alias with recipient lookup
-- [x] Send money by QR scan
-- [x] Receive money with QR code generation
-- [x] Transfer history with filtering
-- [x] Transfer detail view
-- [x] Biometric authorization for transfers
-- [ ] Alias verification (email/SMS)
-- [ ] Push notifications for transfers
-
-### Phase 2.6: Micro Merchant (In Progress - 2026-01-10)
-- [x] Merchant enrollment flow
-- [x] Business/Personal mode toggle
-- [x] Merchant dashboard with stats
-- [x] Accept payments via QR code
-- [x] Payment history with fee breakdown
-- [x] Merchant profile edit screen
-- [x] Business logo upload/delete
-- [x] Square avatars for merchant profiles
-- [ ] Merchant logo display in payment confirmation
-- [ ] Push notifications for merchant payments
-
-### Phase 3: OpenWallet Foundation
-- [ ] OID4VCI (Verifiable Credential Issuance)
-- [ ] OID4VP (Verifiable Presentations)
-- [ ] Digital ID support
-
-## Known Limitations
-
-- Navigation uses simple state-based routing for simplicity
-- Biometric setup endpoint may return 404 if not yet deployed on backend
-- Device ID conflicts can occur on simulators (use Reset Device button)
-
-## wsim Integration
-
-mwsim requires mobile-specific API endpoints in wsim. See [WSIM_API_PROPOSAL.md](docs/WSIM_API_PROPOSAL.md) for the backend changes.
-
-## License
-
-Private - Internal use only
+- **WSIM**: Backend wallet service
+- **TransferSim**: Transfer processing service
+- **BSIM**: Bank simulator

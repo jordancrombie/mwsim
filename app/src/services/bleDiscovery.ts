@@ -2,19 +2,37 @@
  * BLE Discovery Service
  *
  * Handles Bluetooth Low Energy proximity discovery for P2P transfers.
- * Uses iBeacon format with Major/Minor for token encoding.
+ * Uses service UUID encoding for cross-platform compatibility.
+ *
+ * - Advertising (peripheral mode):
+ *   - iOS: Native BleGattAdvertise module (standard GATT advertising)
+ *   - Android: react-native-ble-advertise (iBeacon format)
+ * - Scanning (central mode): react-native-ble-plx
  */
 
 import { BleManager, State, Device, BleError } from '@sfourdrinier/react-native-ble-plx';
-import { Platform, PermissionsAndroid, Alert, Linking } from 'react-native';
+import BleAdvertise from 'react-native-ble-advertise';
+import { Platform, PermissionsAndroid, Alert, Linking, NativeModules } from 'react-native';
+
+// Native module for iOS GATT advertising (standard BLE, not iBeacon)
+const { BleGattAdvertise } = NativeModules;
 import axios, { AxiosInstance } from 'axios';
 import { Buffer } from 'buffer';
 import { secureStorage } from './secureStorage';
 import { getTransferSimUrl } from './environment';
 import type { AliasType, MerchantCategory } from '../types';
 
+// Apple's company ID for iBeacon format (Android only - iOS blocks this)
+const APPLE_COMPANY_ID = 0x004c;
+
 // mwsim's unique iBeacon UUID (used to identify our app's beacons)
 export const MWSIM_BEACON_UUID = 'E2C56DB5-DFFB-48D2-B060-D0F5A71096E0';
+
+// mwsim's base service UUID for proximity discovery
+// Format: E2C56DB5-DFFB-{MAJOR}-{MINOR}-D0F5A71096E0
+// This works on iOS (which blocks iBeacon advertising) by encoding token in service UUID
+export const MWSIM_SERVICE_UUID_PREFIX = 'E2C56DB5-DFFB-';
+export const MWSIM_SERVICE_UUID_SUFFIX = '-D0F5A71096E0';
 
 // ============================================================================
 // TransferSim Discovery API Client
@@ -151,8 +169,8 @@ export function waitForBluetoothReady(timeoutMs: number = 10000): Promise<boolea
 export async function requestBluetoothPermissions(): Promise<boolean> {
   if (Platform.OS === 'ios') {
     // iOS permissions are requested automatically when using BLE
-    // Just need to ensure Bluetooth is enabled
-    const { enabled, supported } = await checkBluetoothState();
+    // Check initial state
+    const { supported } = await checkBluetoothState();
 
     if (!supported) {
       Alert.alert(
@@ -163,16 +181,41 @@ export async function requestBluetoothPermissions(): Promise<boolean> {
       return false;
     }
 
-    if (!enabled) {
-      Alert.alert(
-        'Bluetooth Required',
-        'Please enable Bluetooth in Settings to discover nearby users.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openURL('App-Prefs:Bluetooth') },
-        ]
-      );
-      return false;
+    // Wait for Bluetooth to be ready (handles permission grant delay)
+    // This gives time for the system to process the permission and enable BLE
+    const isReady = await waitForBluetoothReady(5000);
+
+    if (!isReady) {
+      // Check why it's not ready
+      const { enabled, state } = await checkBluetoothState();
+
+      if (!enabled) {
+        // Only show alert if Bluetooth is actually off (not just waiting for permission)
+        if (state === State.PoweredOff) {
+          Alert.alert(
+            'Bluetooth Required',
+            'Please enable Bluetooth in Settings to discover nearby users.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openURL('App-Prefs:Bluetooth') },
+            ]
+          );
+          return false;
+        } else if (state === State.Unauthorized) {
+          Alert.alert(
+            'Bluetooth Permission Required',
+            'Please allow Bluetooth access in Settings to discover nearby users.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Open Settings', onPress: () => Linking.openURL('app-settings:') },
+            ]
+          );
+          return false;
+        }
+        // For other states (Resetting, Unknown), return false but don't show alert
+        console.log('[BLE] Bluetooth not ready, state:', state);
+        return false;
+      }
     }
 
     return true;
@@ -292,9 +335,10 @@ export function tokenToMajorMinor(token: number): { major: number; minor: number
 
 /**
  * Combine Major and Minor values back into a 32-bit token
+ * Uses >>> 0 to ensure unsigned 32-bit integer (JavaScript bitwise ops are signed)
  */
 export function majorMinorToToken(major: number, minor: number): number {
-  return ((major & 0xFFFF) << 16) | (minor & 0xFFFF);
+  return (((major & 0xFFFF) << 16) | (minor & 0xFFFF)) >>> 0;
 }
 
 /**
@@ -309,6 +353,62 @@ export function tokenToHex(token: number): string {
  */
 export function hexToToken(hex: string): number {
   return parseInt(hex, 16);
+}
+
+/**
+ * Create a service UUID that encodes major/minor values
+ * This allows iOS devices to advertise our beacon token via service UUIDs
+ * (since iOS blocks third-party iBeacon/manufacturer data advertising)
+ *
+ * Format: E2C56DB5-DFFB-{MAJOR}-{MINOR}-D0F5A71096E0
+ */
+export function createServiceUuidWithToken(major: number, minor: number): string {
+  const majorHex = major.toString(16).toUpperCase().padStart(4, '0');
+  const minorHex = minor.toString(16).toUpperCase().padStart(4, '0');
+  return `${MWSIM_SERVICE_UUID_PREFIX}${majorHex}-${minorHex}${MWSIM_SERVICE_UUID_SUFFIX}`;
+}
+
+/**
+ * Check if a UUID matches our service UUID pattern
+ */
+export function isMwsimServiceUuid(uuid: string): boolean {
+  const normalized = uuid.toUpperCase();
+  return normalized.startsWith(MWSIM_SERVICE_UUID_PREFIX) &&
+         normalized.endsWith(MWSIM_SERVICE_UUID_SUFFIX);
+}
+
+/**
+ * Parse major/minor from a service UUID
+ * Returns null if the UUID doesn't match our format
+ */
+export function parseTokenFromServiceUuid(uuid: string): { major: number; minor: number; token: string } | null {
+  const normalized = uuid.toUpperCase();
+
+  if (!isMwsimServiceUuid(normalized)) {
+    return null;
+  }
+
+  // Extract the middle part: XXXX-YYYY
+  const middlePart = normalized
+    .replace(MWSIM_SERVICE_UUID_PREFIX, '')
+    .replace(MWSIM_SERVICE_UUID_SUFFIX, '');
+
+  const parts = middlePart.split('-');
+  if (parts.length !== 2 || parts[0].length !== 4 || parts[1].length !== 4) {
+    return null;
+  }
+
+  const major = parseInt(parts[0], 16);
+  const minor = parseInt(parts[1], 16);
+
+  if (isNaN(major) || isNaN(minor)) {
+    return null;
+  }
+
+  const tokenValue = majorMinorToToken(major, minor);
+  const token = tokenToHex(tokenValue);
+
+  return { major, minor, token };
 }
 
 // ============================================================================
@@ -515,6 +615,67 @@ export async function lookupBeaconTokens(
 }
 
 /**
+ * List all active beacons (server-side fallback when BLE advertising isn't available)
+ *
+ * GET /api/v1/discovery/beacon/active
+ *
+ * This is a fallback for demo/development since iOS doesn't allow third-party
+ * iBeacon advertising. Returns all currently active P2P_RECEIVE beacons.
+ */
+export async function listActiveBeacons(
+  context?: DiscoveryContext
+): Promise<NearbyUser[]> {
+  try {
+    console.log('[BLE Discovery] Fetching active beacons from server...');
+
+    const params: Record<string, string> = {};
+    if (context) {
+      params.context = context;
+    }
+
+    const { data } = await getDiscoveryClient().get<{
+      beacons: Array<{
+        token: string;
+        context: DiscoveryContext;
+        recipient: BeaconRecipient;
+        metadata?: { amount?: number; description?: string };
+        expiresAt: string;
+      }>;
+    }>('/api/v1/discovery/beacon/active', { params });
+
+    console.log('[BLE Discovery] Found', data.beacons?.length || 0, 'active beacons');
+
+    // Convert to NearbyUser format with simulated RSSI (since we don't have actual BLE)
+    return (data.beacons || []).map((beacon) => ({
+      token: beacon.token,
+      displayName: beacon.recipient.displayName,
+      bankName: beacon.recipient.bankName,
+      profileImageUrl: beacon.recipient.profileImageUrl,
+      initialsColor: beacon.recipient.initialsColor,
+      isMerchant: beacon.recipient.isMerchant || false,
+      merchantLogoUrl: beacon.recipient.merchantLogoUrl,
+      merchantName: beacon.recipient.merchantName,
+      merchantCategory: beacon.recipient.merchantCategory,
+      recipientAlias: beacon.recipient.recipientAlias,
+      aliasType: beacon.recipient.aliasType,
+      context: beacon.context,
+      metadata: beacon.metadata,
+      rssi: -50, // Simulated "close" RSSI since we can't measure actual distance
+      distance: 1.0, // Simulated 1 meter distance
+      lastSeen: Date.now(),
+    }));
+  } catch (error: any) {
+    // If endpoint doesn't exist, return empty (fallback gracefully)
+    if (error.response?.status === 404) {
+      console.log('[BLE Discovery] Active beacons endpoint not available');
+      return [];
+    }
+    console.error('[BLE Discovery] Failed to list active beacons:', error.response?.data || error.message);
+    return [];
+  }
+}
+
+/**
  * Deregister a beacon token (when stopping broadcast)
  *
  * DELETE /api/v1/discovery/beacon/{token}
@@ -569,60 +730,247 @@ export function beaconResultsToNearbyUsers(
 }
 
 // ============================================================================
-// BLE Advertising (Peripheral Mode)
-// TODO: Implement actual iBeacon advertising
+// BLE Advertising (Peripheral Mode) - using react-native-ble-advertise
 // ============================================================================
 
 // Current advertising state
 let currentAdvertisingToken: string | null = null;
+let isCurrentlyAdvertising = false;
 
 /**
- * Start advertising our beacon
- * NOTE: iOS CoreBluetooth can advertise as peripheral but not as true iBeacon
- * from a third-party app. We'll use a service UUID + characteristics approach.
+ * Request Android permissions for BLE advertising (API 31+)
+ */
+async function requestAndroidAdvertisePermissions(): Promise<boolean> {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
+  try {
+    // For Android 12+ (API 31+), we need BLUETOOTH_ADVERTISE
+    if (Platform.Version >= 31) {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
+        {
+          title: 'Bluetooth Advertise Permission',
+          message: 'mwsim needs Bluetooth advertising permission to let nearby users find you.',
+          buttonPositive: 'OK',
+        }
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        console.warn('[BLE Discovery] BLUETOOTH_ADVERTISE permission denied');
+        return false;
+      }
+    }
+
+    // Also need location permission for BLE
+    const locationGranted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Location Permission',
+        message: 'mwsim needs location permission for Bluetooth discovery.',
+        buttonPositive: 'OK',
+      }
+    );
+
+    return locationGranted === PermissionsAndroid.RESULTS.GRANTED;
+  } catch (error) {
+    console.error('[BLE Discovery] Permission request error:', error);
+    return false;
+  }
+}
+
+/**
+ * Helper to delay execution
+ */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Start advertising our beacon for proximity discovery
+ *
+ * Platform-specific implementations:
+ * - iOS: Uses native BleGattAdvertise module for standard GATT advertising
+ *        (iBeacon format is not scannable by other iOS devices via CoreBluetooth)
+ * - Android: Uses react-native-ble-advertise with iBeacon format
+ *
+ * Dynamic UUID format: E2C56DB5-DFFB-{MAJOR}-{MINOR}-D0F5A71096E0
  */
 export async function startAdvertising(
   registration: BeaconRegistration
 ): Promise<boolean> {
-  try {
-    console.log('[BLE Discovery] Starting advertising:', {
-      token: registration.beaconToken,
-      major: registration.major,
-      minor: registration.minor,
-    });
+  // Create dynamic service UUID that encodes the token
+  const dynamicServiceUuid = createServiceUuidWithToken(registration.major, registration.minor);
 
-    // TODO: Implement actual BLE advertising using react-native-ble-plx
-    // For now, just track the state
-    currentAdvertisingToken = registration.beaconToken;
+  // Create local name for identification
+  const localName = `mwsim:${registration.beaconToken}`;
 
-    console.warn('[BLE Discovery] Advertising not yet fully implemented - token registered but not broadcasting');
-    return true;
-  } catch (error) {
-    console.error('[BLE Discovery] Failed to start advertising:', error);
+  console.log('[BLE Discovery] Starting BLE advertising:', {
+    platform: Platform.OS,
+    dynamicUuid: dynamicServiceUuid,
+    localName,
+    major: registration.major,
+    minor: registration.minor,
+    token: registration.beaconToken,
+  });
+
+  // Wait for Bluetooth to be ready (handles permission grant delay)
+  console.log('[BLE Discovery] Waiting for Bluetooth to be ready...');
+  const isReady = await waitForBluetoothReady(5000);
+  if (!isReady) {
+    const { state } = await checkBluetoothState();
+    console.error('[BLE Discovery] Bluetooth not ready for advertising, state:', state);
     return false;
   }
+  console.log('[BLE Discovery] Bluetooth is ready');
+
+  // Platform-specific advertising
+  if (Platform.OS === 'ios') {
+    return startAdvertisingIOS(dynamicServiceUuid, localName, registration);
+  } else {
+    return startAdvertisingAndroid(dynamicServiceUuid, registration);
+  }
+}
+
+/**
+ * iOS advertising using native BleGattAdvertise module
+ * Uses standard GATT advertising which is detectable via BLE scanning
+ */
+async function startAdvertisingIOS(
+  serviceUuid: string,
+  localName: string,
+  registration: BeaconRegistration
+): Promise<boolean> {
+  console.log('[BLE Discovery] startAdvertisingIOS called');
+  console.log('[BLE Discovery] BleGattAdvertise module:', BleGattAdvertise ? 'available' : 'NOT FOUND');
+
+  if (!BleGattAdvertise) {
+    console.error('[BLE Discovery] BleGattAdvertise native module not available');
+    console.error('[BLE Discovery] Available NativeModules:', Object.keys(NativeModules));
+    return false;
+  }
+
+  console.log('[BLE Discovery] BleGattAdvertise methods:', Object.keys(BleGattAdvertise));
+
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[BLE Discovery] iOS GATT advertising attempt ${attempt}/${maxRetries}...`);
+      console.log('[BLE Discovery] Calling startAdvertising with:', { serviceUuid, localName });
+
+      const result = await BleGattAdvertise.startAdvertising(serviceUuid, localName);
+      console.log('[BLE Discovery] startAdvertising returned:', result);
+
+      currentAdvertisingToken = registration.beaconToken;
+      isCurrentlyAdvertising = true;
+
+      console.log('[BLE Discovery] iOS GATT advertising started successfully');
+      return true;
+    } catch (error: any) {
+      console.warn(`[BLE Discovery] iOS advertising attempt ${attempt} failed:`, error);
+      console.warn('[BLE Discovery] Error details:', {
+        message: error.message,
+        code: error.code,
+        nativeStackIOS: error.nativeStackIOS,
+      });
+
+      if (attempt < maxRetries) {
+        await delay(500);
+      } else {
+        console.error('[BLE Discovery] Failed to start iOS advertising after all retries:', error);
+        isCurrentlyAdvertising = false;
+        return false;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Android advertising using react-native-ble-advertise (iBeacon format)
+ */
+async function startAdvertisingAndroid(
+  serviceUuid: string,
+  registration: BeaconRegistration
+): Promise<boolean> {
+  // Request permissions on Android
+  const hasPermission = await requestAndroidAdvertisePermissions();
+  if (!hasPermission) {
+    console.error('[BLE Discovery] Missing Android permissions for advertising');
+    return false;
+  }
+
+  // Set Apple's company ID for iBeacon format
+  BleAdvertise.setCompanyId(APPLE_COMPANY_ID);
+
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[BLE Discovery] Android iBeacon advertising attempt ${attempt}/${maxRetries}...`);
+
+      await BleAdvertise.broadcast(
+        serviceUuid,
+        registration.major,
+        registration.minor
+      );
+
+      currentAdvertisingToken = registration.beaconToken;
+      isCurrentlyAdvertising = true;
+
+      console.log('[BLE Discovery] Android iBeacon advertising started successfully');
+      return true;
+    } catch (error: any) {
+      console.warn(`[BLE Discovery] Android advertising attempt ${attempt} failed:`, error.message);
+
+      if (attempt < maxRetries) {
+        await delay(500);
+      } else {
+        console.error('[BLE Discovery] Failed to start Android advertising after all retries:', error);
+        isCurrentlyAdvertising = false;
+        return false;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
  * Stop advertising
  */
 export async function stopAdvertising(): Promise<void> {
-  if (currentAdvertisingToken) {
-    console.log('[BLE Discovery] Stopping advertising:', currentAdvertisingToken);
+  console.log('[BLE Discovery] Stopping advertising...');
 
-    // Deregister from backend
-    await deregisterBeacon(currentAdvertisingToken);
-
-    // TODO: Stop actual BLE advertising
-    currentAdvertisingToken = null;
+  try {
+    // Stop BLE broadcast (platform-specific)
+    if (isCurrentlyAdvertising) {
+      if (Platform.OS === 'ios' && BleGattAdvertise) {
+        await BleGattAdvertise.stopAdvertising();
+        console.log('[BLE Discovery] iOS GATT advertising stopped');
+      } else {
+        await BleAdvertise.stopBroadcast();
+        console.log('[BLE Discovery] Android iBeacon advertising stopped');
+      }
+    }
+  } catch (error) {
+    console.warn('[BLE Discovery] Error stopping broadcast:', error);
   }
+
+  // Deregister from backend
+  if (currentAdvertisingToken) {
+    await deregisterBeacon(currentAdvertisingToken);
+  }
+
+  currentAdvertisingToken = null;
+  isCurrentlyAdvertising = false;
 }
 
 /**
  * Check if currently advertising
  */
 export function isAdvertising(): boolean {
-  return currentAdvertisingToken !== null;
+  return isCurrentlyAdvertising && currentAdvertisingToken !== null;
 }
 
 /**
@@ -653,12 +1001,42 @@ const SCAN_DEBOUNCE_MS = 2000; // 2 second debounce per proposal
 const BEACON_TIMEOUT_MS = 10000; // 10 seconds
 
 /**
- * Extract beacon token from device advertisement data
- * This parses iBeacon format to extract major/minor values
+ * Extract beacon token from device service UUIDs (cross-platform)
+ * This is the primary method that works on both iOS and Android
  */
-function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
+function parseBeaconFromServiceUuids(device: Device): DiscoveredBeacon | null {
+  if (!device.serviceUUIDs || device.serviceUUIDs.length === 0) {
+    return null;
+  }
+
+  // Check each service UUID for our pattern
+  for (const uuid of device.serviceUUIDs) {
+    const parsed = parseTokenFromServiceUuid(uuid);
+    if (parsed) {
+      const rssi = device.rssi || -100;
+      console.log('[BLE Discovery] Found mwsim service UUID:', uuid, '-> token:', parsed.token);
+
+      return {
+        token: parsed.token,
+        major: parsed.major,
+        minor: parsed.minor,
+        rssi,
+        distance: estimateDistance(rssi),
+        deviceId: device.id,
+        timestamp: Date.now(),
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Extract beacon token from device manufacturer data (Android iBeacon fallback)
+ * This only works on Android as iOS strips manufacturer data from third-party apps
+ */
+function parseBeaconFromManufacturerData(device: Device): DiscoveredBeacon | null {
   try {
-    // Check if this is our beacon UUID
     const manufacturerData = device.manufacturerData;
     if (!manufacturerData) {
       return null;
@@ -668,15 +1046,14 @@ function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
     const buffer = Buffer.from(manufacturerData, 'base64');
 
     // iBeacon format (after Apple company ID):
-    // Byte 0-1: Apple company ID (0x004C) - handled by BLE stack
-    // Byte 2: iBeacon type (0x02)
-    // Byte 3: Data length (0x15 = 21)
-    // Byte 4-19: UUID (16 bytes)
-    // Byte 20-21: Major (big-endian)
-    // Byte 22-23: Minor (big-endian)
-    // Byte 24: TX Power (signed int8)
+    // Byte 0: iBeacon type (0x02)
+    // Byte 1: Data length (0x15 = 21)
+    // Byte 2-17: UUID (16 bytes)
+    // Byte 18-19: Major (big-endian)
+    // Byte 20-21: Minor (big-endian)
+    // Byte 22: TX Power (signed int8)
 
-    if (buffer.length < 25) {
+    if (buffer.length < 23) {
       return null;
     }
 
@@ -685,7 +1062,7 @@ function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
       return null;
     }
 
-    // Extract UUID and compare
+    // Extract UUID and compare (check if it starts with our prefix)
     const uuidBytes = buffer.slice(2, 18);
     const uuid = [
       uuidBytes.slice(0, 4).toString('hex'),
@@ -695,12 +1072,12 @@ function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
       uuidBytes.slice(10, 16).toString('hex'),
     ].join('-').toUpperCase();
 
-    // Check if it's our beacon UUID
-    if (uuid !== MWSIM_BEACON_UUID) {
+    // Check if it's our beacon UUID pattern
+    if (!isMwsimServiceUuid(uuid)) {
       return null;
     }
 
-    // Extract major and minor
+    // Extract major and minor from iBeacon data
     const major = buffer.readUInt16BE(18);
     const minor = buffer.readUInt16BE(20);
 
@@ -709,6 +1086,7 @@ function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
     const tokenHex = tokenToHex(token);
 
     const rssi = device.rssi || -100;
+    console.log('[BLE Discovery] Found iBeacon manufacturer data, token:', tokenHex);
 
     return {
       token: tokenHex,
@@ -720,9 +1098,72 @@ function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
       timestamp: Date.now(),
     };
   } catch (error) {
-    console.error('[BLE Discovery] Failed to parse beacon:', error);
+    console.error('[BLE Discovery] Failed to parse iBeacon data:', error);
     return null;
   }
+}
+
+/**
+ * Extract beacon token from device local name (mwsim:TOKEN format)
+ * This is a fallback for iOS-to-iOS discovery when service UUIDs aren't visible
+ */
+function parseBeaconFromLocalName(device: Device): DiscoveredBeacon | null {
+  const deviceName = device.name || device.localName || '';
+
+  // Check for mwsim local name pattern
+  if (!deviceName.startsWith('mwsim:')) {
+    return null;
+  }
+
+  // Extract token from name (format: mwsim:XXXXXXXX)
+  const token = deviceName.substring(6).toUpperCase();
+
+  // Validate token format (8 hex characters)
+  if (!/^[0-9A-F]{8}$/.test(token)) {
+    console.warn('[BLE Discovery] Invalid token in local name:', deviceName);
+    return null;
+  }
+
+  // Parse major/minor from token
+  const tokenValue = parseInt(token, 16);
+  const { major, minor } = tokenToMajorMinor(tokenValue);
+
+  const rssi = device.rssi || -100;
+  console.log('[BLE Discovery] Found mwsim local name:', deviceName, '-> token:', token);
+
+  return {
+    token,
+    major,
+    minor,
+    rssi,
+    distance: estimateDistance(rssi),
+    deviceId: device.id,
+    timestamp: Date.now(),
+  };
+}
+
+/**
+ * Extract beacon token from device advertisement data
+ * Tries multiple methods for cross-platform support:
+ * 1. Service UUIDs (works on iOS and Android)
+ * 2. Local name (mwsim:TOKEN format)
+ * 3. Manufacturer data / iBeacon format (Android only)
+ */
+function parseBeaconFromDevice(device: Device): DiscoveredBeacon | null {
+  // Try service UUID first (works cross-platform)
+  const fromServiceUuid = parseBeaconFromServiceUuids(device);
+  if (fromServiceUuid) {
+    return fromServiceUuid;
+  }
+
+  // Try local name (mwsim:TOKEN format)
+  const fromLocalName = parseBeaconFromLocalName(device);
+  if (fromLocalName) {
+    return fromLocalName;
+  }
+
+  // Fall back to manufacturer data (Android iBeacon)
+  return parseBeaconFromManufacturerData(device);
 }
 
 /**
@@ -758,10 +1199,14 @@ function notifyCallbacks(): void {
 
 /**
  * Schedule a debounced callback notification
+ * Note: Don't reset if timer already scheduled - ensures periodic updates
+ * even with continuous beacon discoveries
  */
 function scheduleCallbackNotification(): void {
+  // If timer already scheduled, let it fire - don't reset
+  // This ensures we get updates every SCAN_DEBOUNCE_MS even with continuous discoveries
   if (debounceTimer) {
-    clearTimeout(debounceTimer);
+    return;
   }
 
   debounceTimer = setTimeout(() => {
@@ -807,6 +1252,9 @@ export async function startScanning(
 
     const manager = getBleManager();
 
+    // Debug: Track seen devices to avoid spamming logs
+    const seenDevices = new Set<string>();
+
     // Start scanning for devices
     manager.startDeviceScan(
       null, // Scan for all devices (filter by manufacturer data)
@@ -819,16 +1267,47 @@ export async function startScanning(
           return;
         }
 
-        if (!device || !device.manufacturerData) {
+        if (!device) {
           return;
         }
 
-        // Check RSSI threshold
+        // Check RSSI threshold first (skip weak signals)
         if (device.rssi && device.rssi < minRssi) {
           return;
         }
 
-        // Try to parse as beacon
+        // Check if device has any data we can parse
+        const hasServiceUuids = device.serviceUUIDs && device.serviceUUIDs.length > 0;
+        const hasManufacturerData = !!device.manufacturerData;
+        const deviceName = device.name || device.localName || '';
+
+        // Check for mwsim local name pattern (fallback for iOS advertising)
+        const isMwsimDevice = deviceName.startsWith('mwsim:');
+
+        // Debug: Log new devices found (only once per device to avoid spam)
+        if (!seenDevices.has(device.id)) {
+          seenDevices.add(device.id);
+
+          // Log ALL named devices to help debug what's visible
+          if (deviceName) {
+            console.log('[BLE Discovery] Device found:', {
+              id: device.id,
+              name: deviceName,
+              rssi: device.rssi,
+              hasManufacturerData,
+              manufacturerDataLength: hasManufacturerData ? Buffer.from(device.manufacturerData!, 'base64').length : 0,
+              serviceUUIDs: device.serviceUUIDs,
+              isMwsimDevice,
+            });
+          }
+        }
+
+        // Skip devices with no parseable data (unless it's an mwsim device by name)
+        if (!hasServiceUuids && !hasManufacturerData && !isMwsimDevice) {
+          return;
+        }
+
+        // Try to parse as mwsim beacon (checks service UUIDs first, then manufacturer data)
         const beacon = parseBeaconFromDevice(device);
         if (beacon) {
           // Update or add beacon

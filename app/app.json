@@ -68,6 +68,8 @@
           "bluetoothAlwaysPermission": "mwsim uses Bluetooth to discover nearby users for quick P2P transfers"
         }
       ],
+      "./plugins/withBleAdvertise",
+      "./plugins/withBleGattAdvertise",
       "./plugins/withSettingsBundle",
       "./plugins/withSettingsDefaults",
       "./plugins/withSigningTeam",

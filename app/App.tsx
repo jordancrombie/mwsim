@@ -3558,7 +3558,12 @@ export default function App() {
     };
 
     const handleProceedToConfirm = () => {
-      if (!recipientInfo?.found) {
+      // In nearby mode, selectedNearbyUser is valid (recipientInfo is set async)
+      const hasValidRecipient = sendInputMode === 'nearby'
+        ? !!selectedNearbyUser
+        : recipientInfo?.found;
+
+      if (!hasValidRecipient) {
         Alert.alert('Error', 'Please look up a valid recipient first');
         return;
       }
@@ -3590,12 +3595,15 @@ export default function App() {
 
       setSendLoading(true);
       try {
+        // Get alias type from recipientInfo (set from lookup or nearby user selection)
+        const aliasType = recipientInfo?.aliasType;
         const result = await transferSimApi.sendMoney(
           recipientAlias.trim(),
           parseFloat(sendAmount),
           selectedAccount.accountId,
           selectedAccount.bsimId,
-          sendNote.trim() || undefined
+          sendNote.trim() || undefined,
+          aliasType
         );
         setCompletedTransfer(result);
         setSendStep('success');
@@ -4075,13 +4083,14 @@ export default function App() {
               onPress={() => {
                 if (sendInputMode === 'nearby' && selectedNearbyUser) {
                   // For nearby mode, create a mock recipientInfo and proceed
+                  // Default to 'ALIAS' type if not provided by discovery API
                   setRecipientInfo({
                     found: true,
                     displayName: selectedNearbyUser.isMerchant && selectedNearbyUser.merchantName
                       ? selectedNearbyUser.merchantName
                       : selectedNearbyUser.displayName,
                     bankName: selectedNearbyUser.bankName,
-                    aliasType: selectedNearbyUser.aliasType,
+                    aliasType: selectedNearbyUser.aliasType || 'ALIAS',
                     profileImageUrl: selectedNearbyUser.profileImageUrl,
                     initialsColor: selectedNearbyUser.initialsColor,
                     isMerchant: selectedNearbyUser.isMerchant,
