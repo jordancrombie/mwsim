@@ -2839,6 +2839,7 @@ export default function App() {
                     message={merchantPaymentSuccessMessage}
                     displayDuration={3000}
                     fadeDuration={500}
+                    containerSize={merchantQRSize}
                   />
                 </View>
               ) : merchantQrLoading ? (
