@@ -11,6 +11,10 @@ import type {
   BiometricSetup,
   PaymentRequest,
   PendingPayment,
+  Contract,
+  ContractListItem,
+  CreateContractRequest,
+  OracleEvent,
 } from '../types';
 
 // Create axios instance with current environment config
@@ -556,6 +560,144 @@ export const api = {
       console.log('[API] deleteProfileImage - cached user updated');
     }
 
+    return data;
+  },
+
+  // ==================
+  // Contract Endpoints (via WSIM Proxy to ContractSim)
+  // ==================
+
+  /**
+   * Get list of user's contracts
+   * Returns contracts where user is either creator or counterparty
+   *
+   * @param status Optional filter by status
+   * @param limit Max number of results (default 20)
+   * @param offset Pagination offset
+   */
+  async getContracts(
+    status?: string,
+    limit: number = 20,
+    offset: number = 0
+  ): Promise<{ contracts: ContractListItem[]; total: number }> {
+    console.log('[API] getContracts - fetching...');
+    const params: Record<string, string | number> = { limit, offset };
+    if (status) {
+      params.status = status;
+    }
+    const { data } = await apiClient.get('/mobile/contracts', { params });
+    console.log('[API] getContracts - received:', data.contracts?.length || 0, 'contracts');
+    return {
+      contracts: data.contracts || [],
+      total: data.total || 0,
+    };
+  },
+
+  /**
+   * Get contract details by ID
+   * Returns full contract object with parties, conditions, and outcome
+   *
+   * @param contractId The contract ID
+   */
+  async getContract(contractId: string): Promise<Contract> {
+    console.log('[API] getContract - fetching:', contractId);
+    const { data } = await apiClient.get(`/mobile/contracts/${contractId}`);
+    console.log('[API] getContract - received:', data);
+    return data;
+  },
+
+  /**
+   * Create a new contract
+   * User becomes the creator party
+   *
+   * @param request Contract creation details
+   */
+  async createContract(request: CreateContractRequest): Promise<Contract> {
+    console.log('[API] createContract - creating:', request);
+    const { data } = await apiClient.post('/mobile/contracts', request);
+    console.log('[API] createContract - created:', data.id);
+    return data;
+  },
+
+  /**
+   * Accept a contract invitation
+   * Called by counterparty to accept proposed contract
+   *
+   * @param contractId The contract ID to accept
+   */
+  async acceptContract(contractId: string): Promise<Contract> {
+    console.log('[API] acceptContract - accepting:', contractId);
+    const { data } = await apiClient.post(`/mobile/contracts/${contractId}/accept`);
+    console.log('[API] acceptContract - accepted');
+    return data;
+  },
+
+  /**
+   * Decline a contract invitation
+   * Called by counterparty to decline proposed contract
+   *
+   * @param contractId The contract ID to decline
+   */
+  async declineContract(contractId: string): Promise<{ success: boolean }> {
+    console.log('[API] declineContract - declining:', contractId);
+    const { data } = await apiClient.post(`/mobile/contracts/${contractId}/decline`);
+    console.log('[API] declineContract - declined');
+    return data;
+  },
+
+  /**
+   * Fund a contract
+   * Creates escrow hold on user's account for their stake
+   *
+   * @param contractId The contract ID to fund
+   * @param accountId The bank account ID to fund from
+   * @param idempotencyKey Unique key to prevent duplicate funding
+   */
+  async fundContract(
+    contractId: string,
+    accountId: string,
+    idempotencyKey: string
+  ): Promise<{ success: boolean; escrowId: string }> {
+    console.log('[API] fundContract - funding:', contractId);
+    const { data } = await apiClient.post(
+      `/mobile/contracts/${contractId}/fund`,
+      { accountId },
+      { headers: { 'Idempotency-Key': idempotencyKey } }
+    );
+    console.log('[API] fundContract - funded, escrowId:', data.escrowId);
+    return data;
+  },
+
+  /**
+   * Cancel a contract
+   * Only creator can cancel, only while in draft/proposed state
+   *
+   * @param contractId The contract ID to cancel
+   */
+  async cancelContract(contractId: string): Promise<{ success: boolean }> {
+    console.log('[API] cancelContract - cancelling:', contractId);
+    const { data } = await apiClient.post(`/mobile/contracts/${contractId}/cancel`);
+    console.log('[API] cancelContract - cancelled');
+    return data;
+  },
+
+  /**
+   * Get available oracle events
+   * Returns upcoming events user can create contracts for
+   *
+   * @param oracleId Optional filter by oracle
+   * @param eventType Optional filter by event type
+   */
+  async getOracleEvents(
+    oracleId?: string,
+    eventType?: string
+  ): Promise<{ events: OracleEvent[] }> {
+    console.log('[API] getOracleEvents - fetching...');
+    const params: Record<string, string> = {};
+    if (oracleId) params.oracleId = oracleId;
+    if (eventType) params.eventType = eventType;
+    const { data } = await apiClient.get('/mobile/contracts/events', { params });
+    console.log('[API] getOracleEvents - received:', data.events?.length || 0, 'events');
     return data;
   },
 };
