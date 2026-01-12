@@ -136,13 +136,13 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
         counterpartyAlias: counterpartyAlias.trim(),
         event: selectedEvent
           ? {
-              oracleId: selectedEvent.oracleId,
-              eventId: selectedEvent.eventId,
+              oracle: selectedEvent.oracle,
+              event_id: selectedEvent.event_id,
               myPrediction,
             }
           : {
-              oracleId: 'custom',
-              eventId: 'custom',
+              oracle: 'custom',
+              event_id: 'custom',
               myPrediction: myPrediction || 'true',
             },
         myStake: parseFloat(myStake),
@@ -283,10 +283,10 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
       ) : events.length > 0 ? (
         <ScrollView style={styles.eventsList} showsVerticalScrollIndicator={false}>
           {events.map((event) => {
-            const isSelected = selectedEvent?.eventId === event.eventId;
+            const isSelected = selectedEvent?.event_id === event.event_id;
             return (
               <TouchableOpacity
-                key={event.eventId}
+                key={event.event_id}
                 style={[styles.eventCard, isSelected && styles.eventCardSelected]}
                 onPress={() => {
                   setSelectedEvent(event);
