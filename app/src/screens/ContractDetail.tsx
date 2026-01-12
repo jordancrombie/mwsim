@@ -372,8 +372,9 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
     );
   }
 
-  const statusInfo = CONTRACT_STATUS_INFO[contract.status];
-  const typeInfo = CONTRACT_TYPE_INFO[contract.type];
+  // Fallback values for unknown status/type
+  const statusInfo = CONTRACT_STATUS_INFO[contract.status] || { label: 'Unknown', color: '#9CA3AF', icon: '❓' };
+  const typeInfo = CONTRACT_TYPE_INFO[contract.type] || { label: 'Contract', icon: '📄', description: 'Contract' };
   const actions = getActions();
 
   return (
