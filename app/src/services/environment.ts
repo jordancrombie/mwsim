@@ -94,8 +94,8 @@ export function getEnvironment(): Environment {
   } else if (settingValue === 'production' || settingValue === 'prod') {
     cachedEnvironment = 'production';
   } else {
-    // Default to development for all builds (Debug and Release)
-    cachedEnvironment = 'development';
+    // Default to production for all builds (Debug and Release)
+    cachedEnvironment = 'production';
   }
 
   console.log(`[Environment] Using ${cachedEnvironment} (from setting: ${settingValue})`);

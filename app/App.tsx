@@ -942,7 +942,9 @@ export default function App() {
           }).catch((e) => console.log('[initializeApp] Profile fetch failed (non-blocking):', e));
 
           // Check P2P enrollment status after login
+          // Set loading=true FIRST to prevent showing enrollment prompt before check completes
           console.log('[initializeApp] Checking P2P enrollment...');
+          setP2pLoading(true);
           checkP2PEnrollment().catch((e) => console.log('[initializeApp] P2P enrollment check failed:', e));
         } catch (e) {
           // Token invalid or timeout, clear and show welcome
@@ -1223,6 +1225,8 @@ export default function App() {
 
       // Check P2P enrollment in background after login
       // This ensures P2P data is fresh when user switches to P2P tab
+      // Set loading=true FIRST to prevent showing enrollment prompt before check completes
+      setP2pLoading(true);
       checkP2PEnrollment().catch((e) => {
         console.log('[Login] P2P enrollment check failed:', e);
       });
@@ -1276,6 +1280,8 @@ export default function App() {
 
       // Check P2P enrollment in background after login
       // This ensures P2P data is fresh when user switches to P2P tab
+      // Set loading=true FIRST to prevent showing enrollment prompt before check completes
+      setP2pLoading(true);
       checkP2PEnrollment().catch((e) => {
         console.log('[VerifyCode] P2P enrollment check failed:', e);
       });
@@ -1494,6 +1500,13 @@ export default function App() {
     setEmail('');
     setName('');
     setVerificationCode('');
+    // Clear P2P state on logout to prevent stale enrollment prompts on re-login
+    setP2pEnrolled(false);
+    setP2pEnrollment(null);
+    setP2pLoading(false);
+    setAliases([]);
+    setBankAccounts([]);
+    setRecentTransfers([]);
     setCurrentScreen('welcome');
   };
 
@@ -1525,6 +1538,13 @@ export default function App() {
     setEmail('');
     setName('');
     setVerificationCode('');
+    // Clear P2P state on logout to prevent stale enrollment prompts on re-login
+    setP2pEnrolled(false);
+    setP2pEnrollment(null);
+    setP2pLoading(false);
+    setAliases([]);
+    setBankAccounts([]);
+    setRecentTransfers([]);
     setCurrentScreen('welcome');
 
     // Show toast to confirm deep logout worked
