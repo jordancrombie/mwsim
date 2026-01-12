@@ -1507,6 +1507,8 @@ export default function App() {
     setAliases([]);
     setBankAccounts([]);
     setRecentTransfers([]);
+    // Reset to cards tab so user doesn't land on P2P tab after re-login
+    setActiveHomeTab('cards');
     setCurrentScreen('welcome');
   };
 
@@ -1545,6 +1547,8 @@ export default function App() {
     setAliases([]);
     setBankAccounts([]);
     setRecentTransfers([]);
+    // Reset to cards tab so user doesn't land on P2P tab after re-login
+    setActiveHomeTab('cards');
     setCurrentScreen('welcome');
 
     // Show toast to confirm deep logout worked
