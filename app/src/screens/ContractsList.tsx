@@ -75,12 +75,15 @@ const ContractListItemComponent: React.FC<{
   const statusInfo = CONTRACT_STATUS_INFO[normalizedStatus] || DEFAULT_STATUS_INFO;
   const typeInfo = CONTRACT_TYPE_INFO[normalizedType] || DEFAULT_TYPE_INFO;
 
+  // Fallback for missing counterparty name
+  const counterpartyDisplayName = contract.counterpartyName || 'Unknown';
+
   return (
     <TouchableOpacity style={styles.contractItem} onPress={onPress} activeOpacity={0.7}>
       {/* Left: Counterparty avatar */}
       <ProfileAvatar
         imageUrl={contract.counterpartyProfileImageUrl}
-        displayName={contract.counterpartyName}
+        displayName={counterpartyDisplayName}
         initialsColor={contract.counterpartyInitialsColor}
         size="medium"
       />
@@ -99,7 +102,7 @@ const ContractListItemComponent: React.FC<{
         </View>
 
         <Text style={styles.counterpartyName} numberOfLines={1}>
-          {contract.myRole === 'creator' ? 'vs' : 'from'} {contract.counterpartyName}
+          {contract.myRole === 'creator' ? 'vs' : 'from'} {counterpartyDisplayName}
         </Text>
 
         {contract.conditionsSummary && (
@@ -237,7 +240,7 @@ export const ContractsListScreen: React.FC<ContractsListScreenProps> = ({
       ) : (
         <FlatList
           data={contracts}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item, index) => item.id || `contract-${index}`}
           renderItem={({ item }) => (
             <ContractListItemComponent
               contract={item}
