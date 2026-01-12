@@ -61,12 +61,16 @@ const formatRelativeTime = (dateString: string): string => {
   return date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
 };
 
+// Fallback values for unknown status/type
+const DEFAULT_STATUS_INFO = { label: 'Unknown', color: '#9CA3AF', icon: '❓' };
+const DEFAULT_TYPE_INFO = { label: 'Contract', icon: '📄', description: 'Contract' };
+
 const ContractListItemComponent: React.FC<{
   contract: ContractListItem;
   onPress: () => void;
 }> = ({ contract, onPress }) => {
-  const statusInfo = CONTRACT_STATUS_INFO[contract.status];
-  const typeInfo = CONTRACT_TYPE_INFO[contract.type];
+  const statusInfo = CONTRACT_STATUS_INFO[contract.status] || DEFAULT_STATUS_INFO;
+  const typeInfo = CONTRACT_TYPE_INFO[contract.type] || DEFAULT_TYPE_INFO;
 
   return (
     <TouchableOpacity style={styles.contractItem} onPress={onPress} activeOpacity={0.7}>
