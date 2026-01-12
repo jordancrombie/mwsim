@@ -372,9 +372,11 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
     );
   }
 
-  // Fallback values for unknown status/type
-  const statusInfo = CONTRACT_STATUS_INFO[contract.status] || { label: 'Unknown', color: '#9CA3AF', icon: '❓' };
-  const typeInfo = CONTRACT_TYPE_INFO[contract.type] || { label: 'Contract', icon: '📄', description: 'Contract' };
+  // Normalize to lowercase to handle both 'PROPOSED' and 'proposed' from API
+  const normalizedStatus = contract.status?.toLowerCase() as import('../types').ContractStatus;
+  const normalizedType = contract.type?.toLowerCase() as import('../types').ContractType;
+  const statusInfo = CONTRACT_STATUS_INFO[normalizedStatus] || { label: 'Unknown', color: '#9CA3AF', icon: '❓' };
+  const typeInfo = CONTRACT_TYPE_INFO[normalizedType] || { label: 'Contract', icon: '📄', description: 'Contract' };
   const actions = getActions();
 
   return (

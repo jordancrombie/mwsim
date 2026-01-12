@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { api } from '../services/api';
 import { ProfileAvatar } from '../components/ProfileAvatar';
-import type { ContractListItem, ContractStatus } from '../types';
+import type { ContractListItem, ContractStatus, ContractType } from '../types';
 import { CONTRACT_STATUS_INFO, CONTRACT_TYPE_INFO } from '../types';
 
 interface ContractsListScreenProps {
@@ -69,8 +69,11 @@ const ContractListItemComponent: React.FC<{
   contract: ContractListItem;
   onPress: () => void;
 }> = ({ contract, onPress }) => {
-  const statusInfo = CONTRACT_STATUS_INFO[contract.status] || DEFAULT_STATUS_INFO;
-  const typeInfo = CONTRACT_TYPE_INFO[contract.type] || DEFAULT_TYPE_INFO;
+  // Normalize to lowercase to handle both 'PROPOSED' and 'proposed' from API
+  const normalizedStatus = contract.status?.toLowerCase() as ContractStatus;
+  const normalizedType = contract.type?.toLowerCase() as ContractType;
+  const statusInfo = CONTRACT_STATUS_INFO[normalizedStatus] || DEFAULT_STATUS_INFO;
+  const typeInfo = CONTRACT_TYPE_INFO[normalizedType] || DEFAULT_TYPE_INFO;
 
   return (
     <TouchableOpacity style={styles.contractItem} onPress={onPress} activeOpacity={0.7}>
