@@ -594,8 +594,8 @@ export interface ContractListItem {
  * Oracle event (for browsing available events)
  */
 export interface OracleEvent {
-  eventId: string;
-  oracleId: string;
+  event_id: string;
+  oracle: string;
   title: string;
   description?: string;
   eventType: string;
@@ -618,8 +618,8 @@ export interface CreateContractRequest {
   description?: string;
   counterpartyAlias: string;
   event: {
-    oracleId: string;
-    eventId: string;
+    oracle: string;
+    event_id: string;
     myPrediction: string;
   };
   myStake: number;
