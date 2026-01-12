@@ -16,6 +16,7 @@ interface EnvironmentConfig {
   apiUrl: string;
   authUrl: string;
   transferSimUrl: string;
+  contractSimUrl: string;
   name: string;
 }
 
@@ -24,12 +25,14 @@ const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
     apiUrl: 'https://wsim-dev.banksim.ca/api',
     authUrl: 'https://wsim-auth-dev.banksim.ca',
     transferSimUrl: 'https://transfersim-dev.banksim.ca',
+    contractSimUrl: 'https://contract-dev.banksim.ca',
     name: 'Development',
   },
   production: {
     apiUrl: 'https://wsim.banksim.ca/api',
     authUrl: 'https://wsim-auth.banksim.ca',
     transferSimUrl: 'https://transfer.banksim.ca',
+    contractSimUrl: 'https://contract.banksim.ca',
     name: 'Production',
   },
 };
@@ -129,6 +132,13 @@ export function getAuthUrl(): string {
  */
 export function getTransferSimUrl(): string {
   return getEnvironmentConfig().transferSimUrl;
+}
+
+/**
+ * Gets the ContractSim URL for the current environment.
+ */
+export function getContractSimUrl(): string {
+  return getEnvironmentConfig().contractSimUrl;
 }
 
 /**

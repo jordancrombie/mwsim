@@ -43,6 +43,9 @@ import { MerchantPaymentSuccess } from './src/components/MerchantPaymentSuccess'
 import { SettingsScreen } from './src/screens/Settings';
 import { ProfileEditScreen } from './src/screens/ProfileEdit';
 import { MerchantProfileEditScreen } from './src/screens/MerchantProfileEdit';
+import { ContractsListScreen } from './src/screens/ContractsList';
+import { ContractDetailScreen } from './src/screens/ContractDetail';
+import { CreateContractScreen } from './src/screens/CreateContract';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
 import { NearbyUsersPanel } from './src/components/NearbyUsersPanel';
 import {
@@ -90,7 +93,11 @@ type Screen =
   | 'merchantDashboard'
   | 'merchantHistory'
   | 'merchantProfile'
-  | 'merchantProfileEdit';
+  | 'merchantProfileEdit'
+  // Contract screens
+  | 'contractsList'
+  | 'contractDetail'
+  | 'createContract';
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
@@ -304,6 +311,9 @@ export default function App() {
   const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
   const [transferDetailReturnScreen, setTransferDetailReturnScreen] = useState<'transferHistory' | 'home' | 'p2pHome'>('transferHistory');
   const [isViewingMerchantPayment, setIsViewingMerchantPayment] = useState(false);
+
+  // Contract state
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
 
   // Alias Management screen state
   const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
@@ -2681,6 +2691,17 @@ export default function App() {
                 <Text style={{ fontSize: 24 }}>📷</Text>
               </View>
               <Text style={styles.p2pQuickActionText}>Scan QR</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.p2pQuickAction}
+              onPress={() => setCurrentScreen('contractsList')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.p2pQuickActionIcon, { backgroundColor: '#ede9fe' }]}>
+                <Text style={{ fontSize: 24 }}>📝</Text>
+              </View>
+              <Text style={styles.p2pQuickActionText}>Contracts</Text>
             </TouchableOpacity>
           </View>
 
@@ -5110,6 +5131,49 @@ export default function App() {
           </View>
         </View>
       </View>
+    );
+  }
+
+  // Contracts List Screen
+  if (currentScreen === 'contractsList') {
+    return (
+      <ContractsListScreen
+        onBack={() => setCurrentScreen('home')}
+        onContractSelect={(contractId) => {
+          setSelectedContractId(contractId);
+          setCurrentScreen('contractDetail');
+        }}
+        onCreateContract={() => setCurrentScreen('createContract')}
+      />
+    );
+  }
+
+  // Contract Detail Screen
+  if (currentScreen === 'contractDetail' && selectedContractId) {
+    return (
+      <ContractDetailScreen
+        contractId={selectedContractId}
+        onBack={() => {
+          setSelectedContractId(null);
+          setCurrentScreen('contractsList');
+        }}
+        onRefreshNeeded={() => {
+          // Refresh will happen when returning to list
+        }}
+      />
+    );
+  }
+
+  // Create Contract Screen
+  if (currentScreen === 'createContract') {
+    return (
+      <CreateContractScreen
+        onBack={() => setCurrentScreen('contractsList')}
+        onContractCreated={(contractId) => {
+          setSelectedContractId(contractId);
+          setCurrentScreen('contractDetail');
+        }}
+      />
     );
   }
 
