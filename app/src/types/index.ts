@@ -340,7 +340,10 @@ export interface ResolvedMerchantToken extends ResolvedToken {
   recipientType: RecipientType;
   merchantName?: string;
   merchantCategory?: MerchantCategory;
-  logoImageUrl?: string;             // Merchant logo URL (Phase 2)
+  logoImageUrl?: string;             // Merchant logo URL (legacy)
+  merchantLogoUrl?: string;          // Merchant logo URL (from TransferSim API)
+  profileImageUrl?: string;          // Individual recipient's profile image URL (from WSIM)
+  initialsColor?: string;            // Hex color for initials fallback
   feeAmount?: number;                // Calculated fee for display
 }
 

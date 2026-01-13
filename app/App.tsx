@@ -1581,8 +1581,14 @@ export default function App() {
     const result = await requestCameraPermission();
 
     if (result.granted) {
+      // Reset all QR scan state for a fresh flow
+      p2pQrScanLockRef.current = false;
       setP2pQrScanned(false);
       setP2pTorchOn(false);
+      setResolvedToken(null);
+      setResolving(false);
+      setP2pSendAmount('');
+      setP2pSendNote('');
       setCurrentScreen('p2pQrScan');
     } else {
       Alert.alert(
@@ -3878,16 +3884,16 @@ export default function App() {
                     <View style={styles.recipientInfoCard}>
                       <View style={{ marginRight: 12 }}>
                         <ProfileAvatar
-                          imageUrl={selectedNearbyUser.isMerchant ? selectedNearbyUser.merchantLogoUrl || selectedNearbyUser.profileImageUrl : selectedNearbyUser.profileImageUrl}
-                          displayName={selectedNearbyUser.isMerchant && selectedNearbyUser.merchantName ? selectedNearbyUser.merchantName : selectedNearbyUser.displayName}
+                          imageUrl={selectedNearbyUser.profileImageUrl}
+                          displayName={selectedNearbyUser.displayName}
                           size="small"
                           initialsColor={selectedNearbyUser.initialsColor}
-                          variant={selectedNearbyUser.isMerchant ? 'merchant' : 'user'}
+                          variant="user"
                         />
                       </View>
                       <View style={styles.recipientInfoDetails}>
                         <Text style={styles.recipientInfoName}>
-                          {selectedNearbyUser.isMerchant && selectedNearbyUser.merchantName ? selectedNearbyUser.merchantName : selectedNearbyUser.displayName}
+                          {selectedNearbyUser.displayName}
                         </Text>
                         <Text style={styles.recipientInfoBank}>{selectedNearbyUser.bankName || 'Nearby'}</Text>
                       </View>
@@ -4013,11 +4019,11 @@ export default function App() {
                     <>
                       <View style={{ marginRight: 12 }}>
                         <ProfileAvatar
-                          imageUrl={recipientInfo.profileImageUrl || recipientInfo.merchantLogoUrl}
+                          imageUrl={recipientInfo.profileImageUrl}
                           displayName={recipientInfo.displayName || recipientAlias}
                           size="small"
                           initialsColor={recipientInfo.initialsColor}
-                          variant={recipientInfo.isMerchant && !recipientInfo.profileImageUrl ? 'merchant' : 'user'}
+                          variant="user"
                         />
                       </View>
                       <View style={styles.recipientInfoDetails}>
@@ -4470,13 +4476,24 @@ export default function App() {
                 styles.transferDetailInfoCard,
                 { flexDirection: 'row', alignItems: 'center' }
               ]}>
-                <View style={[
-                  styles.transferDetailPersonIcon,
-                  { marginBottom: 0, marginRight: 12 },
-                  isViewingMerchantPayment && { backgroundColor: '#dbeafe' }
-                ]}>
-                  <Text style={{ fontSize: 24 }}>{isViewingMerchantPayment ? '🏦' : '👤'}</Text>
-                </View>
+                {isViewingMerchantPayment ? (
+                  <View style={[
+                    styles.transferDetailPersonIcon,
+                    { marginBottom: 0, marginRight: 12, backgroundColor: '#dbeafe' }
+                  ]}>
+                    <Text style={{ fontSize: 24 }}>🏦</Text>
+                  </View>
+                ) : (
+                  <View style={{ marginRight: 12 }}>
+                    <ProfileAvatar
+                      imageUrl={isSent
+                        ? selectedTransfer.recipientProfileImageUrl
+                        : selectedTransfer.senderProfileImageUrl}
+                      displayName={counterpartyName}
+                      size="medium"
+                    />
+                  </View>
+                )}
                 <View style={styles.transferDetailPersonInfo}>
                   <Text style={styles.transferDetailPersonName}>{counterpartyName}</Text>
                   {counterpartyAlias && (
@@ -4699,10 +4716,7 @@ export default function App() {
           <View style={styles.p2pQrConfirmContent}>
             {/* Header */}
             <View style={styles.p2pQrConfirmHeader}>
-              <TouchableOpacity onPress={() => {
-                setResolvedToken(null);
-                setP2pQrScanned(false);
-              }}>
+              <TouchableOpacity onPress={handleCancelP2pQr}>
                 <Text style={styles.backButton}>← Back</Text>
               </TouchableOpacity>
               <Text style={styles.p2pQrConfirmTitle}>Send to QR</Text>
@@ -4715,14 +4729,41 @@ export default function App() {
                 styles.p2pQrRecipientCard,
                 resolvedToken.recipientType === 'merchant' && styles.p2pQrRecipientCardMerchant
               ]}>
-                <View style={[
-                  styles.p2pQrRecipientIcon,
-                  resolvedToken.recipientType === 'merchant' && styles.p2pQrRecipientIconMerchant
-                ]}>
-                  <Text style={{ fontSize: 32 }}>
-                    {resolvedToken.recipientType === 'merchant' ? '🏪' : '👤'}
-                  </Text>
-                </View>
+                {resolvedToken.recipientType === 'merchant' ? (
+                  resolvedToken.merchantLogoUrl || resolvedToken.logoImageUrl ? (
+                    <View style={{ marginBottom: 12 }}>
+                      <Image
+                        source={{ uri: resolvedToken.merchantLogoUrl || resolvedToken.logoImageUrl }}
+                        style={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: 16,
+                          backgroundColor: '#f3f4f6',
+                        }}
+                        resizeMode="cover"
+                      />
+                    </View>
+                  ) : (
+                    <View style={[
+                      styles.p2pQrRecipientIcon,
+                      styles.p2pQrRecipientIconMerchant
+                    ]}>
+                      <Text style={{ fontSize: 32 }}>
+                        {resolvedToken.merchantCategory && MERCHANT_CATEGORIES[resolvedToken.merchantCategory]
+                          ? MERCHANT_CATEGORIES[resolvedToken.merchantCategory].icon
+                          : '🏪'}
+                      </Text>
+                    </View>
+                  )
+                ) : (
+                  <View style={{ marginBottom: 16, transform: [{ scale: 1.2 }] }}>
+                    <ProfileAvatar
+                      imageUrl={resolvedToken.profileImageUrl}
+                      displayName={resolvedToken.recipientDisplayName || resolvedToken.recipientAlias || 'Unknown'}
+                      size="medium"
+                    />
+                  </View>
+                )}
                 {/* Show merchant badge if applicable */}
                 {resolvedToken.recipientType === 'merchant' && (
                   <View style={styles.p2pMerchantBadge}>
