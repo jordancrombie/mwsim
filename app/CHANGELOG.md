@@ -2,6 +2,11 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [1.7.3] - Build 1 - 2026-01-13
+
+### Changed
+- **Environment Default**: Set production as default environment for TestFlight builds
+
 ## [1.7.2] - Build 7 - 2026-01-12
 
 ### Fixed

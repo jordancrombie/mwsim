@@ -14,6 +14,12 @@ This file contains important instructions and procedures for Claude Code when wo
 
 Claude CAN automatically upload builds to TestFlight. **IMPORTANT: Only upload when explicitly requested by user/team.**
 
+**CRITICAL: TestFlight builds MUST default to production environment.** Before building, verify both files are set to `production`:
+1. `app/plugins/withSettingsBundle.js` - Settings.bundle `DefaultValue`
+2. `app/src/services/environment.ts` - Code fallback in `getEnvironment()`
+
+See "Environment Switching" section below for details on these settings.
+
 #### Step 1: Bump Build Number
 Edit `app/app.json` and increment `ios.buildNumber`.
 
@@ -130,25 +136,27 @@ APNS_PRODUCTION=false  # true for App Store builds
 
 ## Environment Switching (Development vs Production)
 
-To switch the default environment for debug builds, modify these two files:
+**Current default: `production`** (required for TestFlight builds)
+
+To switch the default environment, modify these two files:
 
 ### 1. Settings.bundle Default
 **File:** `app/plugins/withSettingsBundle.js`
 
-Find the `DefaultValue` key under the environment setting and change:
+Find the `DefaultValue` key under the environment setting:
 ```xml
 <key>DefaultValue</key>
-<string>development</string>  <!-- or 'production' -->
+<string>production</string>  <!-- or 'development' for local testing -->
 ```
 
 ### 2. Code Fallback Default
 **File:** `app/src/services/environment.ts`
 
-Find the else block in `getEnvironment()` and change:
+Find the else block in `getEnvironment()`:
 ```typescript
 } else {
-  // Default to development for all builds (Debug and Release)
-  cachedEnvironment = 'development';  // or 'production'
+  // Default to production for all builds (Debug and Release)
+  cachedEnvironment = 'production';  // or 'development' for local testing
 }
 ```
 
