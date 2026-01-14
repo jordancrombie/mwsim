@@ -35,7 +35,7 @@ const ROOT_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
             <key>Key</key>
             <string>environment</string>
             <key>DefaultValue</key>
-            <string>development</string>
+            <string>production</string>
             <key>Titles</key>
             <array>
                 <string>Development</string>
