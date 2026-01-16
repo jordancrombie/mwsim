@@ -626,10 +626,23 @@ export const api = {
    * @param contractId The contract ID to accept
    */
   async acceptContract(contractId: string): Promise<Contract> {
-    console.log('[API] acceptContract - accepting:', contractId);
-    const { data } = await apiClient.post(`/mobile/contracts/${contractId}/accept`);
-    console.log('[API] acceptContract - accepted');
-    return data;
+    console.log('[API] acceptContract - START');
+    console.log('[API] acceptContract - contractId:', contractId);
+    console.log('[API] acceptContract - endpoint:', `/mobile/contracts/${contractId}/accept`);
+    console.log('[API] acceptContract - body:', JSON.stringify({ consent: true }));
+
+    try {
+      const { data } = await apiClient.post(`/mobile/contracts/${contractId}/accept`, { consent: true });
+      console.log('[API] acceptContract - SUCCESS');
+      console.log('[API] acceptContract - response:', JSON.stringify(data, null, 2));
+      return data;
+    } catch (error: any) {
+      console.log('[API] acceptContract - ERROR');
+      console.log('[API] acceptContract - error message:', error.message);
+      console.log('[API] acceptContract - error status:', error.response?.status);
+      console.log('[API] acceptContract - error data:', JSON.stringify(error.response?.data, null, 2));
+      throw error;
+    }
   },
 
   /**
@@ -658,14 +671,28 @@ export const api = {
     accountId: string,
     idempotencyKey: string
   ): Promise<{ success: boolean; escrowId: string }> {
-    console.log('[API] fundContract - funding:', contractId);
-    const { data } = await apiClient.post(
-      `/mobile/contracts/${contractId}/fund`,
-      { accountId },
-      { headers: { 'Idempotency-Key': idempotencyKey } }
-    );
-    console.log('[API] fundContract - funded, escrowId:', data.escrowId);
-    return data;
+    console.log('[API] fundContract - START');
+    console.log('[API] fundContract - contractId:', contractId);
+    console.log('[API] fundContract - accountId:', accountId);
+    console.log('[API] fundContract - idempotencyKey:', idempotencyKey);
+    console.log('[API] fundContract - endpoint:', `/mobile/contracts/${contractId}/fund`);
+
+    try {
+      const { data } = await apiClient.post(
+        `/mobile/contracts/${contractId}/fund`,
+        { accountId },
+        { headers: { 'Idempotency-Key': idempotencyKey } }
+      );
+      console.log('[API] fundContract - SUCCESS');
+      console.log('[API] fundContract - response:', JSON.stringify(data, null, 2));
+      return data;
+    } catch (error: any) {
+      console.log('[API] fundContract - ERROR');
+      console.log('[API] fundContract - error message:', error.message);
+      console.log('[API] fundContract - error status:', error.response?.status);
+      console.log('[API] fundContract - error data:', JSON.stringify(error.response?.data, null, 2));
+      throw error;
+    }
   },
 
   /**

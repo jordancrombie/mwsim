@@ -2,6 +2,20 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [1.8.0] - 2026-01-15
+
+### Added
+- **ContractSim Integration**: Support for conditional payments via ContractSim service
+- **Wager Contracts**: Create peer-to-peer wagers linked to oracle events
+- **Contract Management**: View, accept, fund, and track contracts
+- **Oracle Events**: Browse available events for contract conditions
+- **Auto-Fund on Accept**: Wagers automatically fund when counterparty accepts
+
+### Fixed
+- **Contract Status Display**: Normalize status/type to lowercase for API compatibility
+- **Counterparty Names**: Add fallback for undefined counterparty names in contract list
+- **Contract Review Layout**: Fixed counterparty row spacing in review screen
+
 ## [1.7.3] - Build 1 - 2026-01-13
 
 ### Changed
