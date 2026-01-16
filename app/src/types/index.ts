@@ -411,6 +411,260 @@ export const P2P_THEME_COLORS = {
   },
 };
 
+// ===========================
+// ContractSim Types
+// ===========================
+
+/**
+ * Contract type determines the nature of the agreement
+ */
+export type ContractType = 'wager' | 'escrow' | 'milestone' | 'custom';
+
+/**
+ * Contract status represents the current state in the lifecycle
+ */
+export type ContractStatus =
+  | 'draft'
+  | 'proposed'
+  | 'funding'
+  | 'active'
+  | 'settling'
+  | 'settled'
+  | 'expired'
+  | 'cancelled'
+  | 'disputed';
+
+/**
+ * Escrow type determines how funds are held
+ */
+export type EscrowType = 'full' | 'partial' | 'none';
+
+/**
+ * Settlement type determines how funds are distributed
+ */
+export type SettlementType = 'winner_takes_all' | 'proportional' | 'custom';
+
+/**
+ * Party role in the contract
+ */
+export type PartyRole = 'creator' | 'counterparty';
+
+/**
+ * Outcome type for a party
+ */
+export type OutcomeType = 'winner' | 'loser' | 'refund' | 'custom';
+
+/**
+ * Predicate operator for conditions
+ */
+export type PredicateOperator = 'equals' | 'not_equals' | 'greater_than' | 'less_than' | 'contains' | 'in';
+
+/**
+ * Condition status
+ */
+export type ConditionStatus = 'pending' | 'resolved' | 'disputed';
+
+/**
+ * Contract party - one participant in a contract
+ */
+export interface ContractParty {
+  id: string;
+  walletId: string;
+  bankId?: string;
+  userId?: string;
+  role: PartyRole;
+  displayName: string;
+  profileImageUrl?: string;
+  initialsColor?: string;
+  stake: {
+    amount: number;
+    currency: string;
+  };
+  outcomeIfTrue: OutcomeType;
+  outcomeIfFalse: OutcomeType;
+  accepted: boolean;
+  acceptedAt?: string;
+  funded: boolean;
+  fundedAt?: string;
+  escrowId?: string;
+}
+
+/**
+ * Predicate for condition evaluation
+ */
+export interface ContractPredicate {
+  field: string;
+  operator: PredicateOperator;
+  value: any;
+}
+
+/**
+ * Condition in a contract
+ */
+export interface ContractCondition {
+  index: number;
+  oracleId: string;
+  eventType: string;
+  eventId: string;
+  predicate: ContractPredicate;
+  status: ConditionStatus;
+  result?: boolean;
+  evidence?: Record<string, any>;
+  resolvedAt?: string;
+}
+
+/**
+ * Contract outcome after resolution
+ */
+export interface ContractOutcome {
+  winnerId?: string;
+  winnerDisplayName?: string;
+  result: 'party_a_wins' | 'party_b_wins' | 'draw' | 'cancelled' | 'expired';
+  settledAmount?: number;
+  settledAt?: string;
+}
+
+/**
+ * Dispute on a contract
+ */
+export interface ContractDispute {
+  id: string;
+  partyId: string;
+  reason: string;
+  evidence?: {
+    description?: string;
+    url?: string;
+  };
+  status: 'pending' | 'resolved' | 'rejected';
+  createdAt: string;
+  resolvedAt?: string;
+  resolution?: string;
+}
+
+/**
+ * Full contract object
+ */
+export interface Contract {
+  id: string;
+  type: ContractType;
+  status: ContractStatus;
+  title: string;
+  description?: string;
+  parties: ContractParty[];
+  conditions: ContractCondition[];
+  escrowType: EscrowType;
+  settlementType: SettlementType;
+  totalPot: number;
+  currency: string;
+  createdAt: string;
+  acceptedAt?: string;
+  fundedAt?: string;
+  resolvedAt?: string;
+  settledAt?: string;
+  expiresAt: string;
+  fundingDeadline: string;
+  outcome?: ContractOutcome;
+  dispute?: ContractDispute;
+  // Convenience fields for UI
+  myRole?: PartyRole;
+  counterparty?: ContractParty;
+  conditionsSummary?: string;
+}
+
+/**
+ * Contract list item (simplified for list views)
+ */
+export interface ContractListItem {
+  id: string;
+  type: ContractType;
+  status: ContractStatus;
+  title: string;
+  totalPot: number;
+  currency: string;
+  myRole: PartyRole;
+  counterpartyName: string;
+  counterpartyProfileImageUrl?: string;
+  counterpartyInitialsColor?: string;
+  conditionsSummary?: string;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/**
+ * Oracle event (for browsing available events)
+ */
+export interface OracleEvent {
+  event_id: string;
+  oracle: string;
+  title: string;
+  description?: string;
+  eventType: string;
+  status: 'upcoming' | 'in_progress' | 'completed';
+  startsAt: string;
+  endsAt?: string;
+  teams?: string[];
+  result?: {
+    winner?: string;
+    score?: string;
+  };
+}
+
+/**
+ * Create contract request
+ */
+export interface CreateContractRequest {
+  type: ContractType;
+  title: string;
+  description?: string;
+  counterpartyAlias: string;
+  event: {
+    oracle: string;
+    event_id: string;
+    myPrediction: string;
+  };
+  myStake: number;
+  theirStake: number;
+  expiresInHours?: number;
+}
+
+/**
+ * Contract notification types
+ */
+export type ContractNotificationType =
+  | 'contract.proposed'
+  | 'contract.accepted'
+  | 'contract.funded'
+  | 'contract.outcome'
+  | 'contract.settled'
+  | 'contract.disputed'
+  | 'contract.expired'
+  | 'contract.cancelled';
+
+/**
+ * Contract status display info
+ */
+export const CONTRACT_STATUS_INFO: Record<ContractStatus, { label: string; color: string; icon: string }> = {
+  draft: { label: 'Draft', color: '#9CA3AF', icon: '✏️' },
+  proposed: { label: 'Pending', color: '#F59E0B', icon: '⏳' },
+  funding: { label: 'Funding', color: '#3B82F6', icon: '💰' },
+  active: { label: 'Active', color: '#10B981', icon: '⚡' },
+  settling: { label: 'Settling', color: '#8B5CF6', icon: '⚖️' },
+  settled: { label: 'Settled', color: '#059669', icon: '✅' },
+  expired: { label: 'Expired', color: '#6B7280', icon: '⏰' },
+  cancelled: { label: 'Cancelled', color: '#EF4444', icon: '❌' },
+  disputed: { label: 'Disputed', color: '#DC2626', icon: '⚠️' },
+};
+
+/**
+ * Contract type display info
+ */
+export const CONTRACT_TYPE_INFO: Record<ContractType, { label: string; icon: string; description: string }> = {
+  wager: { label: 'Wager', icon: '🎲', description: 'Bet on an outcome' },
+  escrow: { label: 'Escrow', icon: '🔒', description: 'Hold funds until condition met' },
+  milestone: { label: 'Milestone', icon: '🎯', description: 'Release on achievement' },
+  custom: { label: 'Custom', icon: '📝', description: 'Custom terms' },
+};
+
 // Navigation types
 export type RootStackParamList = {
   Welcome: undefined;
