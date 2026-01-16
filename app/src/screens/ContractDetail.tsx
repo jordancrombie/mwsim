@@ -155,8 +155,9 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
       const data = await api.getContract(contractId);
       setContract(data);
 
-      // Load accounts if we might need to fund
-      if (data.status === 'funding') {
+      // Load accounts if we might need to fund (wagers auto-fund on accept)
+      const isWager = data.type?.toLowerCase() === 'wager';
+      if (data.status === 'funding' || (isWager && data.status === 'proposed')) {
         const { accounts: accts } = await api.getAccounts();
         setAccounts(accts as BankAccount[]);
       }
@@ -179,9 +180,14 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
   };
 
   const handleAccept = async () => {
+    const isWager = contract?.type?.toLowerCase() === 'wager';
+    const confirmMessage = isWager
+      ? 'Are you sure you want to accept this wager? Your stake will be automatically funded.'
+      : 'Are you sure you want to accept this contract?';
+
     Alert.alert(
       'Accept Contract',
-      'Are you sure you want to accept this contract?',
+      confirmMessage,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -190,9 +196,42 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
             setActionLoading(true);
             try {
               await api.acceptContract(contractId);
+
+              // Auto-fund wagers immediately after accepting
+              if (isWager) {
+                console.log('[ContractDetail] Auto-funding wager after accept');
+                // Make sure we have accounts
+                let fundingAccounts = accounts;
+                if (fundingAccounts.length === 0) {
+                  const { accounts: accts } = await api.getAccounts();
+                  fundingAccounts = accts as BankAccount[];
+                  setAccounts(fundingAccounts);
+                }
+
+                if (fundingAccounts.length > 0) {
+                  try {
+                    const idempotencyKey = uuidv4();
+                    await api.fundContract(contractId, fundingAccounts[0].accountId, idempotencyKey);
+                    console.log('[ContractDetail] Auto-fund successful');
+                    await loadContract(false);
+                    onRefreshNeeded?.();
+                    Alert.alert('Success', 'Wager accepted and funded!');
+                    return;
+                  } catch (fundErr: any) {
+                    console.error('[ContractDetail] Auto-fund failed:', fundErr);
+                    Alert.alert(
+                      'Accepted',
+                      'Wager accepted but auto-funding failed. You can fund it manually.'
+                    );
+                  }
+                }
+              }
+
               await loadContract(false);
               onRefreshNeeded?.();
-              Alert.alert('Success', 'Contract accepted! You can now fund your stake.');
+              if (!isWager) {
+                Alert.alert('Success', 'Contract accepted! You can now fund your stake.');
+              }
             } catch (err: any) {
               Alert.alert('Error', err.message || 'Failed to accept contract');
             } finally {

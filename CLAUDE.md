@@ -167,6 +167,27 @@ Find the else block in `getEnvironment()`:
 - **WSIM**: `/Users/jcrombie/ai/wsim` - Backend wallet service
 - **TransferSim**: Transfer processing service
 - **BSIM**: Bank simulator
+- **ContractSim**: `/Users/jcrombie/ai/contractSim` - Conditional payments and wager contracts
+
+## ContractSim Integration
+
+mwsim integrates with ContractSim for conditional payment contracts (wagers, escrow, etc.).
+
+### Contract Flow (Wagers)
+1. **Create** → Contract enters `PROPOSED` status (creator auto-accepts)
+2. **Counterparty Accepts** → Contract enters `FUNDING` status
+3. **Both Parties Fund** → Contract enters `ACTIVE` status
+4. **Oracle Resolution** → Contract enters `RESOLVED`, funds distributed
+
+**Important**: Funding is only allowed after both parties accept. Attempting to fund in `PROPOSED` status returns `409 Conflict`.
+
+### API Endpoints (via WSIM proxy)
+- `POST /mobile/contracts` - Create contract
+- `GET /mobile/contracts` - List user's contracts
+- `GET /mobile/contracts/:id` - Get contract details
+- `POST /mobile/contracts/:id/accept` - Accept contract (requires `{ consent: true }`)
+- `POST /mobile/contracts/:id/fund` - Fund contract stake
+- `GET /mobile/oracle/events` - List available oracle events
 
 ## Documentation
 

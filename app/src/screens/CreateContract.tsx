@@ -20,10 +20,11 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { v4 as uuidv4 } from 'uuid';
 import { api } from '../services/api';
 import { transferSimApi } from '../services/transferSim';
 import { ProfileAvatar } from '../components/ProfileAvatar';
-import type { ContractType, OracleEvent, AliasLookupResult, CreateContractRequest } from '../types';
+import type { ContractType, OracleEvent, AliasLookupResult, CreateContractRequest, BankAccount } from '../types';
 import { CONTRACT_TYPE_INFO } from '../types';
 
 interface CreateContractScreenProps {
@@ -65,6 +66,20 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
   const [events, setEvents] = useState<OracleEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accounts, setAccounts] = useState<BankAccount[]>([]);
+
+  // Load accounts on mount (needed for auto-funding wagers)
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const { accounts: accts } = await api.getAccounts();
+        setAccounts(accts as BankAccount[]);
+      } catch (err) {
+        console.error('[CreateContract] Failed to load accounts:', err);
+      }
+    };
+    loadAccounts();
+  }, []);
 
   // Load events when reaching event step
   useEffect(() => {
@@ -150,6 +165,24 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
       };
 
       const contract = await api.createContract(request);
+
+      // Auto-fund wagers immediately after creation
+      if (contractType === 'wager' && accounts.length > 0) {
+        console.log('[CreateContract] Auto-funding wager contract:', contract.id);
+        try {
+          const idempotencyKey = uuidv4();
+          await api.fundContract(contract.id, accounts[0].accountId, idempotencyKey);
+          console.log('[CreateContract] Auto-fund successful');
+        } catch (fundErr: any) {
+          console.error('[CreateContract] Auto-fund failed:', fundErr);
+          // Still proceed - contract was created, funding can be done later
+          Alert.alert(
+            'Contract Created',
+            'Your wager was created but auto-funding failed. You can fund it manually from the contract details.'
+          );
+        }
+      }
+
       onContractCreated(contract.id);
     } catch (err: any) {
       setError(err.message || 'Failed to create contract');
@@ -434,7 +467,7 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
                 initialsColor={counterpartyInfo?.initialsColor}
                 size="small"
               />
-              <Text style={[styles.reviewValue, { marginLeft: 8 }]}>
+              <Text style={[styles.reviewValue, { marginLeft: 8, flex: 0 }]} numberOfLines={1}>
                 {counterpartyInfo?.displayName || counterpartyAlias}
               </Text>
             </View>
@@ -947,6 +980,9 @@ const styles = StyleSheet.create({
   reviewValueRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+    justifyContent: 'flex-end',
+    marginLeft: 16,
   },
   reviewLabelTotal: {
     fontSize: 16,
