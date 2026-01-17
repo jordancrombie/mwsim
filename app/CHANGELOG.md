@@ -2,6 +2,13 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [1.8.2] - 2026-01-17
+
+### Changed
+- **Oracle Teams Format**: Updated to support new teams object format from WSIM/ContractSim
+  - Teams now received as `[{id: "team_a", name: "Team A"}, ...]` instead of `["Team A", ...]`
+  - Displays team name in UI, sends team ID for predictions
+
 ## [1.8.1] - 2026-01-16
 
 ### Added
