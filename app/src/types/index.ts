@@ -602,7 +602,7 @@ export interface OracleEvent {
   status: 'upcoming' | 'in_progress' | 'completed';
   startsAt: string;
   endsAt?: string;
-  teams?: string[];
+  teams?: { id: string; name: string }[];
   result?: {
     winner?: string;
     score?: string;

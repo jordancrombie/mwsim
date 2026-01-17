@@ -324,7 +324,7 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
                 onPress={() => {
                   setSelectedEvent(event);
                   if (event.teams && event.teams.length > 0) {
-                    setMyPrediction(event.teams[0]);
+                    setMyPrediction(event.teams[0].id);
                   }
                 }}
               >
@@ -332,7 +332,7 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
                   <Text style={styles.eventTitle}>{event.title}</Text>
                   <Text style={styles.eventType}>{event.eventType}</Text>
                   {event.teams && (
-                    <Text style={styles.eventTeams}>{event.teams.join(' vs ')}</Text>
+                    <Text style={styles.eventTeams}>{event.teams.map(t => t.name).join(' vs ')}</Text>
                   )}
                 </View>
                 {isSelected && <Text style={styles.checkmark}>&#10003;</Text>}
@@ -352,20 +352,20 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
           <View style={styles.predictionOptions}>
             {selectedEvent.teams.map((team) => (
               <TouchableOpacity
-                key={team}
+                key={team.id}
                 style={[
                   styles.predictionOption,
-                  myPrediction === team && styles.predictionOptionSelected,
+                  myPrediction === team.id && styles.predictionOptionSelected,
                 ]}
-                onPress={() => setMyPrediction(team)}
+                onPress={() => setMyPrediction(team.id)}
               >
                 <Text
                   style={[
                     styles.predictionOptionText,
-                    myPrediction === team && styles.predictionOptionTextSelected,
+                    myPrediction === team.id && styles.predictionOptionTextSelected,
                   ]}
                 >
-                  {team}
+                  {team.name}
                 </Text>
               </TouchableOpacity>
             ))}
