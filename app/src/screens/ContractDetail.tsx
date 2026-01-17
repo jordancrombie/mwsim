@@ -30,6 +30,8 @@ interface ContractDetailScreenProps {
   contractId: string;
   onBack: () => void;
   onRefreshNeeded?: () => void;
+  /** Increment this to force a data refresh (e.g., when coming from notification) */
+  refreshTrigger?: number;
 }
 
 // Format currency amount
@@ -139,6 +141,7 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
   contractId,
   onBack,
   onRefreshNeeded,
+  refreshTrigger,
 }) => {
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -168,7 +171,7 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [contractId]);
+  }, [contractId, refreshTrigger]);
 
   useEffect(() => {
     loadContract();
