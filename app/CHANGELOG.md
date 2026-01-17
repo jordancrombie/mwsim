@@ -2,6 +2,19 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [1.8.1] - 2026-01-16
+
+### Added
+- **Push Notification Deep Linking**: Tap notifications to navigate directly to relevant screens
+  - Contract notifications → Contract Detail screen
+  - Payment received notifications → Transfer Detail screen
+  - Payment request notifications → P2P Home tab
+- **Auto-Refresh on Notification**: Screens automatically refresh when opened via notification tap
+- **Contract Notification Types**: Support for all ContractSim webhook events (proposed, accepted, funded, cancelled, expired, outcome, settled, disputed)
+
+### Fixed
+- **APNs Payload Parsing**: Handle both direct and nested `body` formats from WSIM notifications
+
 ## [1.8.0] - 2026-01-15
 
 ### Added

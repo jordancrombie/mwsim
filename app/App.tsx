@@ -314,6 +314,11 @@ export default function App() {
 
   // Contract state
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
+  const [contractRefreshTrigger, setContractRefreshTrigger] = useState(0);
+
+  // Notification-triggered refresh triggers
+  const [transferHistoryRefreshTrigger, setTransferHistoryRefreshTrigger] = useState(0);
+  const [p2pHomeRefreshTrigger, setP2pHomeRefreshTrigger] = useState(0);
 
   // Alias Management screen state
   const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
@@ -469,11 +474,20 @@ export default function App() {
   }, [historyFilter]);
 
   // Load transfers when history filter changes (only when on transferHistory screen in personal mode)
+  // Also reloads when transferHistoryRefreshTrigger changes (e.g., from notification tap)
   useEffect(() => {
     if (currentScreen === 'transferHistory' && historyViewMode === 'personal') {
       loadHistoryTransfers();
     }
-  }, [historyFilter, currentScreen, historyViewMode, loadHistoryTransfers]);
+  }, [historyFilter, currentScreen, historyViewMode, loadHistoryTransfers, transferHistoryRefreshTrigger]);
+
+  // Refresh P2P data when p2pHomeRefreshTrigger changes (e.g., from notification tap)
+  useEffect(() => {
+    if (p2pHomeRefreshTrigger > 0 && p2pEnrolled) {
+      console.log('[P2P] Refreshing data from notification trigger');
+      loadP2PData();
+    }
+  }, [p2pHomeRefreshTrigger]);
 
   // Handle deep link for payment requests and Universal Links
   const handleDeepLink = useCallback(async (url: string) => {
@@ -1002,10 +1016,10 @@ export default function App() {
     console.log('[Notifications] Initializing push notifications...');
 
     // Check for notification that launched the app (when killed)
-    const initialDeepLink = await notificationService.getInitialNotification();
-    if (initialDeepLink) {
-      console.log('[Notifications] App launched from notification:', initialDeepLink);
-      handleNotificationDeepLink(initialDeepLink);
+    const initialDestination = await notificationService.getInitialNotification();
+    if (initialDestination) {
+      console.log('[Notifications] App launched from notification:', initialDestination);
+      handleNotificationDeepLink(initialDestination);
     }
 
     // Request permissions and register token
@@ -1027,28 +1041,65 @@ export default function App() {
 
   /**
    * Handle deep link from push notification
-   * Navigate to the appropriate screen based on the URL
+   * Navigate to the appropriate screen based on DeepLinkDestination
+   * @see LOCAL_DEPLOYMENT_PLANS/PUSH_NOTIFICATION_DEEP_LINKING_PROPOSAL.md
    */
-  const handleNotificationDeepLink = async (url: string) => {
-    console.log('[Notifications] Handling deep link:', url);
+  const handleNotificationDeepLink = async (destination: notificationService.DeepLinkDestination) => {
+    console.log('[Notifications] Handling deep link:', destination);
 
-    // Parse mwsim://transfer/p2p_abc123
-    const transferMatch = url.match(/mwsim:\/\/transfer\/(.+)/);
-    if (transferMatch) {
-      const transferId = transferMatch[1];
-      console.log('[Notifications] Deep linking to transfer:', transferId);
+    const { screen, params } = destination;
 
-      try {
-        // Fetch the transfer details
-        const transfer = await transferSimApi.getTransferById(transferId);
-        setSelectedTransfer(transfer);
-        setTransferDetailReturnScreen('transferHistory');
-        setCurrentScreen('transferDetail');
-      } catch (e) {
-        console.error('[Notifications] Failed to fetch transfer:', e);
-        // Fall back to transfer history
+    switch (screen) {
+      case 'TransferDetail':
+        if (params.transferId) {
+          console.log('[Notifications] Deep linking to transfer:', params.transferId);
+          try {
+            const transfer = await transferSimApi.getTransferById(params.transferId);
+            setSelectedTransfer(transfer);
+            setTransferDetailReturnScreen('transferHistory');
+            setCurrentScreen('transferDetail');
+          } catch (e) {
+            console.error('[Notifications] Failed to fetch transfer:', e);
+            // Fall back to transfer history with refresh
+            setTransferHistoryRefreshTrigger(prev => prev + 1);
+            setCurrentScreen('transferHistory');
+          }
+        }
+        break;
+
+      case 'RequestApproval':
+        if (params.requestId) {
+          console.log('[Notifications] Deep linking to request:', params.requestId);
+          // TODO: Implement dedicated request approval screen
+          // For now, navigate to P2P home where pending requests are shown
+          setP2pHomeRefreshTrigger(prev => prev + 1); // Force refresh on notification tap
+          setActiveHomeTab('p2p');
+          setCurrentScreen('home');
+        }
+        break;
+
+      case 'ContractDetail':
+        if (params.contractId) {
+          console.log('[Notifications] Deep linking to contract:', params.contractId);
+          setSelectedContractId(params.contractId);
+          setContractRefreshTrigger(prev => prev + 1); // Force refresh on notification tap
+          setCurrentScreen('contractDetail');
+        }
+        break;
+
+      case 'ContractsList':
+        console.log('[Notifications] Deep linking to contracts list');
+        setCurrentScreen('contractsList');
+        break;
+
+      case 'TransferHistory':
+        console.log('[Notifications] Deep linking to transfer history');
+        setTransferHistoryRefreshTrigger(prev => prev + 1); // Force refresh on notification tap
         setCurrentScreen('transferHistory');
-      }
+        break;
+
+      default:
+        console.warn('[Notifications] Unknown deep link screen:', screen);
     }
   };
 
@@ -1116,12 +1167,12 @@ export default function App() {
       }
     );
 
-    // Set up notification tap listener
+    // Set up notification tap listener - navigate to screen from push notification
     notificationResponseRef.current = notificationService.addNotificationResponseListener(
       (response) => {
-        const deepLink = notificationService.handleNotificationResponse(response);
-        if (deepLink) {
-          handleNotificationDeepLink(deepLink);
+        const destination = notificationService.handleNotificationResponse(response);
+        if (destination) {
+          handleNotificationDeepLink(destination);
         }
       }
     );
@@ -5160,6 +5211,7 @@ export default function App() {
         onRefreshNeeded={() => {
           // Refresh will happen when returning to list
         }}
+        refreshTrigger={contractRefreshTrigger}
       />
     );
   }
