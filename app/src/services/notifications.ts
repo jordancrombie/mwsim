@@ -31,6 +31,50 @@ export interface NotificationData {
   merchantName?: string;            // Only populated when recipientType is "merchant"
 }
 
+/**
+ * Screen names for deep link navigation
+ * @see LOCAL_DEPLOYMENT_PLANS/PUSH_NOTIFICATION_DEEP_LINKING_PROPOSAL.md
+ */
+export type DeepLinkScreenName =
+  // P2P Screens
+  | 'TransferDetail'      // View completed transfer
+  | 'RequestApproval'     // Approve/decline payment request
+  | 'TransferHistory'     // All transfers
+  // Contract Screens
+  | 'ContractDetail'      // View/accept/fund contract
+  | 'ContractsList'       // All contracts
+  // Future
+  | 'MerchantPayment'     // Merchant transaction detail
+  | 'Notification';       // Notification inbox
+
+/**
+ * Deep link destination from push notification
+ * Custom fields are at root level of APNs payload (sibling to aps)
+ */
+export interface DeepLinkDestination {
+  screen: DeepLinkScreenName;
+  params: Record<string, any>;
+}
+
+/**
+ * Notification types sent by WSIM
+ */
+export type WsimNotificationType =
+  // P2P Transfers
+  | 'payment_received'
+  | 'payment_request'
+  | 'request_approved'
+  | 'request_declined'
+  // Contracts (matches ContractSim webhook event_type)
+  | 'contract.proposed'
+  | 'contract.accepted'
+  | 'contract.funded'
+  | 'contract.cancelled'
+  | 'contract.expired'
+  | 'contract.outcome'
+  | 'contract.settled'
+  | 'contract.disputed';
+
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -151,36 +195,126 @@ export async function registerForPushNotifications(
 }
 
 /**
- * Handle notification tap - extract deep link and navigate
- * Per M4: Use GET /transfers/:id for deep linking
+ * Extract notification data from APNs payload
+ * Handles both direct data format and nested body format from WSIM
+ *
+ * WSIM sends: { aps: {...}, experienceId: "...", body: { type, screen, params } }
+ * Expo may expose this as:
+ *   - notification.request.content.data = { type, screen, params } (body extracted)
+ *   - notification.request.content.data = { experienceId, body: {...} } (raw payload)
+ */
+function extractNotificationData(rawData: unknown): Record<string, unknown> | null {
+  if (!rawData || typeof rawData !== 'object') {
+    return null;
+  }
+
+  const data = rawData as Record<string, unknown>;
+
+  // Check if Expo passed the raw payload with body nested
+  if ('body' in data && typeof data.body === 'object' && data.body !== null) {
+    console.log('[Notifications] Extracting data from nested body object');
+    return data.body as Record<string, unknown>;
+  }
+
+  // Data is at root level (normal case)
+  return data;
+}
+
+/**
+ * Handle notification tap - extract deep link destination
+ * Supports both new screen-based format and legacy URL format
  *
  * @param response The notification response from user interaction
- * @returns The deep link URL if present
+ * @returns DeepLinkDestination for screen navigation, or null if no deep link
  */
 export function handleNotificationResponse(
   response: Notifications.NotificationResponse
-): string | null {
+): DeepLinkDestination | null {
   const rawData = response.notification.request.content.data;
+  const data = extractNotificationData(rawData);
 
-  if (!rawData || typeof rawData !== 'object') {
+  if (!data) {
     console.log('[Notifications] No data in notification');
     return null;
   }
 
-  // Cast with type guard
-  const data = rawData as Record<string, unknown>;
-
   console.log('[Notifications] Handling notification tap:', data);
 
-  // Use deep link if provided, otherwise construct from transferId
+  // NEW FORMAT: screen + params at root level (from WSIM deep linking)
+  if (typeof data.screen === 'string') {
+    const screen = data.screen as DeepLinkScreenName;
+    const params = (data.params as Record<string, any>) || {};
+    console.log('[Notifications] Using screen-based deep link:', screen, params);
+    return { screen, params };
+  }
+
+  // LEGACY FORMAT: deepLink URL string
   if (typeof data.deepLink === 'string') {
-    return data.deepLink;
+    const destination = parseDeepLinkUrl(data.deepLink);
+    if (destination) {
+      console.log('[Notifications] Parsed legacy deepLink URL:', destination);
+      return destination;
+    }
   }
 
+  // LEGACY FORMAT: transferId only
   if (typeof data.transferId === 'string') {
-    return `mwsim://transfer/${data.transferId}`;
+    console.log('[Notifications] Using legacy transferId:', data.transferId);
+    return {
+      screen: 'TransferDetail',
+      params: { transferId: data.transferId }
+    };
   }
 
+  // CONTRACT NOTIFICATION: type starts with "contract." + contract_id
+  // Fallback if WSIM sends type without screen/params
+  if (typeof data.type === 'string' && data.type.startsWith('contract.')) {
+    const contractId = data.contract_id as string;
+    if (contractId) {
+      console.log('[Notifications] Contract notification type:', data.type, 'contractId:', contractId);
+      return {
+        screen: 'ContractDetail',
+        params: { contractId }
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Parse legacy deep link URL into DeepLinkDestination
+ * Handles URLs like mwsim://transfer/{id}
+ */
+function parseDeepLinkUrl(url: string): DeepLinkDestination | null {
+  // Parse mwsim://transfer/{transferId}
+  const transferMatch = url.match(/mwsim:\/\/transfer\/(.+)/);
+  if (transferMatch) {
+    return {
+      screen: 'TransferDetail',
+      params: { transferId: transferMatch[1] }
+    };
+  }
+
+  // Parse mwsim://contract/{contractId}
+  const contractMatch = url.match(/mwsim:\/\/contract\/(.+)/);
+  if (contractMatch) {
+    return {
+      screen: 'ContractDetail',
+      params: { contractId: contractMatch[1] }
+    };
+  }
+
+  // Parse mwsim://request/{requestId}
+  const requestMatch = url.match(/mwsim:\/\/request\/(.+)/);
+  if (requestMatch) {
+    return {
+      screen: 'RequestApproval',
+      params: { requestId: requestMatch[1] }
+    };
+  }
+
+  console.log('[Notifications] Unknown deep link URL format:', url);
   return null;
 }
 
@@ -188,9 +322,9 @@ export function handleNotificationResponse(
  * Check for notification that launched the app (when app was killed)
  * Per M2: Use getLastNotificationResponseAsync on app launch
  *
- * @returns The deep link URL if app was launched from notification
+ * @returns DeepLinkDestination if app was launched from notification
  */
-export async function getInitialNotification(): Promise<string | null> {
+export async function getInitialNotification(): Promise<DeepLinkDestination | null> {
   const response = await Notifications.getLastNotificationResponseAsync();
 
   if (!response) {
@@ -207,12 +341,11 @@ export async function getInitialNotification(): Promise<string | null> {
  */
 export function parseNotificationData(notification: Notifications.Notification): NotificationData | null {
   const rawData = notification.request.content.data;
+  const data = extractNotificationData(rawData);
 
-  if (!rawData || typeof rawData !== 'object') {
+  if (!data) {
     return null;
   }
-
-  const data = rawData as Record<string, unknown>;
 
   // Check for valid notification type
   const validTypes = ['transfer.received', 'transfer.completed', 'transfer.failed', 'auth.challenge', 'TRANSFER_RECEIVED'];
