@@ -17,12 +17,13 @@ import {
   isPushNotificationsSupported,
   getNotificationPermissionStatus,
   PushTokenRegistration,
+  DeepLinkDestination,
 } from '../services/notifications';
 
 interface UseNotificationsOptions {
   deviceId: string;
   isAuthenticated: boolean;
-  onDeepLink?: (url: string) => void;
+  onDeepLink?: (destination: DeepLinkDestination) => void;
   onTokenRegistered?: (registration: PushTokenRegistration) => void;
 }
 
