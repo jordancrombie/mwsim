@@ -78,9 +78,8 @@ export type WsimNotificationType =
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
+    shouldShowBanner: true,  // Show banner notification when app is in foreground
+    shouldShowList: true,    // Show in notification center/list
     shouldPlaySound: true,
     shouldSetBadge: true,
     priority: Notifications.AndroidNotificationPriority.HIGH,

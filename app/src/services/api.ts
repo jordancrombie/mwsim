@@ -587,6 +587,12 @@ export const api = {
     }
     const { data } = await apiClient.get('/mobile/contracts', { params });
     console.log('[API] getContracts - received:', data.contracts?.length || 0, 'contracts');
+    // Debug: Log profile image URLs for contracts
+    if (data.contracts?.length > 0) {
+      data.contracts.forEach((c: ContractListItem) => {
+        console.log(`[API] Contract ${c.id} - counterpartyProfileImageUrl:`, c.counterpartyProfileImageUrl || 'NOT SET');
+      });
+    }
     return {
       contracts: data.contracts || [],
       total: data.total || 0,
@@ -603,6 +609,12 @@ export const api = {
     console.log('[API] getContract - fetching:', contractId);
     const { data } = await apiClient.get(`/mobile/contracts/${contractId}`);
     console.log('[API] getContract - received:', data);
+    // Debug: Log party profile image URLs
+    if (data.parties?.length > 0) {
+      data.parties.forEach((p: { displayName: string; profileImageUrl?: string }) => {
+        console.log(`[API] Contract party ${p.displayName} - profileImageUrl:`, p.profileImageUrl || 'NOT SET');
+      });
+    }
     return data;
   },
 
