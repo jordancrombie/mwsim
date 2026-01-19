@@ -46,6 +46,7 @@ import { MerchantProfileEditScreen } from './src/screens/MerchantProfileEdit';
 import { ContractsListScreen } from './src/screens/ContractsList';
 import { ContractDetailScreen } from './src/screens/ContractDetail';
 import { CreateContractScreen } from './src/screens/CreateContract';
+import { IDVerificationScreen } from './src/screens/IDVerification';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
 import { NearbyUsersPanel } from './src/components/NearbyUsersPanel';
 import {
@@ -97,7 +98,9 @@ type Screen =
   // Contract screens
   | 'contractsList'
   | 'contractDetail'
-  | 'createContract';
+  | 'createContract'
+  // IDV screens
+  | 'idVerification';
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
@@ -5339,6 +5342,24 @@ export default function App() {
     );
   }
 
+  // ID Verification Screen
+  if (currentScreen === 'idVerification') {
+    return (
+      <IDVerificationScreen
+        onComplete={(passportData) => {
+          console.log('ID verification complete:', passportData);
+          // For now, just go back to settings. In Phase 2, this will integrate with WSIM
+          Alert.alert(
+            'Verification Complete',
+            `Identity verified for ${passportData.firstName} ${passportData.lastName}`,
+            [{ text: 'OK', onPress: () => setCurrentScreen('settings') }]
+          );
+        }}
+        onCancel={() => setCurrentScreen('settings')}
+      />
+    );
+  }
+
   // Settings Screen
   if (currentScreen === 'settings') {
     return (
@@ -5363,6 +5384,7 @@ export default function App() {
           }
           setCurrentScreen('profileEdit');
         }}
+        onVerifyIdentity={() => setCurrentScreen('idVerification')}
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"

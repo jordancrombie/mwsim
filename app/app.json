@@ -23,7 +23,8 @@
       ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes and take profile photos",
+        "NSCameraUsageDescription": "mwsim needs camera access to scan payment QR codes, take profile photos, and scan passport MRZ",
+        "NFCReaderUsageDescription": "mwsim reads your passport chip to verify your identity",
         "NSPhotoLibraryUsageDescription": "mwsim needs access to your photo library to select a profile photo",
         "NSBluetoothAlwaysUsageDescription": "mwsim uses Bluetooth to discover nearby users for quick P2P transfers",
         "NSBluetoothPeripheralUsageDescription": "mwsim uses Bluetooth to let nearby users discover you for transfers",
@@ -70,6 +71,7 @@
       ],
       "./plugins/withBleAdvertise",
       "./plugins/withBleGattAdvertise",
+      "./plugins/withNFCPassport",
       "./plugins/withSettingsBundle",
       "./plugins/withSettingsDefaults",
       "./plugins/withSigningTeam",

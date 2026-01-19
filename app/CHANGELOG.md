@@ -2,6 +2,30 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [1.9.0] - 2026-01-19 (WIP)
+
+### Added
+- **Identity Verification (IDV)**: NFC-based passport verification flow
+  - MRZ scanning via camera with ML Kit text recognition
+  - Manual MRZ entry fallback option
+  - NFC passport chip reading using react-native-nfc-passport-info
+  - Extracts biographic data and photo from passport chip
+- **MRZ Scanner Service**: OCR text processing for Machine Readable Zone
+  - Automatic OCR error correction (O→0, K→<, W→M in sex field)
+  - Support for TD3 (passport) and TD1 (ID card) formats
+  - Tolerant parsing with autocorrect for check digit errors
+- **NFC Passport Service**: Passport chip reading via NFC
+  - BAC (Basic Access Control) authentication
+  - Extracts DG1 (biographic data) and DG2 (photo)
+- **NFC Plugin**: Expo config plugin for NFC entitlements
+  - iOS: CoreNFC entitlements and ISO7816 AID for eMRTD
+  - Android: NFC permission and feature declarations
+
+### Dependencies
+- Added react-native-nfc-passport-info for NFC passport reading
+- Added @react-native-ml-kit/text-recognition for MRZ OCR
+- Added mrz library for MRZ parsing and validation
+
 ## [1.8.3] - 2026-01-18
 
 ### Fixed

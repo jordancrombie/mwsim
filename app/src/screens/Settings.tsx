@@ -15,6 +15,7 @@ interface SettingsScreenProps {
   onSignOut: () => void;
   onDeepSignOut: () => void;
   onProfileEdit: () => void;
+  onVerifyIdentity?: () => void;
   environmentName: string;
   isDevelopment: boolean;
   appVersion: string;
@@ -68,6 +69,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onSignOut,
   onDeepSignOut,
   onProfileEdit,
+  onVerifyIdentity,
   environmentName,
   isDevelopment,
   appVersion,
@@ -141,6 +143,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             subtitle="Edit your display name and photo"
             onPress={onProfileEdit}
           />
+          {onVerifyIdentity && (
+            <>
+              <View style={styles.separator} />
+              <SettingsRow
+                icon="🛂"
+                title="Verify Identity"
+                subtitle="Scan your passport to verify your identity"
+                onPress={onVerifyIdentity}
+              />
+            </>
+          )}
         </View>
 
         {/* Account Section */}

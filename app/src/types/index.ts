@@ -677,4 +677,5 @@ export type RootStackParamList = {
   Login: undefined;
   Settings: undefined;
   PaymentApproval: { requestId: string };
+  IDVerification: undefined;
 };
