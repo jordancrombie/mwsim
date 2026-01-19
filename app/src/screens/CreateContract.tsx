@@ -42,6 +42,30 @@ const formatAmount = (amount: number): string => {
   }).format(amount);
 };
 
+// Normalize teams data to handle both old string format and new object format
+// Old format: ["Team A", "Team B"]
+// New format: [{id: "team_a", name: "Team A"}, {id: "team_b", name: "Team B"}]
+const normalizeTeams = (teams: unknown): { id: string; name: string }[] | undefined => {
+  if (!teams || !Array.isArray(teams) || teams.length === 0) {
+    return undefined;
+  }
+
+  // Check if it's already in the new format (array of objects with id and name)
+  if (typeof teams[0] === 'object' && teams[0] !== null && 'id' in teams[0] && 'name' in teams[0]) {
+    return teams as { id: string; name: string }[];
+  }
+
+  // Convert old string format to new object format
+  if (typeof teams[0] === 'string') {
+    return teams.map((team: string, index: number) => ({
+      id: `team_${index}`,
+      name: team,
+    }));
+  }
+
+  return undefined;
+};
+
 export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
   onBack,
   onContractCreated,
@@ -317,22 +341,23 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
         <ScrollView style={styles.eventsList} showsVerticalScrollIndicator={false}>
           {events.map((event) => {
             const isSelected = selectedEvent?.event_id === event.event_id;
+            const teams = normalizeTeams(event.teams);
             return (
               <TouchableOpacity
                 key={event.event_id}
                 style={[styles.eventCard, isSelected && styles.eventCardSelected]}
                 onPress={() => {
                   setSelectedEvent(event);
-                  if (event.teams && event.teams.length > 0) {
-                    setMyPrediction(event.teams[0].id);
+                  if (teams && teams.length > 0) {
+                    setMyPrediction(teams[0].id);
                   }
                 }}
               >
                 <View style={styles.eventInfo}>
                   <Text style={styles.eventTitle}>{event.title}</Text>
                   <Text style={styles.eventType}>{event.eventType}</Text>
-                  {event.teams && (
-                    <Text style={styles.eventTeams}>{event.teams.map(t => t.name).join(' vs ')}</Text>
+                  {teams && (
+                    <Text style={styles.eventTeams}>{teams.map(t => t.name).join(' vs ')}</Text>
                   )}
                 </View>
                 {isSelected && <Text style={styles.checkmark}>&#10003;</Text>}
@@ -346,32 +371,35 @@ export const CreateContractScreen: React.FC<CreateContractScreenProps> = ({
         </View>
       )}
 
-      {selectedEvent && selectedEvent.teams && (
-        <View style={styles.predictionContainer}>
-          <Text style={styles.predictionLabel}>Your prediction:</Text>
-          <View style={styles.predictionOptions}>
-            {selectedEvent.teams.map((team) => (
-              <TouchableOpacity
-                key={team.id}
-                style={[
-                  styles.predictionOption,
-                  myPrediction === team.id && styles.predictionOptionSelected,
-                ]}
-                onPress={() => setMyPrediction(team.id)}
-              >
-                <Text
+      {(() => {
+        const teams = selectedEvent ? normalizeTeams(selectedEvent.teams) : undefined;
+        return selectedEvent && teams && (
+          <View style={styles.predictionContainer}>
+            <Text style={styles.predictionLabel}>Your prediction:</Text>
+            <View style={styles.predictionOptions}>
+              {teams.map((team) => (
+                <TouchableOpacity
+                  key={team.id}
                   style={[
-                    styles.predictionOptionText,
-                    myPrediction === team.id && styles.predictionOptionTextSelected,
+                    styles.predictionOption,
+                    myPrediction === team.id && styles.predictionOptionSelected,
                   ]}
+                  onPress={() => setMyPrediction(team.id)}
                 >
-                  {team.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.predictionOptionText,
+                      myPrediction === team.id && styles.predictionOptionTextSelected,
+                    ]}
+                  >
+                    {team.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-        </View>
-      )}
+        );
+      })()}
 
       {!selectedEvent && (
         <View style={styles.customCondition}>

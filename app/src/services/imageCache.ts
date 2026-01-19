@@ -2,17 +2,14 @@
  * Image Cache Service
  *
  * Caches profile images locally for offline use.
- * Uses expo-file-system to store images in the app's cache directory.
+ * Uses expo-file-system's new File/Directory API.
  */
 
-import * as FileSystem from 'expo-file-system';
-import { Platform } from 'react-native';
+import { File, Directory, Paths } from 'expo-file-system/next';
 
 // Cache directory for profile images
-const CACHE_DIR = `${FileSystem.cacheDirectory}profile-images/`;
-
-// Cache metadata file
-const CACHE_METADATA_FILE = `${FileSystem.documentDirectory}image-cache-metadata.json`;
+const CACHE_DIR_NAME = 'profile-images';
+const METADATA_FILE_NAME = 'image-cache-metadata.json';
 
 // Maximum cache age in milliseconds (7 days)
 const MAX_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -34,6 +31,8 @@ interface CacheMetadata {
 
 let cacheMetadata: CacheMetadata | null = null;
 let initPromise: Promise<void> | null = null;
+let cacheDir: Directory | null = null;
+let metadataFile: File | null = null;
 
 /**
  * Generate a cache key from a URL.
@@ -69,16 +68,16 @@ async function initCache(): Promise<void> {
 
   initPromise = (async () => {
     try {
-      // Ensure cache directory exists
-      const dirInfo = await FileSystem.getInfoAsync(CACHE_DIR);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(CACHE_DIR, { intermediates: true });
+      // Set up cache directory
+      cacheDir = new Directory(Paths.cache, CACHE_DIR_NAME);
+      if (!cacheDir.exists) {
+        cacheDir.create();
       }
 
-      // Load metadata
-      const metaInfo = await FileSystem.getInfoAsync(CACHE_METADATA_FILE);
-      if (metaInfo.exists) {
-        const content = await FileSystem.readAsStringAsync(CACHE_METADATA_FILE);
+      // Set up metadata file
+      metadataFile = new File(Paths.document, METADATA_FILE_NAME);
+      if (metadataFile.exists) {
+        const content = metadataFile.text();
         cacheMetadata = JSON.parse(content);
       } else {
         cacheMetadata = { entries: {}, totalSize: 0 };
@@ -96,12 +95,9 @@ async function initCache(): Promise<void> {
  * Save cache metadata to disk.
  */
 async function saveMetadata(): Promise<void> {
-  if (!cacheMetadata) return;
+  if (!cacheMetadata || !metadataFile) return;
   try {
-    await FileSystem.writeAsStringAsync(
-      CACHE_METADATA_FILE,
-      JSON.stringify(cacheMetadata)
-    );
+    metadataFile.write(JSON.stringify(cacheMetadata));
   } catch (error) {
     console.log('[ImageCache] Failed to save metadata:', error);
   }
@@ -132,8 +128,8 @@ export async function getCachedImageUri(url: string): Promise<string | null> {
 
   // Verify file still exists
   try {
-    const info = await FileSystem.getInfoAsync(entry.localPath);
-    if (!info.exists) {
+    const file = new File(entry.localPath);
+    if (!file.exists) {
       delete cacheMetadata.entries[key];
       cacheMetadata.totalSize -= entry.size;
       await saveMetadata();
@@ -153,7 +149,7 @@ export async function cacheImage(url: string): Promise<string | null> {
   if (!url) return null;
 
   await initCache();
-  if (!cacheMetadata) return null;
+  if (!cacheMetadata || !cacheDir) return null;
 
   const key = getCacheKey(url);
 
@@ -164,19 +160,39 @@ export async function cacheImage(url: string): Promise<string | null> {
   try {
     // Determine file extension
     const ext = url.includes('.png') ? '.png' : '.jpg';
-    const localPath = `${CACHE_DIR}${key}${ext}`;
+    const fileName = `${key}${ext}`;
+    const localFile = new File(cacheDir, fileName);
 
     // Download the image
-    const downloadResult = await FileSystem.downloadAsync(url, localPath);
-
-    if (downloadResult.status !== 200) {
-      console.log('[ImageCache] Download failed:', downloadResult.status);
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.log('[ImageCache] Download failed:', response.status);
       return null;
     }
 
-    // Get file size
-    const fileInfo = await FileSystem.getInfoAsync(localPath);
-    const size = (fileInfo as any).size || 0;
+    const blob = await response.blob();
+
+    // Convert blob to base64 using FileReader (React Native compatible)
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
+          const base64Data = reader.result.split(',')[1];
+          resolve(base64Data);
+        } else {
+          reject(new Error('Failed to read blob as base64'));
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Write base64 to file
+    localFile.write(base64, { encoding: 'base64' });
+
+    const size = blob.size;
+    const localPath = localFile.uri;
 
     // Update metadata
     cacheMetadata.entries[key] = {
@@ -217,7 +233,10 @@ async function cleanupOldEntries(): Promise<void> {
     if (cacheMetadata.totalSize <= MAX_CACHE_SIZE_BYTES * 0.8) break;
 
     try {
-      await FileSystem.deleteAsync(entry.localPath, { idempotent: true });
+      const file = new File(entry.localPath);
+      if (file.exists) {
+        file.delete();
+      }
       cacheMetadata.totalSize -= entry.size;
       delete cacheMetadata.entries[key];
       console.log(`[ImageCache] Cleaned up: ${key}`);
@@ -232,10 +251,16 @@ async function cleanupOldEntries(): Promise<void> {
  */
 export async function clearImageCache(): Promise<void> {
   try {
-    await FileSystem.deleteAsync(CACHE_DIR, { idempotent: true });
-    await FileSystem.deleteAsync(CACHE_METADATA_FILE, { idempotent: true });
+    if (cacheDir?.exists) {
+      cacheDir.delete();
+    }
+    if (metadataFile?.exists) {
+      metadataFile.delete();
+    }
     cacheMetadata = { entries: {}, totalSize: 0 };
     initPromise = null;
+    cacheDir = null;
+    metadataFile = null;
     console.log('[ImageCache] Cache cleared');
   } catch (error) {
     console.log('[ImageCache] Clear error:', error);

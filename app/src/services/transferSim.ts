@@ -15,7 +15,7 @@
  */
 import axios, { AxiosInstance } from 'axios';
 import { secureStorage } from './secureStorage';
-import { getTransferSimUrl } from './environment';
+import { getTransferSimUrl, getEnvironmentConfig } from './environment';
 import type {
   Alias,
   AliasType,
@@ -106,6 +106,117 @@ function sanitizeMerchantTransfers(transfers: unknown): TransferWithRecipientTyp
   return transfers
     .filter((t): t is Partial<TransferWithRecipientType> => t != null && typeof t === 'object')
     .map(sanitizeMerchantTransfer);
+}
+
+// UUID regex pattern for detecting raw user IDs in alias fields
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Checks if a string looks like a UUID (raw user ID).
+ * These should be resolved to display names via WSIM's profile API.
+ */
+function isUUID(value: string | undefined | null): boolean {
+  return !!value && UUID_REGEX.test(value);
+}
+
+/**
+ * Profile data returned from WSIM's internal profile API.
+ */
+interface ProfileData {
+  displayName?: string;
+  profileImageUrl?: string;
+  initialsColor?: string;
+}
+
+/**
+ * Resolves a user ID to profile data via WSIM's internal profile API.
+ * Returns null if the profile cannot be resolved.
+ */
+async function resolveProfile(userId: string, bsimId: string): Promise<ProfileData | null> {
+  try {
+    const config = getEnvironmentConfig();
+    // The internal profile endpoint is at the WSIM API base URL (without /api suffix)
+    const wsimBaseUrl = config.apiUrl.replace(/\/api$/, '');
+    const url = `${wsimBaseUrl}/api/internal/profile?bsimUserId=${encodeURIComponent(userId)}&bsimId=${encodeURIComponent(bsimId)}`;
+
+    console.log('[TransferSim] Resolving profile for:', userId);
+    const response = await axios.get<ProfileData>(url, { timeout: 5000 });
+
+    if (response.data) {
+      console.log('[TransferSim] Resolved profile:', response.data.displayName);
+      return response.data;
+    }
+    return null;
+  } catch (error) {
+    console.log('[TransferSim] Failed to resolve profile for:', userId, error);
+    return null;
+  }
+}
+
+/**
+ * Batch resolves profiles for transfers that have UUID aliases.
+ * Enriches the transfers in place with display names and profile images.
+ */
+async function enrichTransfersWithProfiles(transfers: Transfer[], bsimId: string): Promise<Transfer[]> {
+  // Collect all unique UUIDs that need resolution
+  const uuidsToResolve = new Set<string>();
+
+  for (const transfer of transfers) {
+    if (transfer.direction === 'sent' && isUUID(transfer.recipientAlias) && !transfer.recipientDisplayName) {
+      uuidsToResolve.add(transfer.recipientAlias!);
+    }
+    if (transfer.direction === 'received' && isUUID(transfer.senderAlias) && !transfer.senderDisplayName) {
+      uuidsToResolve.add(transfer.senderAlias!);
+    }
+  }
+
+  if (uuidsToResolve.size === 0) {
+    return transfers;
+  }
+
+  console.log('[TransferSim] Resolving', uuidsToResolve.size, 'UUID profiles');
+
+  // Resolve all profiles in parallel
+  const profileMap = new Map<string, ProfileData>();
+  const resolvePromises = Array.from(uuidsToResolve).map(async (uuid) => {
+    const profile = await resolveProfile(uuid, bsimId);
+    if (profile) {
+      profileMap.set(uuid, profile);
+    }
+  });
+
+  await Promise.all(resolvePromises);
+
+  // Enrich transfers with resolved profiles
+  return transfers.map(transfer => {
+    const enriched = { ...transfer };
+
+    if (transfer.direction === 'sent' && isUUID(transfer.recipientAlias)) {
+      const profile = profileMap.get(transfer.recipientAlias!);
+      if (profile) {
+        enriched.recipientDisplayName = profile.displayName || enriched.recipientDisplayName;
+        enriched.recipientProfileImageUrl = profile.profileImageUrl || enriched.recipientProfileImageUrl;
+        // Clear the UUID alias since we now have a display name
+        if (profile.displayName) {
+          enriched.recipientAlias = undefined;
+        }
+      }
+    }
+
+    if (transfer.direction === 'received' && isUUID(transfer.senderAlias)) {
+      const profile = profileMap.get(transfer.senderAlias!);
+      if (profile) {
+        enriched.senderDisplayName = profile.displayName || enriched.senderDisplayName;
+        enriched.senderProfileImageUrl = profile.profileImageUrl || enriched.senderProfileImageUrl;
+        // Clear the UUID alias since we now have a display name
+        if (profile.displayName) {
+          enriched.senderAlias = undefined;
+        }
+      }
+    }
+
+    return enriched;
+  });
 }
 
 // TransferSim API key (same key works for both environments)
@@ -350,6 +461,7 @@ export const transferSimApi = {
 
   /**
    * Get transfer history
+   * Automatically resolves UUID aliases to display names via WSIM's profile API.
    */
   async getTransfers(
     direction?: 'sent' | 'received' | 'all',
@@ -361,8 +473,18 @@ export const transferSimApi = {
       params: { direction: direction || 'all', limit, offset },
     });
     console.log('[TransferSim] getTransfers response:', JSON.stringify(data, null, 2));
+
+    // Sanitize transfers first
+    let transfers = sanitizeTransfers(data.transfers);
+
+    // Enrich transfers that have UUID aliases with profile data from WSIM
+    const p2pContext = await secureStorage.getP2PUserContext();
+    if (p2pContext?.bsimId) {
+      transfers = await enrichTransfersWithProfiles(transfers, p2pContext.bsimId);
+    }
+
     return {
-      transfers: sanitizeTransfers(data.transfers),
+      transfers,
       total: data.total || 0,
     };
   },
@@ -370,6 +492,7 @@ export const transferSimApi = {
   /**
    * Get a specific transfer by ID
    * Used for deep linking from push notifications (per M4)
+   * Automatically resolves UUID aliases to display names via WSIM's profile API.
    *
    * @param transferId The transfer ID to fetch
    * @returns Transfer details
@@ -379,9 +502,17 @@ export const transferSimApi = {
     console.log('[TransferSim] getTransferById:', transferId);
     const { data } = await getTransferSimClient().get<Transfer>(`/api/v1/transfers/${transferId}`);
     console.log('[TransferSim] getTransferById response:', JSON.stringify(data, null, 2));
+
     // Sanitize the single transfer
-    const sanitized = sanitizeTransfers([data]);
-    return sanitized[0];
+    let transfers = sanitizeTransfers([data]);
+
+    // Enrich with profile data if UUID alias present
+    const p2pContext = await secureStorage.getP2PUserContext();
+    if (p2pContext?.bsimId) {
+      transfers = await enrichTransfersWithProfiles(transfers, p2pContext.bsimId);
+    }
+
+    return transfers[0];
   },
 
   /**
