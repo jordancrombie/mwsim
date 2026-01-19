@@ -97,7 +97,7 @@ export function getEnvironment(): Environment {
   } else if (settingValue === 'production' || settingValue === 'prod') {
     cachedEnvironment = 'production';
   } else {
-    // Default to production for all builds (Debug and Release)
+    // Default to production for all builds (can be changed via iOS Settings)
     cachedEnvironment = 'production';
   }
 

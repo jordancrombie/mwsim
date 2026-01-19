@@ -398,6 +398,8 @@ export default function App() {
   // Refs to track current state for notification callbacks (avoids stale closure)
   const p2pModeRef = useRef(p2pMode);
   const isMicroMerchantRef = useRef(isMicroMerchant);
+  const currentScreenRef = useRef(currentScreen);
+  const selectedContractIdRef = useRef(selectedContractId);
 
   // Track if we've handled the initial URL
   const initialUrlHandled = useRef(false);
@@ -419,6 +421,14 @@ export default function App() {
   useEffect(() => {
     isMicroMerchantRef.current = isMicroMerchant;
   }, [isMicroMerchant]);
+
+  useEffect(() => {
+    currentScreenRef.current = currentScreen;
+  }, [currentScreen]);
+
+  useEffect(() => {
+    selectedContractIdRef.current = selectedContractId;
+  }, [selectedContractId]);
 
   // Load banks when entering bank selection screen
   useEffect(() => {
@@ -1145,6 +1155,27 @@ export default function App() {
             setMerchantPaymentSuccessMessage(`${amount} from ${sender}`);
             setShowMerchantPaymentSuccess(true);
           }
+
+          // Handle contract notifications - refresh contract detail screen if viewing the same contract
+          const rawData = notification.request.content.data as Record<string, unknown> | null;
+          if (rawData && typeof rawData.type === 'string' && rawData.type.startsWith('contract.')) {
+            const notificationContractId = rawData.contract_id as string;
+            console.log('[Notifications] Contract notification:', rawData.type, 'contractId:', notificationContractId);
+            console.log('[Notifications] Current screen:', currentScreenRef.current, 'selectedContractId:', selectedContractIdRef.current);
+
+            // If user is viewing the contract detail screen for this contract, refresh it
+            if (currentScreenRef.current === 'contractDetail' &&
+                selectedContractIdRef.current === notificationContractId) {
+              console.log('[Notifications] Refreshing contract detail screen for contract:', notificationContractId);
+              setContractRefreshTrigger(prev => prev + 1);
+            }
+
+            // Also refresh contracts list if viewing it
+            if (currentScreenRef.current === 'contractsList') {
+              console.log('[Notifications] Refreshing contracts list');
+              setContractRefreshTrigger(prev => prev + 1);
+            }
+          }
         } else {
           // FALLBACK: Detect payment notifications by title/body when data is null
           // This handles expo-notifications not passing through APNs custom payload
@@ -1160,6 +1191,34 @@ export default function App() {
             const amount = amountMatch ? `$${amountMatch[1]}` : 'Payment';
             setMerchantPaymentSuccessMessage(`${amount} received`);
             setShowMerchantPaymentSuccess(true);
+          }
+
+          // FALLBACK: Detect contract notifications by title pattern
+          // Contract titles typically: "Contract Accepted!", "Contract Funded!", "Contract Outcome!", etc.
+          const isContractNotification = title?.includes('Contract') && (
+            title.includes('Accepted') ||
+            title.includes('Funded') ||
+            title.includes('Outcome') ||
+            title.includes('Settled') ||
+            title.includes('Cancelled') ||
+            title.includes('Expired') ||
+            title.includes('Disputed')
+          );
+
+          if (isContractNotification) {
+            console.log('[Notifications] Contract notification detected via fallback, title:', title);
+
+            // Refresh contract detail screen if viewing any contract (we don't have contract_id in fallback)
+            if (currentScreenRef.current === 'contractDetail') {
+              console.log('[Notifications] Refreshing contract detail screen (fallback)');
+              setContractRefreshTrigger(prev => prev + 1);
+            }
+
+            // Also refresh contracts list if viewing it
+            if (currentScreenRef.current === 'contractsList') {
+              console.log('[Notifications] Refreshing contracts list (fallback)');
+              setContractRefreshTrigger(prev => prev + 1);
+            }
           }
         }
 
@@ -2802,47 +2861,60 @@ export default function App() {
                 <Text style={styles.p2pEmptyTransfersText}>No transfers yet</Text>
               </View>
             ) : (
-              recentTransfers.slice(0, 5).map((transfer) => (
-                <TouchableOpacity
-                  key={transfer.transferId}
-                  style={styles.p2pTransferItem}
-                  onPress={() => {
-                    setSelectedTransfer(transfer);
-                    setTransferDetailReturnScreen('p2pHome');
-                    setIsViewingMerchantPayment(false);
-                    setCurrentScreen('transferDetail');
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <ProfileAvatar
-                    imageUrl={transfer.direction === 'sent'
-                      ? transfer.recipientProfileImageUrl
-                      : transfer.senderProfileImageUrl}
-                    displayName={transfer.direction === 'sent'
-                      ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
-                      : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
-                    size="small"
-                  />
-                  <View style={styles.p2pTransferInfo}>
-                    <Text style={styles.p2pTransferName}>
-                      {transfer.direction === 'sent'
-                        ? transfer.recipientDisplayName || transfer.recipientAlias
-                        : transfer.senderDisplayName || transfer.senderAlias}
-                    </Text>
-                    <Text style={styles.p2pTransferDate}>
-                      {new Date(transfer.createdAt).toLocaleDateString()}
-                    </Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.p2pTransferAmount,
-                      transfer.direction === 'received' && styles.p2pTransferAmountReceived,
-                    ]}
+              recentTransfers.slice(0, 5).map((transfer) => {
+                // Check if transfer failed
+                const isFailed = ['DEBIT_FAILED', 'CREDIT_FAILED', 'CANCELLED', 'EXPIRED', 'REVERSED', 'RECIPIENT_NOT_FOUND'].includes(transfer.status);
+                const failedStatusText = isFailed ? (
+                  transfer.status === 'RECIPIENT_NOT_FOUND' ? 'Not found' :
+                  transfer.status === 'CANCELLED' ? 'Cancelled' :
+                  transfer.status === 'EXPIRED' ? 'Expired' :
+                  'Failed'
+                ) : null;
+
+                return (
+                  <TouchableOpacity
+                    key={transfer.transferId}
+                    style={[styles.p2pTransferItem, isFailed && { opacity: 0.7 }]}
+                    onPress={() => {
+                      setSelectedTransfer(transfer);
+                      setTransferDetailReturnScreen('p2pHome');
+                      setIsViewingMerchantPayment(false);
+                      setCurrentScreen('transferDetail');
+                    }}
+                    activeOpacity={0.7}
                   >
-                    {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
-                  </Text>
-                </TouchableOpacity>
-              ))
+                    <ProfileAvatar
+                      imageUrl={transfer.direction === 'sent'
+                        ? transfer.recipientProfileImageUrl
+                        : transfer.senderProfileImageUrl}
+                      displayName={transfer.direction === 'sent'
+                        ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
+                        : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
+                      size="small"
+                    />
+                    <View style={styles.p2pTransferInfo}>
+                      <Text style={styles.p2pTransferName}>
+                        {transfer.direction === 'sent'
+                          ? transfer.recipientDisplayName || transfer.recipientAlias
+                          : transfer.senderDisplayName || transfer.senderAlias}
+                      </Text>
+                      <Text style={[styles.p2pTransferDate, isFailed && { color: '#ef4444' }]}>
+                        {isFailed ? failedStatusText : new Date(transfer.createdAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.p2pTransferAmount,
+                        isFailed
+                          ? { color: '#9ca3af', textDecorationLine: 'line-through' }
+                          : transfer.direction === 'received' && styles.p2pTransferAmountReceived,
+                      ]}
+                    >
+                      {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
             )}
           </View>
 
@@ -4236,6 +4308,29 @@ export default function App() {
       }
     };
 
+    // Human-readable status text for the list view
+    const getStatusDisplay = (status: string) => {
+      switch (status) {
+        case 'COMPLETED': return 'Completed';
+        case 'PENDING': return 'Pending';
+        case 'RESOLVING': return 'Processing...';
+        case 'DEBITING': return 'Processing...';
+        case 'CREDITING': return 'Depositing...';
+        case 'CANCELLED': return 'Cancelled';
+        case 'EXPIRED': return 'Expired';
+        case 'REVERSED': return 'Reversed';
+        case 'DEBIT_FAILED': return 'Failed';
+        case 'CREDIT_FAILED': return 'Failed';
+        case 'RECIPIENT_NOT_FOUND': return 'Recipient not found';
+        default: return status;
+      }
+    };
+
+    // Check if transfer is in a failed state
+    const isFailedTransfer = (status: string) => {
+      return ['DEBIT_FAILED', 'CREDIT_FAILED', 'CANCELLED', 'EXPIRED', 'REVERSED', 'RECIPIENT_NOT_FOUND'].includes(status);
+    };
+
     const formatDate = (dateString: string) => {
       const date = new Date(dateString);
       const now = new Date();
@@ -4348,14 +4443,18 @@ export default function App() {
                         <View style={styles.historyItemMeta}>
                           <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
                           <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
-                            {transfer.status}
+                            {getStatusDisplay(transfer.status)}
                           </Text>
                         </View>
                       </View>
 
                       {/* Amount with fee */}
                       <View style={styles.merchantTransferAmounts}>
-                        <Text style={[styles.historyItemAmount, { color: '#22c55e' }]}>
+                        <Text style={[
+                          styles.historyItemAmount,
+                          { color: isFailedTransfer(transfer.status) ? '#9ca3af' : '#22c55e' },
+                          isFailedTransfer(transfer.status) && { textDecorationLine: 'line-through' }
+                        ]}>
                           +${Number((transfer as TransferWithRecipientType).grossAmount || transfer.amount || 0).toFixed(2)}
                         </Text>
                         {(transfer as TransferWithRecipientType).feeAmount && (
@@ -4398,15 +4497,19 @@ export default function App() {
                         <View style={styles.historyItemMeta}>
                           <Text style={styles.historyItemDate}>{formatDate(transfer.createdAt)}</Text>
                           <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
-                            {transfer.status}
+                            {getStatusDisplay(transfer.status)}
                           </Text>
                         </View>
                       </View>
 
-                      {/* Amount */}
+                      {/* Amount - show strikethrough and gray for failed transfers */}
                       <Text style={[
                         styles.historyItemAmount,
-                        { color: transfer.direction === 'sent' ? '#ef4444' : '#22c55e' }
+                        { color: isFailedTransfer(transfer.status)
+                          ? '#9ca3af'  // Gray for failed
+                          : transfer.direction === 'sent' ? '#ef4444' : '#22c55e'
+                        },
+                        isFailedTransfer(transfer.status) && { textDecorationLine: 'line-through' }
                       ]}>
                         {transfer.direction === 'sent' ? '-' : '+'}${Number(transfer.amount || 0).toFixed(2)}
                       </Text>
@@ -4484,6 +4587,7 @@ export default function App() {
         case 'REVERSED': return 'Reversed';
         case 'DEBIT_FAILED': return 'Payment failed';
         case 'CREDIT_FAILED': return 'Deposit failed';
+        case 'RECIPIENT_NOT_FOUND': return 'Recipient not found';
         default: return status;
       }
     };
@@ -4513,31 +4617,37 @@ export default function App() {
 
           <ScrollView style={styles.transferDetailScroll} showsVerticalScrollIndicator={false}>
             {/* Amount and Direction */}
-            <View style={styles.transferDetailAmountCard}>
-              <View style={[
-                styles.transferDetailDirectionIcon,
-                { backgroundColor: isSent ? '#fef2f2' : '#f0fdf4' }
-              ]}>
-                <Text style={{ fontSize: 32 }}>{isSent ? '↗️' : '↙️'}</Text>
-              </View>
-              <Text style={[
-                styles.transferDetailAmount,
-                { color: isSent ? '#dc2626' : '#16a34a' }
-              ]}>
-                {isSent ? '-' : '+'}${Number(selectedTransfer.amount || 0).toFixed(2)} {selectedTransfer.currency}
-              </Text>
-              <View style={[
-                styles.transferDetailStatusBadge,
-                { backgroundColor: getStatusColor(selectedTransfer.status) + '20' }
-              ]}>
-                <Text style={[
-                  styles.transferDetailStatusText,
-                  { color: getStatusColor(selectedTransfer.status) }
-                ]}>
-                  {getStatusText(selectedTransfer.status)}
-                </Text>
-              </View>
-            </View>
+            {(() => {
+              const isTransferFailed = ['DEBIT_FAILED', 'CREDIT_FAILED', 'CANCELLED', 'EXPIRED', 'REVERSED', 'RECIPIENT_NOT_FOUND'].includes(selectedTransfer.status);
+              return (
+                <View style={styles.transferDetailAmountCard}>
+                  <View style={[
+                    styles.transferDetailDirectionIcon,
+                    { backgroundColor: isTransferFailed ? '#fef2f2' : isSent ? '#fef2f2' : '#f0fdf4' }
+                  ]}>
+                    <Text style={{ fontSize: 32 }}>{isTransferFailed ? '⚠️' : isSent ? '↗️' : '↙️'}</Text>
+                  </View>
+                  <Text style={[
+                    styles.transferDetailAmount,
+                    { color: isTransferFailed ? '#9ca3af' : isSent ? '#dc2626' : '#16a34a' },
+                    isTransferFailed && { textDecorationLine: 'line-through' }
+                  ]}>
+                    {isSent ? '-' : '+'}${Number(selectedTransfer.amount || 0).toFixed(2)} {selectedTransfer.currency}
+                  </Text>
+                  <View style={[
+                    styles.transferDetailStatusBadge,
+                    { backgroundColor: getStatusColor(selectedTransfer.status) + '20' }
+                  ]}>
+                    <Text style={[
+                      styles.transferDetailStatusText,
+                      { color: getStatusColor(selectedTransfer.status) }
+                    ]}>
+                      {getStatusText(selectedTransfer.status)}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })()}
 
             {/* Counterparty Info */}
             <View style={styles.transferDetailSection}>

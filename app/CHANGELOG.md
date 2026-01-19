@@ -2,6 +2,28 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [1.8.3] - 2026-01-18
+
+### Fixed
+- **Failed Transfer Display**: Failed/self-transfers now show clearly with visual treatment
+  - Human-readable status text ("Failed", "Recipient not found", etc.) instead of raw codes
+  - Strikethrough amounts in gray for failed transfers
+  - Warning icon on transfer detail screen for failed transfers
+  - Reduced opacity for failed transfers in recent transfers list
+- **Contract Auto-Refresh**: Contract detail screen now auto-refreshes when push notifications arrive for contract events (accepted, funded, outcome, etc.)
+- **Notification Deprecation Warning**: Fixed `shouldShowAlert` deprecation warning in expo-notifications
+
+### Added
+- **Contract Notification Handling**: Foreground listener detects contract notifications and triggers screen refresh
+- **Fallback Contract Detection**: Title-pattern-based fallback for contract notifications when data payload is null
+
+## [1.8.2] - 2026-01-17
+
+### Changed
+- **Oracle Teams Format**: Updated to support new teams object format from WSIM/ContractSim
+  - Teams now received as `[{id: "team_a", name: "Team A"}, ...]` instead of `["Team A", ...]`
+  - Displays team name in UI, sends team ID for predictions
+
 ## [1.8.1] - 2026-01-16
 
 ### Added
