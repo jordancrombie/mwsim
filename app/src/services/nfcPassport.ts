@@ -118,6 +118,12 @@ export async function readPassport(mrzData: MRZData): Promise<PassportData> {
 
   try {
     console.log('[NFCPassport] Starting passport read...');
+    console.log('[NFCPassport] MRZ data for BAC:', {
+      documentNumber: mrzData.documentNumber,
+      documentNumberLength: mrzData.documentNumber.length,
+      dateOfBirth: mrzData.dateOfBirth,
+      dateOfExpiry: mrzData.dateOfExpiry,
+    });
 
     const result = await scanNfc({
       documentNumber: mrzData.documentNumber,
@@ -211,10 +217,11 @@ function getErrorMessage(error: unknown): string {
   // BAC authentication failure (wrong MRZ data)
   if (
     errorStr.includes('BAC') ||
+    errorStr.includes('InvalidMRZKey') ||
     errorStr.includes('authentication') ||
     errorStr.includes('AUTHENTICATION')
   ) {
-    return 'Failed to authenticate with passport. Please re-scan the MRZ.';
+    return 'Failed to authenticate with passport. The scanned data may not match the chip. Try entering details manually.';
   }
 
   // Tag lost (passport moved away)

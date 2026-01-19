@@ -20,6 +20,12 @@ All notable changes to mwsim are documented in this file.
 - **NFC Plugin**: Expo config plugin for NFC entitlements
   - iOS: CoreNFC entitlements and ISO7816 AID for eMRTD
   - Android: NFC permission and feature declarations
+- **MasterList Plugin**: Adds masterList.pem to iOS bundle for passport certificate verification
+- **Deployment Target Plugin**: Ensures iOS 15.5 minimum for ML Kit text recognition
+
+### Fixed
+- **BAC Authentication**: Document number now correctly right-padded to 9 characters
+  - Fixes InvalidMRZKey error caused by library bug (left-padding instead of right-padding)
 
 ### Dependencies
 - Added react-native-nfc-passport-info for NFC passport reading

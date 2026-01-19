@@ -110,8 +110,23 @@ export function extractMRZData(parsedMRZ: ParsedMRZ): MRZData | null {
     return null;
   }
 
+  // Clean document number - remove trailing fillers, then re-pad to 9 chars
+  // This is needed because react-native-nfc-passport-info has a bug where it
+  // left-pads instead of right-pads the document number. By pre-padding to
+  // exactly 9 chars, we avoid the bug.
+  const cleanDocNumber = documentNumber.replace(/<+$/, '');
+  const paddedDocNumber = (cleanDocNumber + '<'.repeat(9)).slice(0, 9);
+
+  console.log('[MRZScanner] Extracted MRZ data for NFC:', {
+    rawDocNumber: documentNumber,
+    cleanDocNumber,
+    paddedDocNumber,
+    dateOfBirth,
+    dateOfExpiry,
+  });
+
   return {
-    documentNumber: documentNumber.replace(/</g, ''),
+    documentNumber: paddedDocNumber,
     dateOfBirth,
     dateOfExpiry,
   };
@@ -143,8 +158,11 @@ export function createMRZDataFromFields(
     return null;
   }
 
+  // Pad document number to 9 characters (workaround for library bug)
+  const paddedDocNumber = (cleanDocNumber + '<'.repeat(9)).slice(0, 9);
+
   return {
-    documentNumber: cleanDocNumber,
+    documentNumber: paddedDocNumber,
     dateOfBirth,
     dateOfExpiry,
   };

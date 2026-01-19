@@ -385,7 +385,7 @@ function IDVerificationScreenInner({ onComplete, onCancel }: IDVerificationScree
         <View style={styles.mrzExampleContainer}>
           <Text style={styles.mrzExampleLabel}>Look for these two lines at the BOTTOM of your passport:</Text>
           <View style={styles.mrzExampleBox}>
-            <Text style={styles.mrzExampleText}>P&lt;CANSMITH&lt;&lt;JANE&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;</Text>
+            <Text style={styles.mrzExampleText}>P&lt;CANSMITH&lt;&lt;JANE&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;&lt;</Text>
             <Text style={styles.mrzExampleText}>AB123456&lt;7CAN900101M&lt;&lt;&lt;&lt;&lt;&lt;&lt;</Text>
           </View>
         </View>
