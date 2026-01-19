@@ -22,6 +22,11 @@ All notable changes to mwsim are documented in this file.
   - Android: NFC permission and feature declarations
 - **MasterList Plugin**: Adds masterList.pem to iOS bundle for passport certificate verification
 - **Deployment Target Plugin**: Ensures iOS 15.5 minimum for ML Kit text recognition
+- **Trusted User Verification (Phase 1 - Foundation)**:
+  - Verification service with name matching (Levenshtein fuzzy matching, 85% threshold)
+  - Signed verification payloads for server-side validation (HMAC-SHA256)
+  - Verification badge on ProfileAvatar (silver for basic, gold for enhanced)
+  - User type extended with isVerified, verifiedAt, verificationLevel fields
 
 ### Fixed
 - **BAC Authentication**: Document number now correctly right-padded to 9 characters

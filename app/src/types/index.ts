@@ -6,6 +6,30 @@ export interface User {
   walletId: string;
   createdAt: string;
   profileImageUrl?: string | null;
+  // Verification status
+  isVerified?: boolean;
+  verifiedAt?: string;
+  verificationLevel?: VerificationLevel;
+}
+
+// ===========================
+// Identity Verification Types
+// ===========================
+
+/**
+ * Verification level indicates how thoroughly the user has been verified
+ * - none: Not verified
+ * - basic: Name matching only
+ * - enhanced: Name + face comparison + liveness check
+ */
+export type VerificationLevel = 'none' | 'basic' | 'enhanced';
+
+/**
+ * Verification badge info for display on avatars
+ */
+export interface VerificationBadge {
+  level: VerificationLevel;
+  verifiedAt?: string;
 }
 
 // Card types
@@ -223,6 +247,9 @@ export interface AliasLookupResult {
   initialsColor?: string;     // Hex color for initials avatar fallback (e.g., "#3949AB")
   isMerchant?: boolean;       // Whether recipient is a registered Micro Merchant
   merchantLogoUrl?: string;   // Merchant logo URL (only if isMerchant: true)
+  // Verification status
+  isVerified?: boolean;       // Whether the user has completed identity verification
+  verificationLevel?: VerificationLevel;  // Level of verification (basic/enhanced)
 }
 
 export interface ReceiveToken {

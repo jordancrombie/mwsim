@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { getCachedImageUri, cacheImage } from '../services/imageCache';
+import type { VerificationLevel } from '../types';
 
 // Avatar sizes in pixels
 const AVATAR_SIZES = {
@@ -41,6 +42,13 @@ const AVATAR_COLORS = [
 export type AvatarSize = keyof typeof AVATAR_SIZES;
 export type AvatarVariant = 'user' | 'merchant';
 
+// Verification badge colors
+const VERIFICATION_BADGE_COLORS = {
+  none: 'transparent',
+  basic: '#A0AEC0',     // Silver/gray for basic verification
+  enhanced: '#F6AD55',  // Gold for enhanced verification
+} as const;
+
 interface ProfileAvatarProps {
   /** URL of the profile image. If not provided, initials will be shown. */
   imageUrl?: string | null;
@@ -54,6 +62,10 @@ interface ProfileAvatarProps {
   initialsColor?: string;
   /** Avatar variant: 'user' for personal profiles, 'merchant' for business logos. Default: 'user' */
   variant?: AvatarVariant;
+  /** Whether the user is verified. Shows a badge on the avatar. */
+  isVerified?: boolean;
+  /** Level of verification: 'basic' (silver) or 'enhanced' (gold). */
+  verificationLevel?: VerificationLevel;
 }
 
 /**
@@ -105,6 +117,43 @@ export function generateAvatarColor(identifier: string): string {
  * Used throughout the app for user avatars in greetings, transaction history,
  * payment confirmations, and settings.
  */
+/**
+ * VerificationBadge Component
+ * Shows a checkmark badge on verified user avatars
+ */
+const VerificationBadge: React.FC<{
+  size: number;
+  level: VerificationLevel;
+}> = ({ size, level }) => {
+  if (level === 'none') return null;
+
+  // Badge size is proportional to avatar (about 30% of avatar size)
+  const badgeSize = Math.max(12, Math.round(size * 0.3));
+  const checkSize = Math.round(badgeSize * 0.6);
+  const badgeColor = VERIFICATION_BADGE_COLORS[level];
+
+  return (
+    <View
+      style={[
+        styles.verificationBadge,
+        {
+          width: badgeSize,
+          height: badgeSize,
+          borderRadius: badgeSize / 2,
+          backgroundColor: badgeColor,
+          // Position at bottom-right of avatar
+          right: 0,
+          bottom: 0,
+        },
+      ]}
+    >
+      <Text style={[styles.verificationCheck, { fontSize: checkSize }]}>
+        {'\u2713'}
+      </Text>
+    </View>
+  );
+};
+
 export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
   imageUrl,
   displayName,
@@ -112,6 +161,8 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
   userId,
   initialsColor,
   variant = 'user',
+  isVerified = false,
+  verificationLevel = 'none',
 }) => {
   const [isLoading, setIsLoading] = useState(!!imageUrl);
   const [hasError, setHasError] = useState(false);
@@ -199,42 +250,54 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
   // This prevents showing stale cached images while new ones load
   const showInitials = !resolvedUri || hasError || isLoading;
 
+  // Determine the effective verification level to show
+  const effectiveLevel = isVerified ? (verificationLevel || 'basic') : 'none';
+
   if (showInitials) {
     return (
-      <View style={[styles.container, containerStyle]}>
-        <Text style={[styles.initials, { fontSize }]}>{initials}</Text>
-        {/* Hidden Image to trigger loading when we have a resolved URI */}
-        {resolvedUri && !hasError && (
-          <Image
-            key={resolvedUri}
-            source={{ uri: resolvedUri }}
-            style={{ width: 0, height: 0, position: 'absolute' }}
-            onLoadEnd={handleImageLoad}
-            onError={() => {
-              setHasError(true);
-              setIsLoading(false);
-            }}
-          />
-        )}
+      <View style={styles.avatarWrapper}>
+        <View style={[styles.container, containerStyle]}>
+          <Text style={[styles.initials, { fontSize }]}>{initials}</Text>
+          {/* Hidden Image to trigger loading when we have a resolved URI */}
+          {resolvedUri && !hasError && (
+            <Image
+              key={resolvedUri}
+              source={{ uri: resolvedUri }}
+              style={{ width: 0, height: 0, position: 'absolute' }}
+              onLoadEnd={handleImageLoad}
+              onError={() => {
+                setHasError(true);
+                setIsLoading(false);
+              }}
+            />
+          )}
+        </View>
+        <VerificationBadge size={sizeValue} level={effectiveLevel} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, containerStyle]}>
-      <Image
-        key={resolvedUri}
-        source={{ uri: resolvedUri }}
-        style={[styles.image, { width: sizeValue, height: sizeValue, borderRadius }]}
-        onError={() => {
-          setHasError(true);
-        }}
-      />
+    <View style={styles.avatarWrapper}>
+      <View style={[styles.container, containerStyle]}>
+        <Image
+          key={resolvedUri}
+          source={{ uri: resolvedUri }}
+          style={[styles.image, { width: sizeValue, height: sizeValue, borderRadius }]}
+          onError={() => {
+            setHasError(true);
+          }}
+        />
+      </View>
+      <VerificationBadge size={sizeValue} level={effectiveLevel} />
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  avatarWrapper: {
+    position: 'relative',
+  },
   container: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -253,6 +316,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     zIndex: 1,
+  },
+  verificationBadge: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1,
+    elevation: 2,
+  },
+  verificationCheck: {
+    color: '#ffffff',
+    fontWeight: '700',
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
 });
 
