@@ -90,6 +90,19 @@ No errors uploading 'path/to/mwsim.ipa'
 
 Build will then process in App Store Connect (5-15 minutes) before appearing in TestFlight.
 
+### Bitcode Stripping (Automated)
+
+The `withBitcodeStrip` plugin automatically strips bitcode from OpenSSL.framework during the build process. **No manual intervention required.**
+
+**How it works:**
+1. During `expo prebuild`: Adds a shell script build phase to strip bitcode
+2. Modifies Podfile: Injects Ruby code into `post_install` hook to reorder build phases
+3. During `pod install`: Reorders phases so the strip script runs AFTER "[CP] Embed Pods Frameworks"
+
+**Background:** OpenSSL.framework from react-native-nfc-passport-info contains bitcode, which Apple rejects (bitcode deprecated since Xcode 14). The plugin handles this automatically.
+
+**If upload fails with bitcode error:** Run `npx expo prebuild --clean` to regenerate the project with the latest plugin configuration.
+
 ## Local Device Build & Install
 
 ### List Connected Devices
