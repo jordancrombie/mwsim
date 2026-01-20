@@ -47,7 +47,7 @@ export interface PitchPageCTA {
 }
 
 /**
- * Content structure for a pitch page.
+ * Content structure for a single pitch page screen.
  */
 export interface PitchPageContent {
   title: string;
@@ -59,13 +59,28 @@ export interface PitchPageContent {
 }
 
 /**
+ * Content structure for a page in a multi-page pitch (swipeable).
+ * Simpler than full PitchPageContent - no CTA buttons (those go on last page only).
+ */
+export interface PitchPageSlide {
+  title: string;
+  subtitle?: string;
+  benefits: PitchPageBenefit[];
+  instructions?: string[];
+}
+
+/**
  * Pitch page definition with condition and content.
+ * Supports both single-page and multi-page (swipeable) pitch pages.
  */
 export interface PitchPage {
   id: string;                                           // Unique identifier
   condition: (user: PitchPageUserContext) => boolean;   // Show when true
-  priority: number;                                     // Higher = show first (for future multi-page support)
-  content: PitchPageContent;
+  priority: number;                                     // Higher = show first
+  content?: PitchPageContent;                           // Single page content
+  pages?: PitchPageSlide[];                             // Multi-page swipeable content
+  finalPageCTA?: PitchPageCTA;                          // CTA button shown on last page of multi-page
+  finalPageDismissLabel?: string;                       // Dismiss button label for last page
 }
 
 // ============================================================================
@@ -77,6 +92,155 @@ const DISMISSED_PITCH_PAGES_KEY = 'dismissed_pitch_pages';
 // ============================================================================
 // Pitch Page Definitions
 // ============================================================================
+
+/**
+ * Welcome/Getting Started pitch page.
+ * Shown to all users on first login after install.
+ * Multi-page swipeable tutorial covering all app features.
+ * Takes priority over other pitch pages until permanently dismissed.
+ */
+const WELCOME_PITCH: PitchPage = {
+  id: 'welcome-tutorial',
+  condition: () => true,  // Always show (until dismissed)
+  priority: 200,  // Higher than other pitch pages
+  pages: [
+    // Page 1: My Cards
+    {
+      title: 'Welcome to mwsim',
+      subtitle: 'Your cards, all in one place',
+      benefits: [
+        {
+          icon: '💳',
+          title: 'View Your Cards',
+          description: 'See all your linked bank cards and their balances at a glance',
+        },
+        {
+          icon: '🏦',
+          title: 'Add Another Bank',
+          description: 'Link multiple bank accounts to manage all your money in one app',
+        },
+        {
+          icon: '📷',
+          title: 'Scan QR to Pay',
+          description: 'Tap the camera icon to scan merchant QR codes for instant payments',
+        },
+      ],
+    },
+    // Page 2: P2P Transfers
+    {
+      title: 'Send Money Instantly',
+      subtitle: 'Fast, free peer-to-peer transfers',
+      benefits: [
+        {
+          icon: '👥',
+          title: 'P2P Transfers',
+          description: 'Send money to friends and family instantly using their email or phone',
+        },
+        {
+          icon: '📱',
+          title: 'QR Code Transfers',
+          description: 'Generate your QR code or scan others for quick transfers',
+        },
+        {
+          icon: '📍',
+          title: 'Nearby Discovery',
+          description: 'Find nearby users via Bluetooth for even faster transfers',
+        },
+      ],
+      instructions: [
+        'Tap the P2P tab to get started',
+        'Enroll with your email to receive transfers',
+        'Send to anyone using their email, phone, or QR code',
+      ],
+    },
+    // Page 3: Business Payments
+    {
+      title: 'Accept Business Payments',
+      subtitle: 'Turn your phone into a payment terminal',
+      benefits: [
+        {
+          icon: '🏪',
+          title: 'Micro Merchant',
+          description: 'Accept payments as a small business with your own custom QR code',
+        },
+        {
+          icon: '📊',
+          title: 'Transaction History',
+          description: 'Track all your business payments and see detailed reports',
+        },
+        {
+          icon: '⚡',
+          title: 'Instant Settlement',
+          description: 'Funds arrive in your account immediately after payment',
+        },
+      ],
+      instructions: [
+        'Go to Settings and enable Business Profile',
+        'Set your business name and category',
+        'Share your QR code with customers',
+      ],
+    },
+    // Page 4: Contracts
+    {
+      title: 'Smart Contracts & Wagers',
+      subtitle: 'Conditional payments made easy',
+      benefits: [
+        {
+          icon: '📜',
+          title: 'Create Contracts',
+          description: 'Set up conditional payments that execute automatically',
+        },
+        {
+          icon: '🎲',
+          title: 'Friendly Wagers',
+          description: 'Bet on sports, events, or anything with friends - funds held securely',
+        },
+        {
+          icon: '🤝',
+          title: 'Escrow Payments',
+          description: 'Hold funds until conditions are met for secure transactions',
+        },
+      ],
+      instructions: [
+        'Tap Contracts in the menu',
+        'Choose an oracle event or create a custom condition',
+        'Both parties fund their stake and wait for the outcome',
+      ],
+    },
+    // Page 5: Settings & Security
+    {
+      title: 'Settings & Security',
+      subtitle: 'Customize your experience',
+      benefits: [
+        {
+          icon: '🛡️',
+          title: 'Identity Verification',
+          description: 'Verify with your passport to become a Trusted User with higher limits',
+        },
+        {
+          icon: '👤',
+          title: 'Profile Management',
+          description: 'Update your display name, photo, and notification preferences',
+        },
+        {
+          icon: '🔒',
+          title: 'Security Controls',
+          description: 'Manage your devices, sign out remotely, and control your data',
+        },
+      ],
+      instructions: [
+        'Access Settings from the gear icon on the home screen',
+        'Verify your identity for higher transfer limits',
+        'Customize notifications and preferences',
+      ],
+    },
+  ],
+  finalPageCTA: {
+    label: 'Get Started',
+    action: 'dismiss',
+  },
+  finalPageDismissLabel: 'Maybe Later',
+};
 
 /**
  * Trusted User Verification pitch page.
@@ -129,14 +293,12 @@ const TRUSTED_USER_PITCH: PitchPage = {
 
 /**
  * All registered pitch pages.
- * Add new pitch pages here as they are created.
+ * Ordered by priority (highest first).
  */
 const PITCH_PAGES: PitchPage[] = [
-  TRUSTED_USER_PITCH,
-  // Future pitch pages can be added here:
-  // MERCHANT_ENROLLMENT_PITCH,
-  // CONTRACT_FEATURES_PITCH,
-  // etc.
+  WELCOME_PITCH,       // Priority 200 - First-time user tutorial
+  TRUSTED_USER_PITCH,  // Priority 100 - Verification upsell
+  // Future pitch pages can be added here
 ];
 
 // ============================================================================

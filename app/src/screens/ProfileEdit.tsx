@@ -234,6 +234,37 @@ export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
             Your email cannot be changed.
           </Text>
         </View>
+
+        {/* Trust Status Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>TRUST STATUS</Text>
+          <View style={styles.trustStatusContainer}>
+            <View style={styles.trustStatusRow}>
+              <Text style={styles.trustStatusIcon}>
+                {user?.verificationLevel === 'enhanced' ? '🥇' :
+                 user?.verificationLevel === 'basic' ? '🥈' : '⚪'}
+              </Text>
+              <View style={styles.trustStatusInfo}>
+                <Text style={styles.trustStatusTitle}>
+                  {user?.verificationLevel === 'enhanced' ? 'Gold Verified' :
+                   user?.verificationLevel === 'basic' ? 'Silver Verified' : 'Not Verified'}
+                </Text>
+                <Text style={styles.trustStatusDescription}>
+                  {user?.verificationLevel === 'enhanced'
+                    ? 'Identity verified with passport + face match + liveness check'
+                    : user?.verificationLevel === 'basic'
+                    ? 'Identity verified with passport name match'
+                    : 'Complete identity verification to become a Trusted User'}
+                </Text>
+              </View>
+            </View>
+            {(!user?.isVerified || user?.verificationLevel === 'none') && (
+              <Text style={styles.trustStatusHint}>
+                Go to Settings → Verify Your Identity to get verified
+              </Text>
+            )}
+          </View>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -359,6 +390,41 @@ const styles = StyleSheet.create({
     color: '#9CA3AF',
     paddingHorizontal: 16,
     paddingTop: 8,
+  },
+  trustStatusContainer: {
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 16,
+  },
+  trustStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  trustStatusIcon: {
+    fontSize: 32,
+    marginRight: 12,
+  },
+  trustStatusInfo: {
+    flex: 1,
+  },
+  trustStatusTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  trustStatusDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 20,
+  },
+  trustStatusHint: {
+    fontSize: 12,
+    color: '#1976D2',
+    marginTop: 12,
+    fontStyle: 'italic',
   },
 });
 

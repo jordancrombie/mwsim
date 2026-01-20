@@ -32,6 +32,8 @@ interface ContractDetailScreenProps {
   onRefreshNeeded?: () => void;
   /** Increment this to force a data refresh (e.g., when coming from notification) */
   refreshTrigger?: number;
+  /** Called when user taps on another party's profile */
+  onViewUserProfile?: (party: ContractParty) => void;
 }
 
 // Format currency amount
@@ -58,8 +60,9 @@ const PartyCard: React.FC<{
   party: ContractParty;
   isMe: boolean;
   currency: string;
-}> = ({ party, isMe, currency }) => (
-  <View style={[styles.partyCard, isMe && styles.partyCardMe]}>
+  onPress?: () => void;
+}> = ({ party, isMe, currency, onPress }) => {
+  const partyHeader = (
     <View style={styles.partyHeader}>
       <ProfileAvatar
         imageUrl={party.profileImageUrl}
@@ -78,29 +81,44 @@ const PartyCard: React.FC<{
           {party.role === 'creator' ? 'Creator' : 'Counterparty'}
         </Text>
       </View>
+      {!isMe && onPress && (
+        <Text style={styles.viewProfileHint}>›</Text>
+      )}
     </View>
+  );
 
-    <View style={styles.partyStake}>
-      <Text style={styles.stakeAmount}>{formatAmount(party.stake.amount, currency)}</Text>
-      <Text style={styles.stakeLabel}>Stake</Text>
-    </View>
+  return (
+    <View style={[styles.partyCard, isMe && styles.partyCardMe]}>
+      {!isMe && onPress ? (
+        <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+          {partyHeader}
+        </TouchableOpacity>
+      ) : (
+        partyHeader
+      )}
 
-    <View style={styles.partyStatus}>
-      <View style={styles.statusRow}>
-        <Text style={styles.statusLabel}>Accepted:</Text>
-        <Text style={[styles.statusValue, party.accepted ? styles.statusYes : styles.statusNo]}>
-          {party.accepted ? 'Yes' : 'No'}
-        </Text>
+      <View style={styles.partyStake}>
+        <Text style={styles.stakeAmount}>{formatAmount(party.stake.amount, currency)}</Text>
+        <Text style={styles.stakeLabel}>Stake</Text>
       </View>
-      <View style={styles.statusRow}>
-        <Text style={styles.statusLabel}>Funded:</Text>
-        <Text style={[styles.statusValue, party.funded ? styles.statusYes : styles.statusNo]}>
-          {party.funded ? 'Yes' : 'No'}
-        </Text>
+
+      <View style={styles.partyStatus}>
+        <View style={styles.statusRow}>
+          <Text style={styles.statusLabel}>Accepted:</Text>
+          <Text style={[styles.statusValue, party.accepted ? styles.statusYes : styles.statusNo]}>
+            {party.accepted ? 'Yes' : 'No'}
+          </Text>
+        </View>
+        <View style={styles.statusRow}>
+          <Text style={styles.statusLabel}>Funded:</Text>
+          <Text style={[styles.statusValue, party.funded ? styles.statusYes : styles.statusNo]}>
+            {party.funded ? 'Yes' : 'No'}
+          </Text>
+        </View>
       </View>
     </View>
-  </View>
-);
+  );
+};
 
 // Condition card component
 const ConditionCard: React.FC<{ condition: ContractCondition; index: number }> = ({
@@ -144,6 +162,7 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
   onBack,
   onRefreshNeeded,
   refreshTrigger,
+  onViewUserProfile,
 }) => {
   const [contract, setContract] = useState<Contract | null>(null);
   const [loading, setLoading] = useState(true);
@@ -471,6 +490,10 @@ export const ContractDetailScreen: React.FC<ContractDetailScreenProps> = ({
               party={party}
               isMe={party.role === contract.myRole}
               currency={contract.currency}
+              onPress={party.role !== contract.myRole && onViewUserProfile
+                ? () => onViewUserProfile(party)
+                : undefined
+              }
             />
           ))}
         </View>
@@ -736,6 +759,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6B7280',
     marginTop: 2,
+  },
+  viewProfileHint: {
+    fontSize: 20,
+    color: '#9CA3AF',
+    fontWeight: '300',
   },
   partyStake: {
     alignItems: 'center',

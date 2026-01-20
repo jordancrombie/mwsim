@@ -43,6 +43,7 @@ import { SuccessAnimation } from './src/components/SuccessAnimation';
 import { MerchantPaymentSuccess } from './src/components/MerchantPaymentSuccess';
 import { SettingsScreen } from './src/screens/Settings';
 import { ProfileEditScreen } from './src/screens/ProfileEdit';
+import { UserProfileScreen, UserProfileData } from './src/screens/UserProfile';
 import { MerchantProfileEditScreen } from './src/screens/MerchantProfileEdit';
 import { ContractsListScreen } from './src/screens/ContractsList';
 import { ContractDetailScreen } from './src/screens/ContractDetail';
@@ -103,7 +104,9 @@ type Screen =
   | 'contractDetail'
   | 'createContract'
   // IDV screens
-  | 'idVerification';
+  | 'idVerification'
+  // User profile screen (viewing other users)
+  | 'userProfile';
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
@@ -329,6 +332,10 @@ export default function App() {
   // Pitch page state (promotional screens shown on login)
   const [activePitchPage, setActivePitchPage] = useState<PitchPage | null>(null);
   const [showPitchPage, setShowPitchPage] = useState(false);
+
+  // User profile view state (for viewing other users)
+  const [viewingUserProfile, setViewingUserProfile] = useState<UserProfileData | null>(null);
+  const [userProfileReturnScreen, setUserProfileReturnScreen] = useState<Screen>('home');
 
   // Alias Management screen state
   const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
@@ -3310,7 +3317,11 @@ export default function App() {
         <View style={styles.homeContent}>
           {/* Header */}
           <View style={styles.homeHeader}>
-            <View style={styles.homeHeaderLeft}>
+            <TouchableOpacity
+              style={styles.homeHeaderLeft}
+              onPress={() => setCurrentScreen('profileEdit')}
+              activeOpacity={0.7}
+            >
               <ProfileAvatar
                 imageUrl={user?.profileImageUrl}
                 displayName={user?.name || 'User'}
@@ -3334,7 +3345,7 @@ export default function App() {
                   <Text style={styles.envBadgeInlineText}>{getEnvironmentName()}</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setCurrentScreen('settings')}
               style={styles.settingsButton}
@@ -4810,10 +4821,34 @@ export default function App() {
               <Text style={styles.transferDetailSectionTitle}>
                 {isViewingMerchantPayment ? 'Payment from' : isSent ? 'Sent to' : 'Received from'}
               </Text>
-              <View style={[
-                styles.transferDetailInfoCard,
-                { flexDirection: 'row', alignItems: 'center' }
-              ]}>
+              <TouchableOpacity
+                style={[
+                  styles.transferDetailInfoCard,
+                  { flexDirection: 'row', alignItems: 'center' }
+                ]}
+                activeOpacity={isViewingMerchantPayment ? 1 : 0.7}
+                onPress={() => {
+                  if (!isViewingMerchantPayment) {
+                    // Open user profile for the counterparty
+                    // Pass raw displayName and alias separately so UserProfile can show them correctly
+                    setViewingUserProfile({
+                      displayName: rawDisplayName || rawAlias || 'Unknown',
+                      alias: rawAlias,
+                      profileImageUrl: isSent
+                        ? selectedTransfer.recipientProfileImageUrl
+                        : selectedTransfer.senderProfileImageUrl,
+                      isVerified: isSent
+                        ? selectedTransfer.recipientIsVerified
+                        : selectedTransfer.senderIsVerified,
+                      verificationLevel: isSent
+                        ? selectedTransfer.recipientVerificationLevel
+                        : selectedTransfer.senderVerificationLevel,
+                    });
+                    setUserProfileReturnScreen('transferDetail');
+                    setCurrentScreen('userProfile');
+                  }
+                }}
+              >
                 {isViewingMerchantPayment ? (
                   <View style={[
                     styles.transferDetailPersonIcon,
@@ -4847,7 +4882,10 @@ export default function App() {
                     <Text style={styles.transferDetailPersonBank}>{counterpartyBank}</Text>
                   )}
                 </View>
-              </View>
+                {!isViewingMerchantPayment && (
+                  <Text style={{ fontSize: 16, color: '#9ca3af' }}>›</Text>
+                )}
+              </TouchableOpacity>
             </View>
 
             {/* Fee Breakdown for Merchant Payments */}
@@ -5486,6 +5524,18 @@ export default function App() {
           // Refresh will happen when returning to list
         }}
         refreshTrigger={contractRefreshTrigger}
+        onViewUserProfile={(party) => {
+          setViewingUserProfile({
+            id: party.id,
+            displayName: party.displayName,
+            profileImageUrl: party.profileImageUrl,
+            initialsColor: party.initialsColor,
+            isVerified: party.isVerified,
+            verificationLevel: party.verificationLevel,
+          });
+          setUserProfileReturnScreen('contractDetail');
+          setCurrentScreen('userProfile');
+        }}
       />
     );
   }
@@ -5594,6 +5644,19 @@ export default function App() {
         isDevelopment={isDevelopment()}
         appVersion={Constants.expoConfig?.version ?? '0.0.0'}
         buildNumber={Constants.expoConfig?.ios?.buildNumber ?? '0'}
+      />
+    );
+  }
+
+  // User Profile Screen (viewing another user's profile)
+  if (currentScreen === 'userProfile' && viewingUserProfile) {
+    return (
+      <UserProfileScreen
+        user={viewingUserProfile}
+        onBack={() => {
+          setViewingUserProfile(null);
+          setCurrentScreen(userProfileReturnScreen);
+        }}
       />
     );
   }

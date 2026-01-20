@@ -2,6 +2,26 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [2.0.5] - 2026-01-20
+
+### Added
+- **Welcome Tutorial**: Multi-page swipeable onboarding tutorial for new users
+  - 5 pages covering: Cards, P2P Transfers, Business Payments, Contracts, Settings
+  - Shows on first login after install (priority 200, above other pitch pages)
+  - Swipe navigation with page indicator dots
+  - "Next" and "Skip to End" buttons on intermediate pages
+- **Profile Navigation**: Tap avatars to view profiles
+  - Home screen avatar → Edit Profile (self)
+  - Transfer detail counterparty → View User Profile
+  - Contract detail party → View User Profile
+- **User Profile Screen**: Read-only profile view for other users
+  - Shows avatar, display name, and alias
+  - Trust status with verification level and badge
+  - "What This Means" explanation card
+- **Trust Status in Edit Profile**: Shows user's own verification status
+  - Displays verification level (Unverified/Silver/Gold)
+  - Link to verify identity if not verified
+
 ## [2.0.4] - 2026-01-20
 
 ### Fixed
