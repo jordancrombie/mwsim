@@ -49,6 +49,8 @@ import { CreateContractScreen } from './src/screens/CreateContract';
 import { IDVerificationScreen, type VerificationFlowResult } from './src/screens/IDVerification';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
 import { NearbyUsersPanel } from './src/components/NearbyUsersPanel';
+import { PitchPageModal } from './src/components/PitchPageModal';
+import { getPitchPageForUser, PitchPage, PitchPageUserContext } from './src/services/pitchPages';
 import {
   registerForDiscovery,
   startAdvertising,
@@ -322,6 +324,10 @@ export default function App() {
   // Notification-triggered refresh triggers
   const [transferHistoryRefreshTrigger, setTransferHistoryRefreshTrigger] = useState(0);
   const [p2pHomeRefreshTrigger, setP2pHomeRefreshTrigger] = useState(0);
+
+  // Pitch page state (promotional screens shown on login)
+  const [activePitchPage, setActivePitchPage] = useState<PitchPage | null>(null);
+  const [showPitchPage, setShowPitchPage] = useState(false);
 
   // Alias Management screen state
   const [newAliasType, setNewAliasType] = useState<'USERNAME' | 'EMAIL' | 'PHONE'>('USERNAME');
@@ -930,6 +936,53 @@ export default function App() {
     setCurrentScreen('home');
   };
 
+  /**
+   * Check for pitch pages to show the user.
+   * Called after login/session restore, before showing home screen.
+   */
+  const checkAndShowPitchPage = async (userContext: PitchPageUserContext): Promise<boolean> => {
+    console.log('[PitchPage] Checking for pitch pages...');
+    try {
+      const pitchPage = await getPitchPageForUser(userContext);
+      if (pitchPage) {
+        console.log('[PitchPage] Found pitch page to show:', pitchPage.id);
+        setActivePitchPage(pitchPage);
+        setShowPitchPage(true);
+        return true; // Indicates a pitch page will be shown
+      }
+      console.log('[PitchPage] No pitch pages to show');
+    } catch (error) {
+      console.error('[PitchPage] Error checking pitch pages:', error);
+    }
+    return false; // No pitch page to show
+  };
+
+  /**
+   * Handle pitch page dismissal - navigate to home screen.
+   */
+  const handlePitchPageDismiss = () => {
+    console.log('[PitchPage] Pitch page dismissed');
+    setShowPitchPage(false);
+    setActivePitchPage(null);
+    setCurrentScreen('home');
+  };
+
+  /**
+   * Handle pitch page CTA navigation.
+   */
+  const handlePitchPageNavigate = (screen: string) => {
+    console.log('[PitchPage] Navigating to:', screen);
+    setShowPitchPage(false);
+    setActivePitchPage(null);
+    // Navigate to the requested screen
+    if (screen === 'settings') {
+      setCurrentScreen('settings');
+    } else {
+      // Default to home for unknown screens
+      setCurrentScreen('home');
+    }
+  };
+
   const initializeApp = async () => {
     console.log('[initializeApp] Starting...');
     try {
@@ -972,7 +1025,16 @@ export default function App() {
           });
           setUser(summary.user);
           setCards(summary.cards || []);
-          setCurrentScreen('home');
+
+          // Check for pitch pages before going to home
+          const hasPitchPage = await checkAndShowPitchPage({
+            isVerified: summary.user.isVerified,
+            verificationLevel: summary.user.verificationLevel,
+          });
+          if (!hasPitchPage) {
+            setCurrentScreen('home');
+          }
+          // If hasPitchPage is true, the modal will show and navigate to home when dismissed
 
           // Fetch profile to get profileImageUrl (not returned by wallet summary)
           console.log('[initializeApp] Fetching profile for image URL...');
@@ -3227,6 +3289,17 @@ export default function App() {
     return (
       <View style={styles.container}>
         <StatusBar style="dark" />
+
+        {/* Pitch Page Modal - shown on login for eligible users */}
+        {activePitchPage && (
+          <PitchPageModal
+            pitchPage={activePitchPage}
+            visible={showPitchPage}
+            onDismiss={handlePitchPageDismiss}
+            onNavigate={handlePitchPageNavigate}
+          />
+        )}
+
         <View style={styles.homeContent}>
           {/* Header */}
           <View style={styles.homeHeader}>

@@ -2,6 +2,17 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [2.0.3] - 2026-01-20
+
+### Added
+- **Pitch Page System**: Promotional screens shown to users on login based on eligibility
+  - First pitch page: "Become a Trusted User" for unverified users
+  - Explains benefits: Higher transfer limits, more QR codes, business payments
+  - Instructions on how to verify identity
+  - "Don't show again" checkbox for permanent dismissal
+  - Client-side MVP with local dismissal tracking
+  - WSIM server-side proposal for future: dynamic content, cross-device sync
+
 ## [2.0.2] - 2026-01-20
 
 ### Fixed
