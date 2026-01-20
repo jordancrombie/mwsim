@@ -6,6 +6,11 @@ All notable changes to mwsim are documented in this file.
 
 ### Added
 - **Pitch Page System**: Promotional screens shown to users on login based on eligibility
+
+### Fixed
+- **Settings Version Display**: App version and build number now dynamically read from app config
+  - Previously showed hardcoded "1.5.12" instead of actual version
+  - Uses expo-constants to read version from app.json at runtime
   - First pitch page: "Become a Trusted User" for unverified users
   - Explains benefits: Higher transfer limits, more QR codes, business payments
   - Instructions on how to verify identity

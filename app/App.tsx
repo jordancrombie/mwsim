@@ -23,6 +23,7 @@ import {
 import Svg, { Path } from 'react-native-svg';
 import { StatusBar } from 'expo-status-bar';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -5585,8 +5586,8 @@ export default function App() {
         }}
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
-        appVersion="1.5.12"
-        buildNumber="80"
+        appVersion={Constants.expoConfig?.version ?? '0.0.0'}
+        buildNumber={Constants.expoConfig?.ios?.buildNumber ?? '0'}
       />
     );
   }
