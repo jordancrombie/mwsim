@@ -1347,7 +1347,7 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
           {/* Progress indicator at top */}
           <View style={styles.livenessProgressOverlay}>
             <Text style={styles.livenessProgressTextWhite}>
-              Challenge {progress + 1} of {total}
+              Challenge {Math.min(progress + 1, total)} of {total}
             </Text>
             <View style={styles.livenessProgressBarOverlay}>
               <View style={[styles.livenessProgressFillOverlay, { width: `${(progress / total) * 100}%` }]} />
