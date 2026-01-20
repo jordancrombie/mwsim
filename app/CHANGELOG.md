@@ -2,6 +2,13 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [2.0.2] - 2026-01-20
+
+### Fixed
+- **Transfer Notification Sender Display**: Fixed "Unknown" showing for sender when opening transfer from push notification
+  - Notification data now passes sender name through to deep link handler
+  - Uses notification sender name as fallback when TransferSim API doesn't return profile data
+
 ## [2.0.1] - 2026-01-19
 
 ### Added

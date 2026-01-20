@@ -1073,6 +1073,14 @@ export default function App() {
           console.log('[Notifications] Deep linking to transfer:', params.transferId);
           try {
             const transfer = await transferSimApi.getTransferById(params.transferId);
+
+            // Use notification data as fallback for sender info
+            // (TransferSim API may not return sender profile data)
+            if (transfer.direction === 'received' && !transfer.senderDisplayName && params.senderName) {
+              console.log('[Notifications] Using notification senderName as fallback:', params.senderName);
+              transfer.senderDisplayName = params.senderName;
+            }
+
             setSelectedTransfer(transfer);
             setTransferDetailReturnScreen('transferHistory');
             setCurrentScreen('transferDetail');

@@ -243,6 +243,21 @@ export function handleNotificationResponse(
   if (typeof data.screen === 'string') {
     const screen = data.screen as DeepLinkScreenName;
     const params = (data.params as Record<string, any>) || {};
+
+    // For TransferDetail, include additional notification data as fallback
+    // (in case TransferSim API doesn't return sender info)
+    if (screen === 'TransferDetail') {
+      if (data.senderName && typeof data.senderName === 'string') {
+        params.senderName = data.senderName;
+      }
+      if (data.amount !== undefined) {
+        params.amount = data.amount;
+      }
+      if (data.currency && typeof data.currency === 'string') {
+        params.currency = data.currency;
+      }
+    }
+
     console.log('[Notifications] Using screen-based deep link:', screen, params);
     return { screen, params };
   }
@@ -259,9 +274,16 @@ export function handleNotificationResponse(
   // LEGACY FORMAT: transferId only
   if (typeof data.transferId === 'string') {
     console.log('[Notifications] Using legacy transferId:', data.transferId);
+    const params: Record<string, any> = { transferId: data.transferId };
+
+    // Include additional notification data as fallback
+    if (data.senderName && typeof data.senderName === 'string') {
+      params.senderName = data.senderName;
+    }
+
     return {
       screen: 'TransferDetail',
-      params: { transferId: data.transferId }
+      params
     };
   }
 
