@@ -120,35 +120,62 @@ function isUUID(value: string | undefined | null): boolean {
 }
 
 /**
- * Profile data returned from WSIM's internal profile API.
+ * Profile data returned from WSIM's mobile profile lookup API.
  */
 interface ProfileData {
   displayName?: string;
   profileImageUrl?: string;
+  initials?: string;
   initialsColor?: string;
+  isVerified?: boolean;
+  verificationLevel?: 'none' | 'basic' | 'enhanced';
 }
 
 /**
- * Resolves a user ID to profile data via WSIM's internal profile API.
+ * WSIM profile lookup response format
+ */
+interface ProfileLookupResponse {
+  success: boolean;
+  profile?: ProfileData;
+}
+
+/**
+ * Resolves a BSIM user ID to profile data via WSIM's mobile profile lookup API.
+ * Used for regular P2P transfers where the UUID is a BSIM user ID.
  * Returns null if the profile cannot be resolved.
  */
-async function resolveProfile(userId: string, bsimId: string): Promise<ProfileData | null> {
+async function resolveProfileByBsimUser(userId: string, bsimId: string): Promise<ProfileData | null> {
   try {
     const config = getEnvironmentConfig();
-    // The internal profile endpoint is at the WSIM API base URL (without /api suffix)
     const wsimBaseUrl = config.apiUrl.replace(/\/api$/, '');
-    const url = `${wsimBaseUrl}/api/internal/profile?bsimUserId=${encodeURIComponent(userId)}&bsimId=${encodeURIComponent(bsimId)}`;
+    const url = `${wsimBaseUrl}/api/mobile/profile/lookup?bsimUserId=${encodeURIComponent(userId)}&bsimId=${encodeURIComponent(bsimId)}`;
 
-    console.log('[TransferSim] Resolving profile for:', userId);
-    const response = await axios.get<ProfileData>(url, { timeout: 5000 });
-
-    if (response.data) {
-      console.log('[TransferSim] Resolved profile:', response.data.displayName);
-      return response.data;
+    const token = await secureStorage.getAccessToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
     }
+
+    console.log('[TransferSim] Resolving profile by bsimUserId:', userId);
+    console.log('[TransferSim] bsimId:', bsimId);
+    console.log('[TransferSim] URL:', url);
+    console.log('[TransferSim] Has token:', !!token);
+
+    const response = await axios.get<ProfileLookupResponse>(url, { timeout: 5000, headers });
+
+    console.log('[TransferSim] bsimUserId lookup - HTTP status:', response.status);
+    console.log('[TransferSim] bsimUserId lookup - response:', JSON.stringify(response.data));
+
+    // WSIM returns { success: true, profile: {...} } format
+    if (response.data?.profile) {
+      console.log('[TransferSim] Resolved profile by bsimUserId:', response.data.profile.displayName);
+      return response.data.profile;
+    }
+    console.log('[TransferSim] bsimUserId lookup - no profile in response');
     return null;
-  } catch (error) {
-    console.log('[TransferSim] Failed to resolve profile for:', userId, error);
+  } catch (error: any) {
+    console.log('[TransferSim] Failed to resolve profile by bsimUserId:', userId);
+    console.log('[TransferSim] Error:', error.message, error.response?.status, JSON.stringify(error.response?.data));
     return null;
   }
 }
@@ -156,6 +183,11 @@ async function resolveProfile(userId: string, bsimId: string): Promise<ProfileDa
 /**
  * Batch resolves profiles for transfers that have UUID aliases.
  * Enriches the transfers in place with display names and profile images.
+ *
+ * All transfers (including contract settlements) use bsimUserId + bsimId lookup.
+ * The UUID in transfer data (recipientAlias/senderAlias) is always a fiUserRef (BSIM user ID),
+ * not a walletId. This is because TransferSim/BSIM creates the transfer records and only
+ * knows BSIM identifiers.
  */
 async function enrichTransfersWithProfiles(transfers: Transfer[], bsimId: string): Promise<Transfer[]> {
   // Collect all unique UUIDs that need resolution
@@ -164,9 +196,11 @@ async function enrichTransfersWithProfiles(transfers: Transfer[], bsimId: string
   for (const transfer of transfers) {
     if (transfer.direction === 'sent' && isUUID(transfer.recipientAlias) && !transfer.recipientDisplayName) {
       uuidsToResolve.add(transfer.recipientAlias!);
+      console.log('[TransferSim] Will resolve bsimUserId for sent transfer:', transfer.recipientAlias);
     }
     if (transfer.direction === 'received' && isUUID(transfer.senderAlias) && !transfer.senderDisplayName) {
       uuidsToResolve.add(transfer.senderAlias!);
+      console.log('[TransferSim] Will resolve bsimUserId for received transfer:', transfer.senderAlias);
     }
   }
 
@@ -174,18 +208,20 @@ async function enrichTransfersWithProfiles(transfers: Transfer[], bsimId: string
     return transfers;
   }
 
-  console.log('[TransferSim] Resolving', uuidsToResolve.size, 'UUID profiles');
+  console.log('[TransferSim] Resolving', uuidsToResolve.size, 'profile(s) by bsimUserId');
 
-  // Resolve all profiles in parallel
+  // Resolve all profiles in parallel using bsimUserId + bsimId
   const profileMap = new Map<string, ProfileData>();
-  const resolvePromises = Array.from(uuidsToResolve).map(async (uuid) => {
-    const profile = await resolveProfile(uuid, bsimId);
+  const resolvePromises = Array.from(uuidsToResolve).map(async (fiUserRef) => {
+    const profile = await resolveProfileByBsimUser(fiUserRef, bsimId);
     if (profile) {
-      profileMap.set(uuid, profile);
+      profileMap.set(fiUserRef, profile);
     }
   });
 
   await Promise.all(resolvePromises);
+
+  console.log('[TransferSim] Resolved', profileMap.size, 'profiles out of', uuidsToResolve.size);
 
   // Enrich transfers with resolved profiles
   return transfers.map(transfer => {

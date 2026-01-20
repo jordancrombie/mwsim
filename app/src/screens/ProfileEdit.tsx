@@ -14,7 +14,14 @@ import {
 import { ProfileAvatar } from '../components/ProfileAvatar';
 
 interface ProfileEditScreenProps {
-  user: { id?: string; name: string; email: string; profileImageUrl?: string | null } | null;
+  user: {
+    id?: string;
+    name: string;
+    email: string;
+    profileImageUrl?: string | null;
+    isVerified?: boolean;
+    verificationLevel?: 'none' | 'basic' | 'enhanced';
+  } | null;
   onBack: () => void;
   onSave: (displayName: string, imageUri?: string | null) => Promise<void>;
   onPickImage: () => Promise<string | null>;
@@ -164,6 +171,8 @@ export const ProfileEditScreen: React.FC<ProfileEditScreenProps> = ({
                 displayName={displayName || user?.name || 'User'}
                 size="large"
                 userId={user?.id}
+                isVerified={user?.isVerified}
+                verificationLevel={user?.verificationLevel}
               />
               <View style={styles.avatarBadge}>
                 <Text style={styles.avatarBadgeText}>Edit</Text>

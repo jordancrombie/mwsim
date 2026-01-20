@@ -9,7 +9,8 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import Constants from 'expo-constants';
-import { getDeviceId } from './deviceId';
+import { secureStorage } from './secureStorage';
+import { api } from './api';
 
 // ============================================================================
 // Types
@@ -69,6 +70,7 @@ export type VerificationLevel = 'none' | 'basic' | 'enhanced';
 // ============================================================================
 
 const DEVICE_KEY_STORAGE_KEY = 'verification_device_key';
+const DEVICE_KEY_REGISTERED_KEY = 'verification_device_key_registered';
 const NAME_MATCH_THRESHOLD = 0.85; // 85% similarity required
 const FACE_MATCH_THRESHOLD = 0.70; // 70% similarity required
 
@@ -178,8 +180,24 @@ function parseProfileName(displayName: string): { firstName: string; lastName: s
 }
 
 /**
+ * Extract first name from a potentially multi-part given name.
+ * Passport first name may include middle names (e.g., "BOB WILLIAM").
+ * Returns just the first part for comparison with profile first name.
+ */
+function extractFirstNameOnly(fullFirstName: string): string {
+  const parts = fullFirstName.trim().split(/\s+/);
+  return parts[0] || fullFirstName;
+}
+
+/**
  * Compare passport name against profile name.
- * Handles name order differences and uses fuzzy matching.
+ * Handles name order differences, middle names, and uses fuzzy matching.
+ *
+ * Middle name handling:
+ * - Profile typically has "First Last" (e.g., "Bob Smith")
+ * - Passport may have "First Middle" in firstName field (e.g., "Bob William")
+ * - We extract just the first part of passport firstName for comparison
+ * - If first and last names match, the verification passes regardless of middle names
  */
 export function matchNames(
   passportFirstName: string,
@@ -188,12 +206,17 @@ export function matchNames(
 ): NameMatchResult {
   const { firstName: profileFirst, lastName: profileLast } = parseProfileName(profileDisplayName);
 
+  // Extract just the first name from passport (handles "BOB WILLIAM" → "BOB")
+  const passportFirstOnly = extractFirstNameOnly(passportFirstName);
+  const hasMiddleName = passportFirstName.trim().split(/\s+/).length > 1;
+
   // Calculate individual name similarities
-  const firstNameScore = calculateSimilarity(passportFirstName, profileFirst);
+  // Compare the extracted first name (without middle) to profile first name
+  const firstNameScore = calculateSimilarity(passportFirstOnly, profileFirst);
   const lastNameScore = calculateSimilarity(passportLastName, profileLast);
 
   // Also try swapped order (in case profile has names reversed)
-  const swappedFirstScore = calculateSimilarity(passportFirstName, profileLast);
+  const swappedFirstScore = calculateSimilarity(passportFirstOnly, profileLast);
   const swappedLastScore = calculateSimilarity(passportLastName, profileFirst);
 
   // Use best match (normal or swapped)
@@ -209,14 +232,20 @@ export function matchNames(
   const firstNameMatch = bestFirstScore >= 0.8;
   const lastNameMatch = bestLastScore >= 0.8;
 
-  // Overall pass requires threshold AND at least one strong match
-  const passed = overallScore >= NAME_MATCH_THRESHOLD && (firstNameMatch || lastNameMatch);
+  // Pass conditions:
+  // 1. Standard: overall score meets threshold AND at least one strong match
+  // 2. Middle name case: if passport has middle name and both first AND last match strongly,
+  //    we pass even if overall score is slightly lower due to middle name presence
+  const standardPass = overallScore >= NAME_MATCH_THRESHOLD && (firstNameMatch || lastNameMatch);
+  const middleNamePass = hasMiddleName && firstNameMatch && lastNameMatch;
+  const passed = standardPass || middleNamePass;
 
+  // For display, show the full passport first name but note it includes middle name
   return {
     score: overallScore,
     passed,
     firstName: {
-      passport: passportFirstName,
+      passport: passportFirstName, // Show full name including middle for transparency
       profile: useSwapped ? profileLast : profileFirst,
       match: firstNameMatch,
       score: bestFirstScore,
@@ -281,20 +310,58 @@ export function getVerificationLevel(result: VerificationResult): VerificationLe
 /**
  * Get or create a device-specific signing key.
  * The key is stored securely and used for HMAC signing.
+ * Also ensures the key is registered with WSIM for signature verification.
  */
 async function getOrCreateDeviceKey(): Promise<string> {
   let key = await SecureStore.getItemAsync(DEVICE_KEY_STORAGE_KEY);
+  let isNewKey = false;
 
   if (!key) {
     // Generate a new random key
     const randomBytes = await Crypto.getRandomBytesAsync(32);
-    key = Array.from(randomBytes)
+    key = Array.from(randomBytes as Uint8Array)
       .map((b) => b.toString(16).padStart(2, '0'))
       .join('');
     await SecureStore.setItemAsync(DEVICE_KEY_STORAGE_KEY, key);
+    isNewKey = true;
+  }
+
+  // Check if key is registered with WSIM
+  const isRegistered = await SecureStore.getItemAsync(DEVICE_KEY_REGISTERED_KEY);
+
+  if (!isRegistered || isNewKey) {
+    // Register the key with WSIM
+    const deviceId = await secureStorage.getDeviceId();
+    if (deviceId) {
+      try {
+        console.log('[Verification] Registering device key with WSIM...');
+        await api.registerDeviceKey(deviceId, key);
+        await SecureStore.setItemAsync(DEVICE_KEY_REGISTERED_KEY, 'true');
+        console.log('[Verification] Device key registered successfully');
+      } catch (error) {
+        console.error('[Verification] Failed to register device key:', error);
+        // Don't throw - we'll try again on next verification attempt
+        // The server will reject unverified signatures, prompting a retry
+      }
+    }
   }
 
   return key;
+}
+
+/**
+ * Ensure device key is registered with WSIM.
+ * Call this proactively (e.g., after login) to ensure key is ready for verification.
+ */
+export async function ensureDeviceKeyRegistered(): Promise<boolean> {
+  try {
+    await getOrCreateDeviceKey();
+    const isRegistered = await SecureStore.getItemAsync(DEVICE_KEY_REGISTERED_KEY);
+    return isRegistered === 'true';
+  } catch (error) {
+    console.error('[Verification] Failed to ensure device key registered:', error);
+    return false;
+  }
 }
 
 /**
@@ -339,7 +406,11 @@ function base64Encode(data: string): string {
 export async function createSignedVerification(
   result: VerificationResult
 ): Promise<SignedVerification> {
-  const deviceId = await getDeviceId();
+  const deviceId = await secureStorage.getDeviceId();
+  if (!deviceId) {
+    throw new Error('Device ID not found. Please ensure device is registered.');
+  }
+
   const deviceKey = await getOrCreateDeviceKey();
 
   const payload = JSON.stringify(result);

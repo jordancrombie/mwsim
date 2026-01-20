@@ -15,7 +15,9 @@ import type {
   ContractListItem,
   CreateContractRequest,
   OracleEvent,
+  VerificationLevel,
 } from '../types';
+import type { SignedVerification } from './verification';
 
 // Create axios instance with current environment config
 const createApiClient = (): AxiosInstance => {
@@ -79,6 +81,80 @@ const apiClient = createApiClient();
 declare module 'axios' {
   export interface InternalAxiosRequestConfig {
     _retry?: boolean;
+  }
+}
+
+// UUID regex for detecting raw user IDs that need profile resolution
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Check if a string looks like a UUID (raw user ID)
+ */
+function isUUID(value: string | undefined | null): boolean {
+  return !!value && UUID_REGEX.test(value);
+}
+
+/**
+ * Profile data for counterparty resolution
+ */
+interface ProfileLookupResult {
+  displayName?: string;
+  profileImageUrl?: string;
+  initials?: string;
+  initialsColor?: string;
+  isVerified?: boolean;
+  verificationLevel?: string;
+}
+
+/**
+ * WSIM profile lookup response format (wrapped in success/profile)
+ */
+interface ProfileLookupResponse {
+  success: boolean;
+  profile?: ProfileLookupResult;
+}
+
+/**
+ * Resolve a WSIM wallet ID to profile data via WSIM's mobile profile lookup API.
+ * Uses the walletId parameter for contract counterparty resolution.
+ */
+async function resolveProfileByWalletId(walletId: string): Promise<ProfileLookupResult | null> {
+  try {
+    const token = await secureStorage.getAccessToken();
+    if (!token) {
+      console.log('[API] resolveProfileByWalletId - NO TOKEN available');
+      return null;
+    }
+
+    const config = getConfig();
+    const url = `${config.apiUrl}/mobile/profile/lookup?walletId=${encodeURIComponent(walletId)}`;
+
+    console.log('[API] resolveProfileByWalletId - START');
+    console.log('[API] resolveProfileByWalletId - walletId:', walletId);
+    console.log('[API] resolveProfileByWalletId - URL:', url);
+
+    const response = await axios.get<ProfileLookupResponse>(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 5000,
+    });
+
+    console.log('[API] resolveProfileByWalletId - HTTP status:', response.status);
+    console.log('[API] resolveProfileByWalletId - response data:', JSON.stringify(response.data, null, 2));
+
+    // WSIM returns { success: true, profile: {...} } format
+    if (response.data?.profile) {
+      console.log('[API] resolveProfileByWalletId - SUCCESS - displayName:', response.data.profile.displayName);
+      return response.data.profile;
+    }
+    console.log('[API] resolveProfileByWalletId - no profile in response');
+    return null;
+  } catch (error: any) {
+    console.log('[API] resolveProfileByWalletId - ERROR');
+    console.log('[API] resolveProfileByWalletId - walletId:', walletId);
+    console.log('[API] resolveProfileByWalletId - error message:', error.message);
+    console.log('[API] resolveProfileByWalletId - error status:', error.response?.status);
+    console.log('[API] resolveProfileByWalletId - error data:', JSON.stringify(error.response?.data, null, 2));
+    return null;
   }
 }
 
@@ -230,15 +306,43 @@ export const api = {
       await secureStorage.setCachedCards(data.cards);
     }
     if (data.user) {
-      // Preserve existing profileImageUrl if API doesn't return it
-      // (profileImageUrl comes from /profile endpoint, not wallet summary)
-      const existingUser = await secureStorage.getUserData<{ profileImageUrl?: string | null }>();
+      // Get cached user data for fields not returned by wallet/summary
+      const existingUser = await secureStorage.getUserData<{
+        profileImageUrl?: string | null;
+        isVerified?: boolean;
+        verifiedAt?: string;
+        verificationLevel?: string;
+      }>();
+
+      // Log what we're merging for debugging
+      console.log('[API] getWalletSummary - server user verification:', {
+        isVerified: data.user.isVerified,
+        verificationLevel: data.user.verificationLevel,
+        hasField: 'isVerified' in data.user,
+      });
+      console.log('[API] getWalletSummary - cached user verification:', {
+        isVerified: existingUser?.isVerified,
+        verificationLevel: existingUser?.verificationLevel,
+      });
+
+      // Preserve verification status from cache if server doesn't return it
+      // Use explicit check for undefined since server might not include these fields
       const mergedUser = {
         ...data.user,
         profileImageUrl: data.user.profileImageUrl ?? existingUser?.profileImageUrl,
+        // Only use server value if it's explicitly true; otherwise preserve cache
+        // This handles the case where WSIM doesn't return verification fields yet
+        isVerified: data.user.isVerified === true ? true : (existingUser?.isVerified ?? false),
+        verifiedAt: data.user.verifiedAt || existingUser?.verifiedAt || null,
+        verificationLevel: data.user.verificationLevel || existingUser?.verificationLevel || 'none',
       };
+
+      console.log('[API] getWalletSummary - merged verification:', {
+        isVerified: mergedUser.isVerified,
+        verificationLevel: mergedUser.verificationLevel,
+      });
+
       await secureStorage.setUserData(mergedUser);
-      // Return the merged user so callers get the preserved profileImageUrl
       data.user = mergedUser;
     }
 
@@ -587,14 +691,81 @@ export const api = {
     }
     const { data } = await apiClient.get('/mobile/contracts', { params });
     console.log('[API] getContracts - received:', data.contracts?.length || 0, 'contracts');
+
+    // Enrich contracts with resolved profiles for UUID counterparty names
+    let contracts = data.contracts || [];
+    console.log('[API] getContracts - starting profile enrichment for', contracts.length, 'contracts');
+
+    if (contracts.length > 0) {
+      // Collect all unique wallet IDs that need resolution
+      const walletIdsToResolve = new Set<string>();
+      for (const c of contracts) {
+        console.log(`[API] Contract ${c.id}:`);
+        console.log(`  - counterpartyId: ${c.counterpartyId || 'NOT SET'}`);
+        console.log(`  - counterpartyName: ${c.counterpartyName}`);
+        console.log(`  - counterpartyName isUUID: ${isUUID(c.counterpartyName)}`);
+        console.log(`  - counterpartyProfileImageUrl: ${c.counterpartyProfileImageUrl || 'NOT SET'}`);
+
+        // Check if counterpartyId or counterpartyName is a UUID that needs resolution
+        const walletId = c.counterpartyId || (isUUID(c.counterpartyName) ? c.counterpartyName : null);
+        console.log(`  - walletId for lookup: ${walletId || 'NONE'}`);
+
+        if (walletId && isUUID(walletId) && !c.counterpartyProfileImageUrl) {
+          walletIdsToResolve.add(walletId);
+          console.log(`  - ADDING to resolution queue`);
+        } else {
+          console.log(`  - SKIPPING resolution (walletId=${!!walletId}, isUUID=${isUUID(walletId || '')}, hasProfileImage=${!!c.counterpartyProfileImageUrl})`);
+        }
+      }
+
+      console.log('[API] getContracts - walletIds to resolve:', Array.from(walletIdsToResolve));
+
+      if (walletIdsToResolve.size > 0) {
+        console.log('[API] Resolving', walletIdsToResolve.size, 'contract counterparty profile(s) by walletId');
+
+        // Resolve all profiles in parallel using walletId
+        const profileMap = new Map<string, ProfileLookupResult>();
+        const resolvePromises = Array.from(walletIdsToResolve).map(async (walletId) => {
+          const profile = await resolveProfileByWalletId(walletId);
+          console.log(`[API] Profile resolution result for ${walletId}:`, profile ? 'FOUND' : 'NOT FOUND');
+          if (profile) {
+            console.log(`[API] Profile for ${walletId}: displayName=${profile.displayName}, profileImageUrl=${profile.profileImageUrl || 'NOT SET'}`);
+            profileMap.set(walletId, profile);
+          }
+        });
+        await Promise.all(resolvePromises);
+
+        console.log('[API] getContracts - profileMap size after resolution:', profileMap.size);
+
+        // Enrich contracts with resolved profiles
+        contracts = contracts.map((c: ContractListItem) => {
+          const walletId = c.counterpartyId || (isUUID(c.counterpartyName) ? c.counterpartyName : null);
+          if (walletId && profileMap.has(walletId)) {
+            const profile = profileMap.get(walletId)!;
+            console.log(`[API] Enriching contract ${c.id}: ${c.counterpartyName} -> ${profile.displayName}`);
+            return {
+              ...c,
+              counterpartyName: profile.displayName || c.counterpartyName,
+              counterpartyProfileImageUrl: profile.profileImageUrl || c.counterpartyProfileImageUrl,
+              counterpartyInitialsColor: profile.initialsColor || c.counterpartyInitialsColor,
+            };
+          }
+          return c;
+        });
+      } else {
+        console.log('[API] getContracts - no walletIds need resolution');
+      }
+    }
+
     // Debug: Log profile image URLs for contracts
-    if (data.contracts?.length > 0) {
-      data.contracts.forEach((c: ContractListItem) => {
-        console.log(`[API] Contract ${c.id} - counterpartyProfileImageUrl:`, c.counterpartyProfileImageUrl || 'NOT SET');
+    if (contracts.length > 0) {
+      contracts.forEach((c: ContractListItem) => {
+        console.log(`[API] Contract ${c.id} - counterparty:`, c.counterpartyName, '- profileImageUrl:', c.counterpartyProfileImageUrl || 'NOT SET');
       });
     }
+
     return {
-      contracts: data.contracts || [],
+      contracts,
       total: data.total || 0,
     };
   },
@@ -609,12 +780,67 @@ export const api = {
     console.log('[API] getContract - fetching:', contractId);
     const { data } = await apiClient.get(`/mobile/contracts/${contractId}`);
     console.log('[API] getContract - received:', data);
-    // Debug: Log party profile image URLs
+
+    // Enrich parties with resolved profiles if displayName is a UUID (using walletId lookup)
+    if (data.parties?.length > 0) {
+      const walletIdsToResolve = new Set<string>();
+      for (const p of data.parties) {
+        const walletId = p.userId || (isUUID(p.displayName) ? p.displayName : null);
+        if (walletId && isUUID(walletId) && !p.profileImageUrl) {
+          walletIdsToResolve.add(walletId);
+          console.log(`[API] Contract party displayName is UUID:`, p.displayName);
+        }
+      }
+
+      if (walletIdsToResolve.size > 0) {
+        console.log('[API] Resolving', walletIdsToResolve.size, 'contract party profile(s) by walletId');
+        const profileMap = new Map<string, ProfileLookupResult>();
+        const resolvePromises = Array.from(walletIdsToResolve).map(async (walletId) => {
+          const profile = await resolveProfileByWalletId(walletId);
+          if (profile) {
+            profileMap.set(walletId, profile);
+          }
+        });
+        await Promise.all(resolvePromises);
+
+        // Enrich parties with resolved profiles
+        data.parties = data.parties.map((p: { userId?: string; displayName: string; profileImageUrl?: string; initialsColor?: string }) => {
+          const walletId = p.userId || (isUUID(p.displayName) ? p.displayName : null);
+          if (walletId && profileMap.has(walletId)) {
+            const profile = profileMap.get(walletId)!;
+            return {
+              ...p,
+              displayName: profile.displayName || p.displayName,
+              profileImageUrl: profile.profileImageUrl || p.profileImageUrl,
+              initialsColor: profile.initialsColor || p.initialsColor,
+            };
+          }
+          return p;
+        });
+
+        // Also update counterparty convenience field if present
+        if (data.counterparty) {
+          const cpWalletId = data.counterparty.userId || (isUUID(data.counterparty.displayName) ? data.counterparty.displayName : null);
+          if (cpWalletId && profileMap.has(cpWalletId)) {
+            const profile = profileMap.get(cpWalletId)!;
+            data.counterparty = {
+              ...data.counterparty,
+              displayName: profile.displayName || data.counterparty.displayName,
+              profileImageUrl: profile.profileImageUrl || data.counterparty.profileImageUrl,
+              initialsColor: profile.initialsColor || data.counterparty.initialsColor,
+            };
+          }
+        }
+      }
+    }
+
+    // Debug: Log party profile info
     if (data.parties?.length > 0) {
       data.parties.forEach((p: { displayName: string; profileImageUrl?: string }) => {
         console.log(`[API] Contract party ${p.displayName} - profileImageUrl:`, p.profileImageUrl || 'NOT SET');
       });
     }
+
     return data;
   },
 
@@ -737,6 +963,123 @@ export const api = {
     if (eventType) params.eventType = eventType;
     const { data } = await apiClient.get('/mobile/contracts/events', { params });
     console.log('[API] getOracleEvents - received:', data.events?.length || 0, 'events');
+    return data;
+  },
+
+  // ==================
+  // Identity Verification Endpoints
+  // ==================
+
+  /**
+   * Register device signing key with WSIM
+   * This must be called before submitting verification so the server can validate signatures.
+   * The key is used for HMAC-SHA256 signing of verification payloads.
+   *
+   * @param deviceId The unique device identifier
+   * @param signingKey The hex-encoded signing key (shared secret for HMAC)
+   * @returns Registration result
+   */
+  async registerDeviceKey(deviceId: string, signingKey: string): Promise<{
+    success: boolean;
+    registered: boolean;
+    deviceId: string;
+  }> {
+    console.log('[API] registerDeviceKey - registering device:', deviceId);
+    try {
+      const { data } = await apiClient.post('/mobile/device/register-key', {
+        deviceId,
+        publicKey: signingKey,  // WSIM expects 'publicKey' field name
+        keyType: 'HMAC-SHA256',
+      });
+      console.log('[API] registerDeviceKey - success:', data);
+      return data;
+    } catch (error: any) {
+      // If already registered, that's fine
+      if (error.response?.status === 409) {
+        console.log('[API] registerDeviceKey - already registered');
+        return { success: true, registered: true, deviceId };
+      }
+      console.error('[API] registerDeviceKey - failed:', error.response?.status, error.response?.data);
+      throw error;
+    }
+  },
+
+  /**
+   * Submit signed verification result to server
+   * Server validates signature and records verification status
+   *
+   * @param signedVerification The signed verification payload from createSignedVerification()
+   * @returns Verification result with ID and status
+   */
+  async submitVerification(signedVerification: SignedVerification): Promise<{
+    success: boolean;
+    verificationId: string;
+    isVerified: boolean;
+    verifiedAt: string;
+    verificationLevel: VerificationLevel;
+  }> {
+    console.log('[API] submitVerification - submitting...');
+    try {
+      const { data } = await apiClient.post('/mobile/verification/submit', {
+        signedVerification,
+      });
+      console.log('[API] submitVerification - success:', data);
+
+      // Update cached user with verification status
+      const existingUser = await secureStorage.getUserData<Record<string, unknown>>();
+      if (existingUser) {
+        await secureStorage.setUserData({
+          ...existingUser,
+          isVerified: data.isVerified,
+          verifiedAt: data.verifiedAt,
+          verificationLevel: data.verificationLevel,
+        });
+        console.log('[API] submitVerification - cached user updated');
+      }
+
+      return data;
+    } catch (error: any) {
+      console.error('[API] submitVerification - failed:', error.response?.status, error.response?.data);
+      throw error;
+    }
+  },
+
+  /**
+   * Remove identity verification from account
+   * Clears verification status so user can re-verify
+   * Used for testing the verification flow
+   */
+  async removeVerification(): Promise<{ success: boolean }> {
+    console.log('[API] removeVerification - removing...');
+    const { data } = await apiClient.delete('/mobile/verification');
+    console.log('[API] removeVerification - success');
+
+    // Update cached user to clear verification status
+    const existingUser = await secureStorage.getUserData<Record<string, unknown>>();
+    if (existingUser) {
+      await secureStorage.setUserData({
+        ...existingUser,
+        isVerified: false,
+        verifiedAt: null,
+        verificationLevel: 'none',
+      });
+      console.log('[API] removeVerification - cached user updated');
+    }
+
+    return data;
+  },
+
+  /**
+   * Delete user account entirely
+   * WARNING: This is irreversible! Removes all WSIM account data.
+   * Used for testing - allows user to start fresh
+   */
+  async deleteAccount(): Promise<{ success: boolean }> {
+    console.log('[API] deleteAccount - deleting...');
+    const { data } = await apiClient.delete('/mobile/account');
+    console.log('[API] deleteAccount - success');
+    // Clear local storage after account deletion
+    await secureStorage.clearAll();
     return data;
   },
 };

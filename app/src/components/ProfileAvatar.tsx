@@ -253,6 +253,11 @@ export const ProfileAvatar: React.FC<ProfileAvatarProps> = ({
   // Determine the effective verification level to show
   const effectiveLevel = isVerified ? (verificationLevel || 'basic') : 'none';
 
+  // Debug: Log verification props for avatars that should show badges
+  if (isVerified || verificationLevel !== 'none') {
+    console.log('[ProfileAvatar] Verification props:', { displayName, isVerified, verificationLevel, effectiveLevel });
+  }
+
   if (showInitials) {
     return (
       <View style={styles.avatarWrapper}>

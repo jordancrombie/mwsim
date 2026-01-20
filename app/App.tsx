@@ -46,7 +46,7 @@ import { MerchantProfileEditScreen } from './src/screens/MerchantProfileEdit';
 import { ContractsListScreen } from './src/screens/ContractsList';
 import { ContractDetailScreen } from './src/screens/ContractDetail';
 import { CreateContractScreen } from './src/screens/CreateContract';
-import { IDVerificationScreen } from './src/screens/IDVerification';
+import { IDVerificationScreen, type VerificationFlowResult } from './src/screens/IDVerification';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
 import { NearbyUsersPanel } from './src/components/NearbyUsersPanel';
 import {
@@ -965,6 +965,11 @@ export default function App() {
             timeoutPromise
           ]) as { user: User; cards: Card[] };
           console.log('[initializeApp] Got wallet summary');
+          console.log('[initializeApp] Verification status:', {
+            isVerified: summary.user.isVerified,
+            verificationLevel: summary.user.verificationLevel,
+            verifiedAt: summary.user.verifiedAt,
+          });
           setUser(summary.user);
           setCards(summary.cards || []);
           setCurrentScreen('home');
@@ -1327,10 +1332,15 @@ export default function App() {
       setUser(result.user);
       setPassword(''); // Clear password from memory
 
-      // Load wallet data
+      // Load wallet data (includes verification status)
       try {
         const walletData = await api.getWalletSummary();
         setCards(walletData.cards || []);
+        // Update user with verification fields from wallet summary
+        if (walletData.user) {
+          console.log('[Login] Updating user with wallet summary (verification fields)');
+          setUser(walletData.user);
+        }
       } catch (e) {
         console.log('[Login] Failed to load wallet, continuing anyway');
       }
@@ -1383,10 +1393,15 @@ export default function App() {
 
       setUser(result.user);
 
-      // Load wallet data
+      // Load wallet data (includes verification status)
       try {
         const summary = await api.getWalletSummary();
         setCards(summary.cards || []);
+        // Update user with verification fields from wallet summary
+        if (summary.user) {
+          console.log('[VerifyCode] Updating user with wallet summary (verification fields)');
+          setUser(summary.user);
+        }
       } catch (e) {
         // Continue anyway
       }
@@ -2874,6 +2889,14 @@ export default function App() {
                   'Failed'
                 ) : null;
 
+                // Detect transfer type from description
+                const desc = (transfer.description || '').toLowerCase();
+                const isWager = desc.includes('wager') || desc.includes('bet');
+                const isContract = desc.includes('contract') || desc.includes('settlement') || desc.includes('escrow');
+                const transferType = isWager ? { label: 'Wager', icon: '🎲', color: '#8b5cf6' }
+                  : isContract ? { label: 'Contract', icon: '📜', color: '#3b82f6' }
+                  : null; // null = regular P2P transfer, no badge needed
+
                 return (
                   <TouchableOpacity
                     key={transfer.transferId}
@@ -2897,13 +2920,23 @@ export default function App() {
                     />
                     <View style={styles.p2pTransferInfo}>
                       <Text style={styles.p2pTransferName}>
+                        {/* Prefer showing @alias in list when available, otherwise show displayName */}
                         {transfer.direction === 'sent'
-                          ? transfer.recipientDisplayName || transfer.recipientAlias
-                          : transfer.senderDisplayName || transfer.senderAlias}
+                          ? (transfer.recipientAlias?.startsWith('@') ? transfer.recipientAlias : transfer.recipientDisplayName || transfer.recipientAlias)
+                          : (transfer.senderAlias?.startsWith('@') ? transfer.senderAlias : transfer.senderDisplayName || transfer.senderAlias)}
                       </Text>
-                      <Text style={[styles.p2pTransferDate, isFailed && { color: '#ef4444' }]}>
-                        {isFailed ? failedStatusText : new Date(transfer.createdAt).toLocaleDateString()}
-                      </Text>
+                      <View style={styles.p2pTransferMeta}>
+                        <Text style={[styles.p2pTransferDate, isFailed && { color: '#ef4444' }]}>
+                          {isFailed ? failedStatusText : new Date(transfer.createdAt).toLocaleDateString()}
+                        </Text>
+                        {transferType && (
+                          <View style={[styles.p2pTransferTypeBadge, { backgroundColor: transferType.color + '15' }]}>
+                            <Text style={[styles.p2pTransferTypeText, { color: transferType.color }]}>
+                              {transferType.icon} {transferType.label}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </View>
                     <Text
                       style={[
@@ -3189,6 +3222,8 @@ export default function App() {
                 displayName={user?.name || 'User'}
                 size="medium"
                 userId={user?.id}
+                isVerified={user?.isVerified}
+                verificationLevel={user?.verificationLevel}
               />
               <View style={styles.homeHeaderText}>
                 <Text style={styles.homeGreeting}>Welcome back,</Text>
@@ -4502,6 +4537,22 @@ export default function App() {
                           <Text style={[styles.historyItemStatus, { color: getStatusColor(transfer.status) }]}>
                             {getStatusDisplay(transfer.status)}
                           </Text>
+                          {/* Transfer type badge */}
+                          {(() => {
+                            const desc = (transfer.description || '').toLowerCase();
+                            const isWager = desc.includes('wager') || desc.includes('bet');
+                            const isContract = desc.includes('contract') || desc.includes('settlement') || desc.includes('escrow');
+                            const typeInfo = isWager ? { label: 'Wager', icon: '🎲', color: '#8b5cf6' }
+                              : isContract ? { label: 'Contract', icon: '📜', color: '#3b82f6' }
+                              : null;
+                            return typeInfo && (
+                              <View style={[styles.historyTypeBadge, { backgroundColor: typeInfo.color + '15' }]}>
+                                <Text style={[styles.historyTypeText, { color: typeInfo.color }]}>
+                                  {typeInfo.icon} {typeInfo.label}
+                                </Text>
+                              </View>
+                            );
+                          })()}
                         </View>
                       </View>
 
@@ -4537,16 +4588,16 @@ export default function App() {
     const bankNameWithAccount = selectedTransfer.senderBankName
       ? `${selectedTransfer.senderBankName}${selectedTransfer.senderAccountLast4 ? ` ****${selectedTransfer.senderAccountLast4}` : ''}`
       : 'Bank Transfer';
+    // For transfer details: show displayName as primary, alias below if it's a nice @-prefixed alias
+    const rawAlias = isSent ? selectedTransfer.recipientAlias : selectedTransfer.senderAlias;
+    const rawDisplayName = isSent ? selectedTransfer.recipientDisplayName : selectedTransfer.senderDisplayName;
     const counterpartyName = isViewingMerchantPayment
       ? bankNameWithAccount
-      : isSent
-        ? selectedTransfer.recipientDisplayName || selectedTransfer.recipientAlias || 'Unknown'
-        : selectedTransfer.senderDisplayName || selectedTransfer.senderAlias || 'Unknown';
+      : rawDisplayName || rawAlias || 'Unknown';
+    // Only show alias if it's an @-prefixed alias AND we have a separate display name to show
     const counterpartyAlias = isViewingMerchantPayment
       ? undefined  // Don't show alias for merchant payments
-      : isSent
-        ? selectedTransfer.recipientAlias
-        : selectedTransfer.senderAlias;
+      : (rawAlias?.startsWith('@') && rawDisplayName) ? rawAlias : undefined;
     const counterpartyBank = isViewingMerchantPayment
       ? undefined  // Bank is already shown as the name
       : isSent
@@ -5346,14 +5397,47 @@ export default function App() {
   if (currentScreen === 'idVerification') {
     return (
       <IDVerificationScreen
-        onComplete={(passportData) => {
-          console.log('ID verification complete:', passportData);
-          // For now, just go back to settings. In Phase 2, this will integrate with WSIM
-          Alert.alert(
-            'Verification Complete',
-            `Identity verified for ${passportData.firstName} ${passportData.lastName}`,
-            [{ text: 'OK', onPress: () => setCurrentScreen('settings') }]
-          );
+        profileDisplayName={user?.name || ''}
+        profileImageUrl={user?.profileImageUrl}
+        onComplete={async (result: VerificationFlowResult) => {
+          console.log('[App] ID verification complete:', result.passportData);
+          console.log('[App] Name match:', result.nameMatch);
+          console.log('[App] Face match:', result.faceMatch);
+          console.log('[App] Liveness:', result.liveness);
+
+          try {
+            // Submit verification to WSIM
+            console.log('[App] Submitting verification to server...');
+            const response = await api.submitVerification(result.signedVerification);
+            console.log('[App] Verification submitted:', response);
+
+            // Update user state with verification status
+            if (user) {
+              setUser({
+                ...user,
+                isVerified: response.isVerified,
+                verifiedAt: response.verifiedAt,
+                verificationLevel: response.verificationLevel,
+              });
+            }
+
+            // Show success message with verification level
+            const levelDisplay = response.verificationLevel === 'enhanced' ? 'Enhanced' : 'Basic';
+            Alert.alert(
+              'Verification Complete',
+              `Your identity has been verified (${levelDisplay} level).\n\nYou now have a gold verification badge on your profile.`,
+              [{ text: 'OK', onPress: () => setCurrentScreen('settings') }]
+            );
+          } catch (error: any) {
+            console.error('[App] Failed to submit verification:', error);
+            // Still show success for the local verification, but note the server issue
+            const errorMessage = error.response?.data?.message || error.message || 'Server error';
+            Alert.alert(
+              'Verification Complete',
+              `Identity verified locally, but server submission failed: ${errorMessage}\n\nPlease try again later.`,
+              [{ text: 'OK', onPress: () => setCurrentScreen('settings') }]
+            );
+          }
         }}
         onCancel={() => setCurrentScreen('settings')}
       />
@@ -5385,6 +5469,17 @@ export default function App() {
           setCurrentScreen('profileEdit');
         }}
         onVerifyIdentity={() => setCurrentScreen('idVerification')}
+        onVerificationRemoved={() => {
+          // Update user state to clear verification fields
+          if (user) {
+            setUser({
+              ...user,
+              isVerified: false,
+              verifiedAt: undefined,
+              verificationLevel: 'none',
+            });
+          }
+        }}
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"
@@ -7113,7 +7208,21 @@ const styles = StyleSheet.create({
   p2pTransferDate: {
     fontSize: 13,
     color: '#6b7280',
+  },
+  p2pTransferMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 2,
+    gap: 8,
+  },
+  p2pTransferTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  p2pTransferTypeText: {
+    fontSize: 11,
+    fontWeight: '500',
   },
   p2pTransferAmount: {
     fontSize: 16,
@@ -7862,6 +7971,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
+  },
+  historyTypeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 4,
+  },
+  historyTypeText: {
+    fontSize: 10,
+    fontWeight: '500',
   },
   historyItemAmount: {
     fontSize: 18,

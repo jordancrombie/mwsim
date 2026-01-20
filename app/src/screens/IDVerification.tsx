@@ -31,23 +31,83 @@ import {
   isPassportExpired,
   createMRZDataFromFields,
 } from '../services/mrzScanner';
+import {
+  matchNames,
+  type NameMatchResult,
+  type FaceMatchResult,
+  type LivenessResult,
+  type SignedVerification,
+  createVerificationResult,
+  createSignedVerification,
+  getVerificationLevel,
+} from '../services/verification';
+import {
+  detectFace,
+  detectFaceForLiveness,
+  detectFaceFromBase64,
+  compareFaces,
+  validateFaceQuality,
+  generateLivenessChallenges,
+  checkLivenessChallenge,
+  getChallengeInstruction,
+  type FaceData,
+  type LivenessChallenge,
+} from '../services/faceDetection';
 
-type Step = 'intro' | 'mrz-scan' | 'mrz-input' | 'nfc-read' | 'success' | 'error';
+// Re-export for consumers
+export type { NameMatchResult, FaceMatchResult, LivenessResult } from '../services/verification';
+export type { SignedVerification, VerificationResult } from '../services/verification';
+
+type Step = 'intro' | 'mrz-scan' | 'mrz-input' | 'nfc-read' | 'name-verify' | 'photo-compare' | 'liveness' | 'success' | 'error';
+
+/** Result of the complete verification flow */
+export interface VerificationFlowResult {
+  passportData: PassportData;
+  nameMatch: NameMatchResult;
+  faceMatch?: FaceMatchResult;
+  liveness?: LivenessResult;
+  /** Signed verification payload ready for API submission */
+  signedVerification: SignedVerification;
+}
 
 interface IDVerificationScreenProps {
-  onComplete?: (passportData: PassportData) => void;
+  /** User's profile display name (for name matching) */
+  profileDisplayName: string;
+  /** User's profile image URL (for face comparison) */
+  profileImageUrl?: string | null;
+  /** Called when verification completes successfully with all results */
+  onComplete?: (result: VerificationFlowResult) => void;
+  /** Called when user cancels verification */
   onCancel?: () => void;
 }
 
 // Inner component that uses the safe area hook (must be inside SafeAreaProvider)
-function IDVerificationScreenInner({ onComplete, onCancel }: IDVerificationScreenProps) {
+function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComplete, onCancel }: IDVerificationScreenProps) {
   const [step, setStep] = useState<Step>('intro');
   const [mrzData, setMrzData] = useState<MRZData | null>(null);
   const [passportData, setPassportData] = useState<PassportData | null>(null);
+  const [nameMatchResult, setNameMatchResult] = useState<NameMatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [nfcSupported, setNfcSupported] = useState<boolean | null>(null);
   const [scanStatus, setScanStatus] = useState<string>('Position passport in view');
+
+  // Face comparison state
+  const [faceCompareStatus, setFaceCompareStatus] = useState<string>('');
+  const [passportFace, setPassportFace] = useState<FaceData | null>(null);
+  const [profileFace, setProfileFace] = useState<FaceData | null>(null);
+  const [faceMatchScore, setFaceMatchScore] = useState<number | null>(null);
+  const [faceMatchPassed, setFaceMatchPassed] = useState<boolean | null>(null);
+
+  // Liveness state
+  const [livenessChallenges, setLivenessChallenges] = useState<LivenessChallenge[]>([]);
+  const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0);
+  const [completedChallenges, setCompletedChallenges] = useState<LivenessChallenge[]>([]);
+  const [livenessStartTime, setLivenessStartTime] = useState<number | null>(null);
+  const [currentFace, setCurrentFace] = useState<FaceData | null>(null);
+  const [previousFace, setPreviousFace] = useState<FaceData | null>(null);
+  const livenessCameraRef = useRef<CameraView>(null);
+  const livenessIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Safe area insets for camera view
   const insets = useSafeAreaInsets();
@@ -271,7 +331,17 @@ function IDVerificationScreenInner({ onComplete, onCancel }: IDVerificationScree
     try {
       const data = await readPassport(mrzData);
       setPassportData(data);
-      setStep('success');
+
+      // Perform name matching
+      const matchResult = matchNames(
+        data.firstName,
+        data.lastName,
+        profileDisplayName
+      );
+      setNameMatchResult(matchResult);
+
+      // Go to name verification step
+      setStep('name-verify');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to read passport';
       if (errorMessage !== 'Scan cancelled') {
@@ -281,22 +351,391 @@ function IDVerificationScreenInner({ onComplete, onCancel }: IDVerificationScree
     } finally {
       setIsProcessing(false);
     }
-  }, [mrzData]);
+  }, [mrzData, profileDisplayName]);
 
   // Handle retry
   const handleRetry = useCallback(() => {
     setError(null);
     setMrzData(null);
     setPassportData(null);
+    setNameMatchResult(null);
+    // Reset face comparison state
+    setFaceCompareStatus('');
+    setPassportFace(null);
+    setProfileFace(null);
+    setFaceMatchScore(null);
+    setFaceMatchPassed(null);
+    // Reset liveness state
+    setLivenessChallenges([]);
+    setCurrentChallengeIndex(0);
+    setCompletedChallenges([]);
+    setLivenessStartTime(null);
+    setCurrentFace(null);
+    setPreviousFace(null);
     setStep('intro');
   }, []);
 
-  // Handle complete
-  const handleComplete = useCallback(() => {
-    if (passportData && onComplete) {
-      onComplete(passportData);
+  // Handle complete - creates signed verification and calls onComplete
+  const handleComplete = useCallback(async () => {
+    if (!passportData || !nameMatchResult || !onComplete) return;
+
+    setIsProcessing(true);
+
+    try {
+      // Build face match result if face comparison was done
+      let faceMatch: FaceMatchResult | undefined;
+      if (faceMatchScore !== null && faceMatchPassed !== null) {
+        console.log('[Verification] Building face match result:', {
+          score: faceMatchScore,
+          passed: faceMatchPassed,
+          passportFaceDetected: passportFace !== null,
+          profileFaceDetected: profileFace !== null,
+        });
+        faceMatch = {
+          score: faceMatchScore,
+          passed: faceMatchPassed,
+          passportFaceDetected: passportFace !== null,
+          profileFaceDetected: profileFace !== null,
+          selfieFaceDetected: false, // Not using selfie yet
+        };
+      }
+
+      // Build liveness result if liveness check was done
+      // IMPORTANT: Use refs for liveness data to avoid stale closure issues
+      // The setTimeout in processLivenessFrame can capture old state values
+      let liveness: LivenessResult | undefined;
+      const completedFromRef = completedChallengesRef.current;
+      if (completedFromRef.length > 0 && livenessStartTime) {
+        const duration = (Date.now() - livenessStartTime) / 1000;
+        const passed = completedFromRef.length >= livenessChallenges.length;
+        console.log('[Verification] Building liveness result:', {
+          completedChallenges: completedFromRef.length,
+          totalChallenges: livenessChallenges.length,
+          passed,
+        });
+        liveness = {
+          passed,
+          challenges: completedFromRef,
+          duration,
+        };
+      }
+
+      // Create verification result
+      const documentType = 'PASSPORT';
+      const issuingCountry = passportData.nationality || 'UNK';
+      const verificationResult = createVerificationResult(
+        nameMatchResult,
+        documentType,
+        issuingCountry,
+        faceMatch,
+        liveness
+      );
+
+      // Log the verification result for debugging
+      console.log('[Verification] Created verification result:', {
+        nameMatch: {
+          score: verificationResult.nameMatch.score,
+          passed: verificationResult.nameMatch.passed,
+        },
+        faceMatch: verificationResult.faceMatch ? {
+          score: verificationResult.faceMatch.score,
+          passed: verificationResult.faceMatch.passed,
+        } : 'none',
+        livenessCheck: verificationResult.livenessCheck ? {
+          passed: verificationResult.livenessCheck.passed,
+          challengesCompleted: verificationResult.livenessCheck.challenges.length,
+        } : 'none',
+        expectedLevel: getVerificationLevel(verificationResult),
+      });
+
+      // Sign the verification result
+      const signedVerification = await createSignedVerification(verificationResult);
+
+      // Call onComplete with full result
+      onComplete({
+        passportData,
+        nameMatch: nameMatchResult,
+        faceMatch,
+        liveness,
+        signedVerification,
+      });
+    } catch (error) {
+      console.error('[IDVerification] Error creating signed verification:', error);
+      setError('Failed to complete verification. Please try again.');
+      setStep('error');
+    } finally {
+      setIsProcessing(false);
     }
-  }, [passportData, onComplete]);
+  }, [
+    passportData,
+    nameMatchResult,
+    onComplete,
+    faceMatchScore,
+    faceMatchPassed,
+    passportFace,
+    profileFace,
+    completedChallenges,
+    livenessStartTime,
+    livenessChallenges.length,
+  ]);
+
+  // Handle proceeding from name-verify to photo-compare (or success if no profile image)
+  const handleNameVerifyProceed = useCallback(() => {
+    if (profileImageUrl && passportData?.photo?.base64) {
+      // Has profile image and passport photo - do face comparison
+      setStep('photo-compare');
+    } else {
+      // No profile image or passport photo - skip to success (basic verification only)
+      handleComplete();
+    }
+  }, [profileImageUrl, passportData, handleComplete]);
+
+  // Handle face comparison
+  const handleFaceCompare = useCallback(async () => {
+    if (!passportData?.photo?.base64 || !profileImageUrl) return;
+
+    setIsProcessing(true);
+    setFaceCompareStatus('Analyzing passport photo...');
+
+    try {
+      // Detect face in passport photo
+      const ppFace = await detectFaceFromBase64(passportData.photo.base64);
+      if (!ppFace) {
+        setFaceCompareStatus('Could not detect face in passport photo');
+        setFaceMatchPassed(false);
+        setIsProcessing(false);
+        return;
+      }
+      setPassportFace(ppFace);
+      setFaceCompareStatus('Analyzing profile photo...');
+
+      // Detect face in profile photo
+      const prFace = await detectFace(profileImageUrl);
+      if (!prFace) {
+        setFaceCompareStatus('Could not detect face in profile photo');
+        setFaceMatchPassed(false);
+        setIsProcessing(false);
+        return;
+      }
+      setProfileFace(prFace);
+      setFaceCompareStatus('Comparing faces...');
+
+      // Compare faces
+      const result = compareFaces(ppFace, prFace);
+      setFaceMatchScore(result.similarity);
+      setFaceMatchPassed(result.passed);
+      setFaceCompareStatus(result.passed ? 'Faces match!' : 'Faces do not match');
+    } catch (err) {
+      console.error('[IDVerification] Face comparison error:', err);
+      setFaceCompareStatus('Error comparing faces');
+      setFaceMatchPassed(false);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [passportData, profileImageUrl]);
+
+  // Handle proceeding from photo-compare
+  const handlePhotoCompareProceed = useCallback(() => {
+    if (faceMatchPassed) {
+      // Face match passed - proceed to liveness
+      setLivenessChallenges(generateLivenessChallenges(3));
+      setCurrentChallengeIndex(0);
+      setCompletedChallenges([]);
+      setStep('liveness');
+    } else {
+      // Face match failed - show error
+      setError('Face comparison failed. Please ensure your profile photo clearly shows your face and matches your passport photo.');
+      setStep('error');
+    }
+  }, [faceMatchPassed]);
+
+  // Handle liveness challenge completion
+  const handleLivenessComplete = useCallback(() => {
+    // All challenges completed - verification success
+    handleComplete();
+  }, [handleComplete]);
+
+  // Skip face comparison (for users without profile photo)
+  const handleSkipFaceCompare = useCallback(() => {
+    // Skip to success - basic verification only
+    handleComplete();
+  }, [handleComplete]);
+
+  // Handle name mismatch - user can cancel or retry
+  const handleNameMismatch = useCallback(() => {
+    setError('The name on your passport does not match your profile. Please update your profile name to match your passport, or contact support.');
+    setStep('error');
+  }, []);
+
+  // Liveness detection state
+  const [livenessStatus, setLivenessStatus] = useState<string>('Position your face in the frame');
+  const [livenessActive, setLivenessActive] = useState(false);
+  const [livenessCameraReady, setLivenessCameraReady] = useState(false);
+  const isProcessingLiveness = useRef(false);
+  const livenessCompletedRef = useRef(false); // Guard against multiple completion calls
+
+  // Use refs for values that change frequently to avoid callback recreation
+  const currentFaceRef = useRef<FaceData | null>(null);
+  const previousFaceRef = useRef<FaceData | null>(null);
+  const completedChallengesRef = useRef<LivenessChallenge[]>([]);
+  const currentChallengeIndexRef = useRef(0);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    currentFaceRef.current = currentFace;
+  }, [currentFace]);
+  useEffect(() => {
+    previousFaceRef.current = previousFace;
+  }, [previousFace]);
+  useEffect(() => {
+    completedChallengesRef.current = completedChallenges;
+  }, [completedChallenges]);
+  useEffect(() => {
+    currentChallengeIndexRef.current = currentChallengeIndex;
+  }, [currentChallengeIndex]);
+
+  // Process a single liveness frame - uses refs to avoid recreation on every state change
+  const processLivenessFrame = useCallback(async () => {
+    if (isProcessingLiveness.current) {
+      return;
+    }
+    if (!livenessCameraRef.current) {
+      console.log('[Liveness] Camera ref not available yet');
+      return;
+    }
+
+    const challengeIndex = currentChallengeIndexRef.current;
+    if (challengeIndex >= livenessChallenges.length) return;
+
+    isProcessingLiveness.current = true;
+
+    try {
+      // Capture a frame from the camera
+      console.log('[Liveness] Capturing frame...');
+      const photo = await livenessCameraRef.current.takePictureAsync({
+        quality: 0.8,
+        exif: true,
+        skipProcessing: false, // Ensure image is rotated correctly
+      });
+
+      if (!photo?.uri) {
+        console.log('[Liveness] No photo URI returned');
+        isProcessingLiveness.current = false;
+        return;
+      }
+
+      console.log('[Liveness] Photo captured:', photo.uri);
+      console.log('[Liveness] Photo dimensions:', photo.width, 'x', photo.height);
+      console.log('[Liveness] Photo EXIF:', JSON.stringify(photo.exif, null, 2)?.substring(0, 500));
+
+      // Detect face using liveness-optimized settings (fast mode)
+      const face = await detectFaceForLiveness(photo.uri);
+
+      if (!face) {
+        setLivenessStatus('No face detected - position your face in the frame');
+        setCurrentFace(null);
+        isProcessingLiveness.current = false;
+        return;
+      }
+
+      // Update face state for tracking between frames (using refs for comparison)
+      const prevFace = currentFaceRef.current;
+      setPreviousFace(prevFace);
+      setCurrentFace(face);
+
+      // Get current challenge
+      const challenge = livenessChallenges[challengeIndex];
+
+      // Check if challenge is completed (use ref for previous face)
+      const passed = checkLivenessChallenge(challenge, face, prevFace || undefined);
+
+      if (passed) {
+        // Challenge completed!
+        console.log(`[Liveness] Challenge ${challenge} completed!`);
+        const currentCompleted = completedChallengesRef.current;
+        const newCompleted = [...currentCompleted, challenge];
+        // Update ref immediately (state will sync via effect, but ref is used by handleComplete)
+        completedChallengesRef.current = newCompleted;
+        setCompletedChallenges(newCompleted);
+
+        if (challengeIndex + 1 >= livenessChallenges.length) {
+          // All challenges done! Guard against multiple completion triggers
+          if (livenessCompletedRef.current) {
+            console.log('[Liveness] Already completed, ignoring duplicate');
+            return;
+          }
+          livenessCompletedRef.current = true;
+
+          // Stop the interval immediately to prevent further processing
+          if (livenessIntervalRef.current) {
+            clearInterval(livenessIntervalRef.current);
+            livenessIntervalRef.current = null;
+          }
+
+          setLivenessStatus('All challenges completed!');
+          setLivenessActive(false);
+          // Short delay then complete
+          setTimeout(() => {
+            handleLivenessComplete();
+          }, 500);
+        } else {
+          // Move to next challenge
+          setCurrentChallengeIndex(challengeIndex + 1);
+          setLivenessStatus('Great! Next challenge...');
+        }
+      } else {
+        // Still working on current challenge
+        setLivenessStatus(getChallengeInstruction(challenge));
+      }
+    } catch (err) {
+      console.error('[Liveness] Frame processing error:', err);
+      setLivenessStatus('Processing error - please try again');
+    } finally {
+      isProcessingLiveness.current = false;
+    }
+  }, [livenessChallenges, handleLivenessComplete]);
+
+  // Ref to hold the latest processLivenessFrame callback
+  const processLivenessFrameRef = useRef(processLivenessFrame);
+  useEffect(() => {
+    processLivenessFrameRef.current = processLivenessFrame;
+  }, [processLivenessFrame]);
+
+  // Start/stop liveness detection when entering/leaving liveness step
+  useEffect(() => {
+    if (step === 'liveness' && livenessChallenges.length > 0) {
+      // Reset completion guard for new liveness session
+      livenessCompletedRef.current = false;
+
+      // Start detection after a delay to let camera initialize
+      console.log('[Liveness] Starting detection (with 1s camera init delay)...');
+      setLivenessActive(true);
+      setLivenessStartTime(Date.now());
+      setLivenessStatus('Initializing camera...');
+
+      // Wait for camera to initialize before starting capture loop
+      const initTimeout = setTimeout(() => {
+        console.log('[Liveness] Camera init delay complete, starting capture loop');
+        setLivenessStatus(getChallengeInstruction(livenessChallenges[0]));
+
+        // Start capture loop (every 500ms) - use ref to avoid dependency on processLivenessFrame
+        livenessIntervalRef.current = setInterval(() => {
+          processLivenessFrameRef.current();
+        }, 500);
+      }, 1000); // 1 second delay for camera initialization
+
+      return () => {
+        console.log('[Liveness] Stopping detection...');
+        clearTimeout(initTimeout);
+        if (livenessIntervalRef.current) {
+          clearInterval(livenessIntervalRef.current);
+          livenessIntervalRef.current = null;
+        }
+        setLivenessActive(false);
+        setLivenessCameraReady(false);
+      };
+    }
+  }, [step, livenessChallenges]); // Removed processLivenessFrame - using ref instead
 
   // Render intro step
   const renderIntro = () => (
@@ -586,6 +1025,307 @@ function IDVerificationScreenInner({ onComplete, onCancel }: IDVerificationScree
     </View>
   );
 
+  // Render name verification step
+  const renderNameVerify = () => {
+    if (!passportData || !nameMatchResult) return null;
+
+    const { firstName, lastName, passed, score } = nameMatchResult;
+
+    return (
+      <View style={styles.flex}>
+        <View style={styles.screenHeader}>
+          {onCancel && (
+            <TouchableOpacity style={styles.screenHeaderBack} onPress={onCancel}>
+              <Text style={styles.screenHeaderBackText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.screenHeaderTitle}>Name Verification</Text>
+        </View>
+        <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
+          {/* Status icon */}
+          <View style={[styles.nameVerifyIconContainer, passed ? styles.nameVerifyIconSuccess : styles.nameVerifyIconFail]}>
+            <Text style={styles.nameVerifyIcon}>{passed ? '\u2713' : '!'}</Text>
+          </View>
+
+          <Text style={styles.title}>
+            {passed ? 'Name Matches' : 'Name Mismatch'}
+          </Text>
+
+          <Text style={styles.description}>
+            {passed
+              ? 'Your passport name matches your profile.'
+              : 'The name on your passport does not match your profile name.'}
+          </Text>
+
+          {/* Comparison card */}
+          <View style={styles.nameCompareCard}>
+            {/* First Name Row */}
+            <View style={styles.nameCompareRow}>
+              <View style={styles.nameCompareLabel}>
+                <Text style={styles.nameCompareLabelText}>First Name</Text>
+              </View>
+              <View style={styles.nameCompareValues}>
+                <View style={styles.nameCompareValue}>
+                  <Text style={styles.nameCompareSource}>Passport</Text>
+                  <Text style={styles.nameCompareText}>{firstName.passport}</Text>
+                </View>
+                <View style={[styles.nameCompareStatus, firstName.match ? styles.nameCompareMatch : styles.nameCompareMismatch]}>
+                  <Text style={styles.nameCompareStatusText}>{firstName.match ? '\u2713' : '\u2717'}</Text>
+                </View>
+                <View style={styles.nameCompareValue}>
+                  <Text style={styles.nameCompareSource}>Profile</Text>
+                  <Text style={styles.nameCompareText}>{firstName.profile || '(empty)'}</Text>
+                </View>
+              </View>
+              <Text style={styles.nameCompareScore}>
+                {Math.round(firstName.score * 100)}% match
+              </Text>
+            </View>
+
+            <View style={styles.nameCompareDivider} />
+
+            {/* Last Name Row */}
+            <View style={styles.nameCompareRow}>
+              <View style={styles.nameCompareLabel}>
+                <Text style={styles.nameCompareLabelText}>Last Name</Text>
+              </View>
+              <View style={styles.nameCompareValues}>
+                <View style={styles.nameCompareValue}>
+                  <Text style={styles.nameCompareSource}>Passport</Text>
+                  <Text style={styles.nameCompareText}>{lastName.passport}</Text>
+                </View>
+                <View style={[styles.nameCompareStatus, lastName.match ? styles.nameCompareMatch : styles.nameCompareMismatch]}>
+                  <Text style={styles.nameCompareStatusText}>{lastName.match ? '\u2713' : '\u2717'}</Text>
+                </View>
+                <View style={styles.nameCompareValue}>
+                  <Text style={styles.nameCompareSource}>Profile</Text>
+                  <Text style={styles.nameCompareText}>{lastName.profile || '(empty)'}</Text>
+                </View>
+              </View>
+              <Text style={styles.nameCompareScore}>
+                {Math.round(lastName.score * 100)}% match
+              </Text>
+            </View>
+          </View>
+
+          {/* Overall score */}
+          <View style={styles.overallScoreContainer}>
+            <Text style={styles.overallScoreLabel}>Overall Match Score</Text>
+            <Text style={[styles.overallScoreValue, passed ? styles.overallScorePass : styles.overallScoreFail]}>
+              {Math.round(score * 100)}%
+            </Text>
+            <Text style={styles.overallScoreThreshold}>
+              (85% required to pass)
+            </Text>
+          </View>
+
+          {/* Action buttons */}
+          <View style={styles.bottomButtons}>
+            {passed ? (
+              <Button title="Continue" onPress={handleNameVerifyProceed} size="lg" />
+            ) : (
+              <>
+                <TouchableOpacity style={styles.cancelVerificationButton} onPress={handleNameMismatch}>
+                  <Text style={styles.cancelVerificationButtonText}>Cancel Verification</Text>
+                </TouchableOpacity>
+                <Button title="Try Again" onPress={handleRetry} variant="ghost" size="lg" style={styles.cancelButton} />
+              </>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Render photo comparison step
+  const renderPhotoCompare = () => {
+    if (!passportData?.photo?.base64) return null;
+
+    return (
+      <View style={styles.flex}>
+        <View style={styles.screenHeader}>
+          {onCancel && (
+            <TouchableOpacity style={styles.screenHeaderBack} onPress={onCancel}>
+              <Text style={styles.screenHeaderBackText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.screenHeaderTitle}>Face Comparison</Text>
+        </View>
+        <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
+          <Text style={styles.title}>Comparing Photos</Text>
+          <Text style={styles.description}>
+            We're comparing your passport photo with your profile photo to verify your identity.
+          </Text>
+
+          {/* Photo comparison display */}
+          <View style={styles.photoCompareContainer}>
+            <View style={styles.photoCompareItem}>
+              <Text style={styles.photoCompareLabel}>Passport</Text>
+              <Image
+                source={{ uri: passportData.photo.base64 }}
+                style={styles.photoCompareImage}
+                resizeMode="cover"
+              />
+            </View>
+            <View style={styles.photoCompareArrow}>
+              <Text style={styles.photoCompareArrowText}>vs</Text>
+            </View>
+            <View style={styles.photoCompareItem}>
+              <Text style={styles.photoCompareLabel}>Profile</Text>
+              {profileImageUrl ? (
+                <Image
+                  source={{ uri: profileImageUrl }}
+                  style={styles.photoCompareImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={[styles.photoCompareImage, styles.photoComparePlaceholder]}>
+                  <Text style={styles.photoComparePlaceholderText}>No Photo</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Status display */}
+          {faceCompareStatus && (
+            <View style={styles.faceCompareStatusContainer}>
+              <Text style={styles.faceCompareStatusText}>{faceCompareStatus}</Text>
+            </View>
+          )}
+
+          {/* Match score display (when complete) */}
+          {faceMatchScore !== null && (
+            <View style={styles.overallScoreContainer}>
+              <Text style={styles.overallScoreLabel}>Face Match Score</Text>
+              <Text style={[styles.overallScoreValue, faceMatchPassed ? styles.overallScorePass : styles.overallScoreFail]}>
+                {Math.round(faceMatchScore * 100)}%
+              </Text>
+              <Text style={styles.overallScoreThreshold}>
+                (70% required to pass)
+              </Text>
+            </View>
+          )}
+
+          {/* Action buttons */}
+          <View style={styles.bottomButtons}>
+            {isProcessing ? (
+              <View style={styles.processingContainer}>
+                <ActivityIndicator size="large" color="#1976D2" />
+                <Text style={styles.processingText}>{faceCompareStatus || 'Processing...'}</Text>
+              </View>
+            ) : faceMatchScore === null ? (
+              <>
+                <Button title="Compare Faces" onPress={handleFaceCompare} size="lg" />
+                <Button
+                  title="Skip (Basic Verification Only)"
+                  onPress={handleSkipFaceCompare}
+                  variant="ghost"
+                  size="lg"
+                  style={styles.cancelButton}
+                />
+              </>
+            ) : (
+              <>
+                <Button
+                  title={faceMatchPassed ? "Continue to Liveness Check" : "Try Again"}
+                  onPress={faceMatchPassed ? handlePhotoCompareProceed : handleFaceCompare}
+                  size="lg"
+                />
+                {!faceMatchPassed && (
+                  <Button
+                    title="Skip Face Check"
+                    onPress={handleSkipFaceCompare}
+                    variant="ghost"
+                    size="lg"
+                    style={styles.cancelButton}
+                  />
+                )}
+              </>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Render liveness check step
+  const renderLiveness = () => {
+    const progress = completedChallenges.length;
+    const total = livenessChallenges.length;
+
+    return (
+      <View style={StyleSheet.absoluteFill}>
+        {/* Front-facing camera for selfie */}
+        <CameraView
+          ref={livenessCameraRef}
+          style={StyleSheet.absoluteFill}
+          facing="front"
+          mirror={true}
+          onCameraReady={() => {
+            console.log('[Liveness] Camera ready');
+            setLivenessCameraReady(true);
+          }}
+        />
+
+        {/* Overlay */}
+        <View style={styles.livenessOverlay}>
+          {/* Header */}
+          <View style={[styles.livenessHeader, { paddingTop: insets.top + 8 }]}>
+            <TouchableOpacity
+              onPress={onCancel}
+              style={styles.scanBackButton}
+            >
+              <Text style={styles.scanBackText}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={styles.livenessHeaderTitle}>Liveness Check</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          {/* Progress indicator at top */}
+          <View style={styles.livenessProgressOverlay}>
+            <Text style={styles.livenessProgressTextWhite}>
+              Challenge {progress + 1} of {total}
+            </Text>
+            <View style={styles.livenessProgressBarOverlay}>
+              <View style={[styles.livenessProgressFillOverlay, { width: `${(progress / total) * 100}%` }]} />
+            </View>
+          </View>
+
+          {/* Face guide oval */}
+          <View style={styles.livenessFaceGuide}>
+            <View style={styles.livenessFaceOval} />
+          </View>
+
+          {/* Bottom section with challenge instruction */}
+          <View style={[styles.livenessBottom, { paddingBottom: insets.bottom + 20 }]}>
+            {/* Challenge instruction */}
+            <View style={styles.livenessChallengeOverlay}>
+              <Text style={styles.livenessChallengeTextOverlay}>
+                {livenessStatus}
+              </Text>
+            </View>
+
+            {/* Status indicator */}
+            {livenessActive && (
+              <View style={styles.livenessActiveIndicator}>
+                <ActivityIndicator size="small" color="#10B981" />
+                <Text style={styles.livenessActiveText}>Detecting...</Text>
+              </View>
+            )}
+
+            {/* Skip button */}
+            <TouchableOpacity
+              style={styles.livenessSkipButton}
+              onPress={handleSkipFaceCompare}
+            >
+              <Text style={styles.livenessSkipText}>Skip (Basic Verification Only)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   // Render success step
   const renderSuccess = () => {
     if (!passportData) return null;
@@ -685,6 +1425,12 @@ function IDVerificationScreenInner({ onComplete, onCancel }: IDVerificationScree
         return renderMRZInput();
       case 'nfc-read':
         return renderNFCRead();
+      case 'name-verify':
+        return renderNameVerify();
+      case 'photo-compare':
+        return renderPhotoCompare();
+      case 'liveness':
+        return renderLiveness();
       case 'success':
         return renderSuccess();
       case 'error':
@@ -1155,5 +1901,334 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 24,
     paddingHorizontal: 20,
+  },
+
+  // Name verification styles
+  nameVerifyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+    marginBottom: 24,
+  },
+  nameVerifyIconSuccess: {
+    backgroundColor: '#10B981',
+  },
+  nameVerifyIconFail: {
+    backgroundColor: '#FEE2E2',
+  },
+  nameVerifyIcon: {
+    fontSize: 40,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  nameCompareCard: {
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  nameCompareRow: {
+    marginBottom: 8,
+  },
+  nameCompareLabel: {
+    marginBottom: 8,
+  },
+  nameCompareLabelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  nameCompareValues: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  nameCompareValue: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  nameCompareSource: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginBottom: 2,
+  },
+  nameCompareText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  nameCompareStatus: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  nameCompareMatch: {
+    backgroundColor: '#10B981',
+  },
+  nameCompareMismatch: {
+    backgroundColor: '#EF4444',
+  },
+  nameCompareStatusText: {
+    fontSize: 16,
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  nameCompareScore: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+  nameCompareDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 12,
+  },
+  overallScoreContainer: {
+    alignItems: 'center',
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+  },
+  overallScoreLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  overallScoreValue: {
+    fontSize: 36,
+    fontWeight: '700',
+  },
+  overallScorePass: {
+    color: '#10B981',
+  },
+  overallScoreFail: {
+    color: '#EF4444',
+  },
+  overallScoreThreshold: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  cancelVerificationButton: {
+    backgroundColor: '#DC2626',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  cancelVerificationButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+
+  // Photo comparison styles
+  photoCompareContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  photoCompareItem: {
+    alignItems: 'center',
+  },
+  photoCompareLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  photoCompareImage: {
+    width: 100,
+    height: 120,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+  },
+  photoComparePlaceholder: {
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  photoComparePlaceholderText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+  },
+  photoCompareArrow: {
+    marginHorizontal: 16,
+  },
+  photoCompareArrowText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+  faceCompareStatusContainer: {
+    backgroundColor: '#F0F9FF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  faceCompareStatusText: {
+    fontSize: 14,
+    color: '#1976D2',
+    fontWeight: '500',
+  },
+
+  // Liveness check styles
+  livenessProgressContainer: {
+    marginBottom: 24,
+  },
+  livenessProgressText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  livenessProgressBar: {
+    height: 8,
+    backgroundColor: '#E5E7EB',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  livenessProgressFill: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 4,
+  },
+  livenessChallengeContainer: {
+    backgroundColor: '#EFF6FF',
+    padding: 24,
+    borderRadius: 12,
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  livenessChallengeText: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1976D2',
+    textAlign: 'center',
+  },
+  livenessCameraPlaceholder: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#1F2937',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  livenessCameraPlaceholderText: {
+    fontSize: 16,
+    color: '#9CA3AF',
+    marginBottom: 8,
+  },
+  livenessCameraPlaceholderSubtext: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+
+  // Liveness camera overlay styles
+  livenessOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+  },
+  livenessHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  livenessHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  livenessProgressOverlay: {
+    paddingHorizontal: 24,
+    marginTop: 16,
+  },
+  livenessProgressTextWhite: {
+    fontSize: 14,
+    color: '#ffffff',
+    textAlign: 'center',
+    marginBottom: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  livenessProgressBarOverlay: {
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  livenessProgressFillOverlay: {
+    height: '100%',
+    backgroundColor: '#10B981',
+    borderRadius: 4,
+  },
+  livenessFaceGuide: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  livenessFaceOval: {
+    width: 250,
+    height: 320,
+    borderRadius: 125,
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderStyle: 'dashed',
+  },
+  livenessBottom: {
+    paddingHorizontal: 24,
+  },
+  livenessChallengeOverlay: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 16,
+  },
+  livenessChallengeTextOverlay: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#ffffff',
+    textAlign: 'center',
+  },
+  livenessActiveIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  livenessActiveText: {
+    fontSize: 14,
+    color: '#10B981',
+    marginLeft: 8,
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  livenessSkipButton: {
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  livenessSkipText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    textDecorationLine: 'underline',
   },
 });

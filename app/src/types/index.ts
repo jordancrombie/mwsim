@@ -609,6 +609,7 @@ export interface ContractListItem {
   totalPot: number;
   currency: string;
   myRole: PartyRole;
+  counterpartyId?: string; // User ID for profile lookup
   counterpartyName: string;
   counterpartyProfileImageUrl?: string;
   counterpartyInitialsColor?: string;

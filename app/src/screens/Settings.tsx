@@ -6,16 +6,22 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  TextInput,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { clearImageCache, getCacheStats } from '../services/imageCache';
+import { api } from '../services/api';
 
 interface SettingsScreenProps {
-  user: { name: string; email: string } | null;
+  user: { name: string; email: string; isVerified?: boolean; verificationLevel?: string } | null;
   onBack: () => void;
   onSignOut: () => void;
   onDeepSignOut: () => void;
   onProfileEdit: () => void;
   onVerifyIdentity?: () => void;
+  onVerificationRemoved?: () => void;  // Called after verification is removed to update user state
+  onAccountDeleted?: () => void;  // Called after account deletion to return to login
   environmentName: string;
   isDevelopment: boolean;
   appVersion: string;
@@ -70,12 +76,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onDeepSignOut,
   onProfileEdit,
   onVerifyIdentity,
+  onVerificationRemoved,
+  onAccountDeleted,
   environmentName,
   isDevelopment,
   appVersion,
   buildNumber,
 }) => {
   const [cacheStats, setCacheStats] = useState<{ count: number; totalSizeMB: number } | null>(null);
+  const [isRemovingVerification, setIsRemovingVerification] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   // Load cache stats on mount
   useEffect(() => {
@@ -122,6 +134,56 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     );
   };
 
+  const handleRemoveVerification = () => {
+    Alert.alert(
+      'Remove Verification',
+      'This will remove your identity verification status. You will need to verify again to regain your trusted status. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setIsRemovingVerification(true);
+            try {
+              await api.removeVerification();
+              // Update user state to reflect removal
+              onVerificationRemoved?.();
+              Alert.alert('Verification Removed', 'Your identity verification has been removed. You can verify again at any time.');
+            } catch (error: any) {
+              const message = error.response?.data?.message || error.message || 'Failed to remove verification';
+              Alert.alert('Error', message);
+            } finally {
+              setIsRemovingVerification(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE') {
+      Alert.alert('Confirmation Required', 'Please type DELETE to confirm account deletion.');
+      return;
+    }
+
+    setIsDeletingAccount(true);
+    try {
+      await api.deleteAccount();
+      setShowDeleteModal(false);
+      Alert.alert(
+        'Account Deleted',
+        'Your account has been permanently deleted.',
+        [{ text: 'OK', onPress: onAccountDeleted }]
+      );
+    } catch (error: any) {
+      const message = error.response?.data?.message || error.message || 'Failed to delete account';
+      Alert.alert('Error', message);
+      setIsDeletingAccount(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -143,14 +205,32 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             subtitle="Edit your display name and photo"
             onPress={onProfileEdit}
           />
-          {onVerifyIdentity && (
+          {/* Only show Verify Identity if user is NOT already verified */}
+          {onVerifyIdentity && !user?.isVerified && (
             <>
               <View style={styles.separator} />
               <SettingsRow
                 icon="🛂"
                 title="Verify Identity"
-                subtitle="Scan your passport to verify your identity"
+                subtitle="Scan your passport to become a Trusted User"
                 onPress={onVerifyIdentity}
+              />
+            </>
+          )}
+          {/* Show verification status if user IS verified */}
+          {user?.isVerified && (
+            <>
+              <View style={styles.separator} />
+              <SettingsRow
+                icon="✓"
+                title="Identity Verified"
+                subtitle={`Trusted User (${user.verificationLevel === 'enhanced' ? 'Enhanced' : 'Basic'})`}
+                showChevron={false}
+                rightContent={
+                  <View style={[styles.devBadge, { backgroundColor: user.verificationLevel === 'enhanced' ? '#D4AF37' : '#C0C0C0' }]}>
+                    <Text style={styles.devBadgeText}>{user.verificationLevel === 'enhanced' ? '★' : '☆'}</Text>
+                  </View>
+                }
               />
             </>
           )}
@@ -236,6 +316,30 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             showChevron={false}
             danger
           />
+          {/* Remove Verification - only show if user is verified */}
+          {user?.isVerified && (
+            <>
+              <View style={styles.separator} />
+              <SettingsRow
+                icon="🛡️"
+                title={isRemovingVerification ? "Removing..." : "Remove Verification"}
+                subtitle="Clear your trusted user status"
+                onPress={isRemovingVerification ? undefined : handleRemoveVerification}
+                showChevron={false}
+                danger
+              />
+            </>
+          )}
+          {/* Delete Account */}
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="💀"
+            title="Delete Account"
+            subtitle="Permanently delete your WSIM account"
+            onPress={() => setShowDeleteModal(true)}
+            showChevron={false}
+            danger
+          />
         </View>
 
         {/* Footer */}
@@ -244,6 +348,68 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           <Text style={styles.footerText}>© 2026 BankSim</Text>
         </View>
       </ScrollView>
+
+      {/* Delete Account Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Delete Account</Text>
+            <Text style={styles.modalWarning}>This action cannot be undone!</Text>
+            <Text style={styles.modalDescription}>
+              This will permanently delete your WSIM account and all associated data including:
+            </Text>
+            <View style={styles.modalList}>
+              <Text style={styles.modalListItem}>• Your profile and display name</Text>
+              <Text style={styles.modalListItem}>• All device registrations</Text>
+              <Text style={styles.modalListItem}>• Identity verification records</Text>
+              <Text style={styles.modalListItem}>• Bank enrollments</Text>
+            </View>
+            <Text style={styles.modalInstruction}>
+              Type DELETE to confirm:
+            </Text>
+            <TextInput
+              style={styles.modalInput}
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              placeholder="DELETE"
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!isDeletingAccount}
+            />
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => {
+                  setShowDeleteModal(false);
+                  setDeleteConfirmText('');
+                }}
+                disabled={isDeletingAccount}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalDeleteButton,
+                  deleteConfirmText !== 'DELETE' && styles.modalDeleteButtonDisabled,
+                ]}
+                onPress={handleDeleteAccount}
+                disabled={isDeletingAccount || deleteConfirmText !== 'DELETE'}
+              >
+                {isDeletingAccount ? (
+                  <ActivityIndicator color="#ffffff" size="small" />
+                ) : (
+                  <Text style={styles.modalDeleteText}>Delete Account</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -351,6 +517,98 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
     marginBottom: 4,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalWarning: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#dc2626',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  modalList: {
+    marginBottom: 16,
+  },
+  modalListItem: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 4,
+  },
+  modalInstruction: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: '#111827',
+    backgroundColor: '#f9fafb',
+    marginBottom: 20,
+    textAlign: 'center',
+    letterSpacing: 2,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  modalDeleteButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 8,
+    backgroundColor: '#dc2626',
+    alignItems: 'center',
+  },
+  modalDeleteButtonDisabled: {
+    backgroundColor: '#fca5a5',
+  },
+  modalDeleteText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
   },
 });
 

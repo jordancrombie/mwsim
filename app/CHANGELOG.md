@@ -2,14 +2,25 @@
 
 All notable changes to mwsim are documented in this file.
 
-## [1.9.0] - 2026-01-19 (WIP)
+## [2.0.0] - 2026-01-19
 
 ### Added
-- **Identity Verification (IDV)**: NFC-based passport verification flow
+- **Identity Verification (IDV)**: Complete passport-based identity verification
   - MRZ scanning via camera with ML Kit text recognition
   - Manual MRZ entry fallback option
   - NFC passport chip reading using react-native-nfc-passport-info
   - Extracts biographic data and photo from passport chip
+- **Face Detection & Comparison**: ML Kit-powered facial recognition
+  - Compares passport photo to profile photo for identity verification
+  - Face quality validation (size, rotation, blur detection)
+  - Configurable similarity threshold (70%)
+- **Liveness Detection**: Anti-spoofing challenges during verification
+  - Random challenge sequence: blink, smile, turn left, turn right
+  - Real-time face tracking with front camera
+  - Skip option for users who prefer basic verification
+- **Verification Levels**: Tiered identity verification
+  - Basic: Name match only (silver badge)
+  - Enhanced: Name match + face match + liveness (gold badge)
 - **MRZ Scanner Service**: OCR text processing for Machine Readable Zone
   - Automatic OCR error correction (O→0, K→<, W→M in sex field)
   - Support for TD3 (passport) and TD1 (ID card) formats
@@ -17,25 +28,41 @@ All notable changes to mwsim are documented in this file.
 - **NFC Passport Service**: Passport chip reading via NFC
   - BAC (Basic Access Control) authentication
   - Extracts DG1 (biographic data) and DG2 (photo)
-- **NFC Plugin**: Expo config plugin for NFC entitlements
-  - iOS: CoreNFC entitlements and ISO7816 AID for eMRTD
-  - Android: NFC permission and feature declarations
-- **MasterList Plugin**: Adds masterList.pem to iOS bundle for passport certificate verification
-- **Deployment Target Plugin**: Ensures iOS 15.5 minimum for ML Kit text recognition
-- **Trusted User Verification (Phase 1 - Foundation)**:
+- **Trusted User System**: Full verification workflow
   - Verification service with name matching (Levenshtein fuzzy matching, 85% threshold)
   - Signed verification payloads for server-side validation (HMAC-SHA256)
   - Verification badge on ProfileAvatar (silver for basic, gold for enhanced)
-  - User type extended with isVerified, verifiedAt, verificationLevel fields
+  - Remove verification option in Settings
+- **Transfer Type Indicators**: Visual badges for transfer sources
+  - Wager transfers show purple "🎲 Wager" badge
+  - Contract transfers show blue "📜 Contract" badge
+  - Applied to both Recent Transfers and Transfer History screens
+- **Account Deletion**: Users can permanently delete their account from Settings
 
 ### Fixed
 - **BAC Authentication**: Document number now correctly right-padded to 9 characters
   - Fixes InvalidMRZKey error caused by library bug (left-padding instead of right-padding)
+- **Profile Resolution**: Fixed UUID display in transfers and contracts
+  - Transfers use bsimUserId + bsimId lookup
+  - Contracts use walletId lookup
+  - Consistent alias vs display name handling in UI
+- **Liveness Detection**: Fixed stale closure issues with challenge completion
+  - Uses refs to track completed challenges reliably
+  - Prevents duplicate completion triggers
+
+### Changed
+- **NFC Plugin**: Expo config plugin for NFC entitlements
+  - iOS: CoreNFC entitlements and ISO7816 AID for eMRTD
+  - Android: NFC permission and feature declarations
+- **MasterList Plugin**: Adds masterList.pem to iOS bundle for passport certificate verification
+- **Deployment Target Plugin**: Ensures iOS 15.5 minimum for ML Kit
 
 ### Dependencies
 - Added react-native-nfc-passport-info for NFC passport reading
 - Added @react-native-ml-kit/text-recognition for MRZ OCR
+- Added @react-native-ml-kit/face-detection for face detection
 - Added mrz library for MRZ parsing and validation
+- Added expo-image-manipulator for image orientation normalization
 
 ## [1.8.3] - 2026-01-18
 
