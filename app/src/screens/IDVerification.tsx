@@ -106,6 +106,8 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
   const [livenessStartTime, setLivenessStartTime] = useState<number | null>(null);
   const [currentFace, setCurrentFace] = useState<FaceData | null>(null);
   const [previousFace, setPreviousFace] = useState<FaceData | null>(null);
+  const [livenessSelfie, setLivenessSelfie] = useState<FaceData | null>(null);
+  const [livenessSelfieUri, setLivenessSelfieUri] = useState<string | null>(null);
   const livenessCameraRef = useRef<CameraView>(null);
   const livenessIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -385,18 +387,64 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
       // Build face match result if face comparison was done
       let faceMatch: FaceMatchResult | undefined;
       if (faceMatchScore !== null && faceMatchPassed !== null) {
+        // Start with passport-to-profile comparison results
+        let overallScore = faceMatchScore;
+        let overallPassed = faceMatchPassed;
+        let selfieFaceDetected = false;
+
+        // If we captured a selfie during liveness, compare it to complete the chain
+        if (livenessSelfie && passportFace && profileFace) {
+          selfieFaceDetected = true;
+          console.log('[Verification] Comparing liveness selfie to passport and profile faces...');
+
+          // Compare selfie to passport
+          const selfieToPassport = compareFaces(livenessSelfie, passportFace);
+          console.log('[Verification] Selfie↔Passport:', {
+            similarity: selfieToPassport.similarity.toFixed(2),
+            passed: selfieToPassport.passed,
+          });
+
+          // Compare selfie to profile
+          const selfieToProfile = compareFaces(livenessSelfie, profileFace);
+          console.log('[Verification] Selfie↔Profile:', {
+            similarity: selfieToProfile.similarity.toFixed(2),
+            passed: selfieToProfile.passed,
+          });
+
+          // All three comparisons must pass for enhanced verification
+          // passport↔profile (already done), selfie↔passport, selfie↔profile
+          overallPassed = faceMatchPassed && selfieToPassport.passed && selfieToProfile.passed;
+
+          // Use minimum score as overall (conservative approach)
+          overallScore = Math.min(faceMatchScore, selfieToPassport.similarity, selfieToProfile.similarity);
+
+          console.log('[Verification] Face chain verification:', {
+            passportToProfile: faceMatchPassed,
+            selfieToPassport: selfieToPassport.passed,
+            selfieToProfile: selfieToProfile.passed,
+            overallPassed,
+            overallScore: overallScore.toFixed(2),
+          });
+        } else if (livenessSelfie) {
+          // We have selfie but missing passport or profile face
+          selfieFaceDetected = true;
+          console.log('[Verification] Selfie captured but missing passport or profile face for comparison');
+        }
+
         console.log('[Verification] Building face match result:', {
-          score: faceMatchScore,
-          passed: faceMatchPassed,
+          score: overallScore,
+          passed: overallPassed,
           passportFaceDetected: passportFace !== null,
           profileFaceDetected: profileFace !== null,
+          selfieFaceDetected,
         });
+
         faceMatch = {
-          score: faceMatchScore,
-          passed: faceMatchPassed,
+          score: overallScore,
+          passed: overallPassed,
           passportFaceDetected: passportFace !== null,
           profileFaceDetected: profileFace !== null,
-          selfieFaceDetected: false, // Not using selfie yet
+          selfieFaceDetected,
         };
       }
 
@@ -474,6 +522,7 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
     faceMatchPassed,
     passportFace,
     profileFace,
+    livenessSelfie,
     completedChallenges,
     livenessStartTime,
     livenessChallenges.length,
@@ -573,6 +622,7 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
   const [livenessCameraReady, setLivenessCameraReady] = useState(false);
   const isProcessingLiveness = useRef(false);
   const livenessCompletedRef = useRef(false); // Guard against multiple completion calls
+  const selfieCapturedRef = useRef(false); // Track if we've captured a forward-facing selfie
 
   // Use refs for values that change frequently to avoid callback recreation
   const currentFaceRef = useRef<FaceData | null>(null);
@@ -616,6 +666,7 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
         quality: 0.8,
         exif: true,
         skipProcessing: false, // Ensure image is rotated correctly
+        shutterSound: false, // Disable shutter sound for continuous liveness capture
       });
 
       if (!photo?.uri) {
@@ -645,6 +696,17 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
 
       // Get current challenge
       const challenge = livenessChallenges[challengeIndex];
+
+      // Capture a forward-facing selfie for face verification (only once)
+      // We capture during 'blink' or 'smile' challenges when face is looking straight ahead
+      const isForwardFacingChallenge = challenge === 'blink' || challenge === 'smile';
+      const isFacingForward = Math.abs(face.headEulerAngleY) < 15;
+      if (!selfieCapturedRef.current && isForwardFacingChallenge && isFacingForward && face) {
+        console.log('[Liveness] Capturing forward-facing selfie for verification');
+        selfieCapturedRef.current = true;
+        setLivenessSelfie(face);
+        setLivenessSelfieUri(photo.uri);
+      }
 
       // Check if challenge is completed (use ref for previous face)
       const passed = checkLivenessChallenge(challenge, face, prevFace || undefined);
@@ -704,8 +766,9 @@ function IDVerificationScreenInner({ profileDisplayName, profileImageUrl, onComp
   // Start/stop liveness detection when entering/leaving liveness step
   useEffect(() => {
     if (step === 'liveness' && livenessChallenges.length > 0) {
-      // Reset completion guard for new liveness session
+      // Reset guards for new liveness session
       livenessCompletedRef.current = false;
+      selfieCapturedRef.current = false;
 
       // Start detection after a delay to let camera initialize
       console.log('[Liveness] Starting detection (with 1s camera init delay)...');

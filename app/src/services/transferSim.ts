@@ -232,6 +232,8 @@ async function enrichTransfersWithProfiles(transfers: Transfer[], bsimId: string
       if (profile) {
         enriched.recipientDisplayName = profile.displayName || enriched.recipientDisplayName;
         enriched.recipientProfileImageUrl = profile.profileImageUrl || enriched.recipientProfileImageUrl;
+        enriched.recipientIsVerified = profile.isVerified;
+        enriched.recipientVerificationLevel = profile.verificationLevel;
         // Clear the UUID alias since we now have a display name
         if (profile.displayName) {
           enriched.recipientAlias = undefined;
@@ -244,6 +246,8 @@ async function enrichTransfersWithProfiles(transfers: Transfer[], bsimId: string
       if (profile) {
         enriched.senderDisplayName = profile.displayName || enriched.senderDisplayName;
         enriched.senderProfileImageUrl = profile.profileImageUrl || enriched.senderProfileImageUrl;
+        enriched.senderIsVerified = profile.isVerified;
+        enriched.senderVerificationLevel = profile.verificationLevel;
         // Clear the UUID alias since we now have a display name
         if (profile.displayName) {
           enriched.senderAlias = undefined;

@@ -2917,6 +2917,12 @@ export default function App() {
                         ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
                         : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
                       size="small"
+                      isVerified={transfer.direction === 'sent'
+                        ? transfer.recipientIsVerified
+                        : transfer.senderIsVerified}
+                      verificationLevel={transfer.direction === 'sent'
+                        ? transfer.recipientVerificationLevel
+                        : transfer.senderVerificationLevel}
                     />
                     <View style={styles.p2pTransferInfo}>
                       <Text style={styles.p2pTransferName}>
@@ -4206,6 +4212,8 @@ export default function App() {
                           size="small"
                           initialsColor={recipientInfo.initialsColor}
                           variant="user"
+                          isVerified={recipientInfo.isVerified}
+                          verificationLevel={recipientInfo.verificationLevel}
                         />
                       </View>
                       <View style={styles.recipientInfoDetails}>
@@ -4514,6 +4522,12 @@ export default function App() {
                             ? transfer.recipientDisplayName || transfer.recipientAlias || 'Unknown'
                             : transfer.senderDisplayName || transfer.senderAlias || 'Unknown'}
                           size="small"
+                          isVerified={transfer.direction === 'sent'
+                            ? transfer.recipientIsVerified
+                            : transfer.senderIsVerified}
+                          verificationLevel={transfer.direction === 'sent'
+                            ? transfer.recipientVerificationLevel
+                            : transfer.senderVerificationLevel}
                         />
                         <View style={[
                           styles.historyDirectionBadge,
@@ -4727,6 +4741,12 @@ export default function App() {
                         : selectedTransfer.senderProfileImageUrl}
                       displayName={counterpartyName}
                       size="medium"
+                      isVerified={isSent
+                        ? selectedTransfer.recipientIsVerified
+                        : selectedTransfer.senderIsVerified}
+                      verificationLevel={isSent
+                        ? selectedTransfer.recipientVerificationLevel
+                        : selectedTransfer.senderVerificationLevel}
                     />
                   </View>
                 )}
@@ -4997,6 +5017,8 @@ export default function App() {
                       imageUrl={resolvedToken.profileImageUrl}
                       displayName={resolvedToken.recipientDisplayName || resolvedToken.recipientAlias || 'Unknown'}
                       size="medium"
+                      isVerified={resolvedToken.isVerified}
+                      verificationLevel={resolvedToken.verificationLevel}
                     />
                   </View>
                 )}

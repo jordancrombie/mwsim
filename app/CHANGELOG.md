@@ -2,6 +2,24 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [2.0.1] - 2026-01-19
+
+### Added
+- **Liveness Selfie Verification**: Completes the identity verification chain
+  - Captures forward-facing selfie during liveness check (blink/smile challenges)
+  - Compares selfie to both passport photo and profile photo
+  - All three faces must match for enhanced verification (passport↔profile↔selfie)
+- **Bitcode Strip Plugin**: Expo config plugin to strip bitcode from OpenSSL.framework
+  - Automatically strips bitcode during build (deprecated since Xcode 14)
+  - Re-signs framework after modification
+  - Fixes App Store rejection for bitcode in react-native-nfc-passport-info
+
+### Fixed
+- **Verification Badge Display**: Verification badges now show on other users' avatars
+  - Transfers show sender/recipient verification status
+  - Contracts show counterparty verification status
+  - Contract detail shows party verification status
+
 ## [2.0.0] - 2026-01-19
 
 ### Added

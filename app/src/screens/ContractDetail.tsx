@@ -66,6 +66,8 @@ const PartyCard: React.FC<{
         displayName={party.displayName}
         initialsColor={party.initialsColor}
         size="small"
+        isVerified={party.isVerified}
+        verificationLevel={party.verificationLevel}
       />
       <View style={styles.partyInfo}>
         <View style={styles.partyNameRow}>

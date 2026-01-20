@@ -227,12 +227,16 @@ export interface Transfer {
   senderAccountLast4?: string;     // Last 4 digits of sender's account (for merchant payments)
   senderBsimId?: string;           // Sender's bank identifier
   senderProfileImageUrl?: string;  // Profile image URL (if available from API)
+  senderIsVerified?: boolean;      // Whether sender is identity verified
+  senderVerificationLevel?: VerificationLevel;  // Sender's verification level
 
   // Recipient info (for sent transfers)
   recipientAlias?: string;
   recipientDisplayName?: string;
   recipientBankName?: string;
   recipientProfileImageUrl?: string;  // Profile image URL (if available from API)
+  recipientIsVerified?: boolean;      // Whether recipient is identity verified
+  recipientVerificationLevel?: VerificationLevel;  // Recipient's verification level
 
   createdAt: string;
   completedAt?: string;
@@ -269,6 +273,9 @@ export interface ResolvedToken {
   amount?: number;
   description?: string;
   expiresAt: string;
+  // Verification status of recipient
+  isVerified?: boolean;
+  verificationLevel?: VerificationLevel;
 }
 
 // Bank Account types (for P2P - different from Cards)
@@ -514,6 +521,8 @@ export interface ContractParty {
   funded: boolean;
   fundedAt?: string;
   escrowId?: string;
+  isVerified?: boolean;
+  verificationLevel?: VerificationLevel;
 }
 
 /**
@@ -613,6 +622,8 @@ export interface ContractListItem {
   counterpartyName: string;
   counterpartyProfileImageUrl?: string;
   counterpartyInitialsColor?: string;
+  counterpartyIsVerified?: boolean;  // Whether counterparty is identity verified
+  counterpartyVerificationLevel?: VerificationLevel;  // Counterparty's verification level
   conditionsSummary?: string;
   expiresAt: string;
   createdAt: string;

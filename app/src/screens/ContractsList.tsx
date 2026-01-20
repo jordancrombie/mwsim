@@ -86,6 +86,8 @@ const ContractListItemComponent: React.FC<{
         displayName={counterpartyDisplayName}
         initialsColor={contract.counterpartyInitialsColor}
         size="medium"
+        isVerified={contract.counterpartyIsVerified}
+        verificationLevel={contract.counterpartyVerificationLevel}
       />
 
       {/* Middle: Contract info */}

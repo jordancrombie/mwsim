@@ -748,6 +748,8 @@ export const api = {
               counterpartyName: profile.displayName || c.counterpartyName,
               counterpartyProfileImageUrl: profile.profileImageUrl || c.counterpartyProfileImageUrl,
               counterpartyInitialsColor: profile.initialsColor || c.counterpartyInitialsColor,
+              counterpartyIsVerified: profile.isVerified,
+              counterpartyVerificationLevel: profile.verificationLevel as any,
             };
           }
           return c;
@@ -813,6 +815,8 @@ export const api = {
               displayName: profile.displayName || p.displayName,
               profileImageUrl: profile.profileImageUrl || p.profileImageUrl,
               initialsColor: profile.initialsColor || p.initialsColor,
+              isVerified: profile.isVerified,
+              verificationLevel: profile.verificationLevel,
             };
           }
           return p;
