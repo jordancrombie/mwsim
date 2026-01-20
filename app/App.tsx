@@ -959,13 +959,12 @@ export default function App() {
   };
 
   /**
-   * Handle pitch page dismissal - navigate to home screen.
+   * Handle pitch page dismissal.
    */
   const handlePitchPageDismiss = () => {
     console.log('[PitchPage] Pitch page dismissed');
     setShowPitchPage(false);
     setActivePitchPage(null);
-    setCurrentScreen('home');
   };
 
   /**
@@ -1027,15 +1026,14 @@ export default function App() {
           setUser(summary.user);
           setCards(summary.cards || []);
 
-          // Check for pitch pages before going to home
-          const hasPitchPage = await checkAndShowPitchPage({
+          // Always go to home screen first
+          setCurrentScreen('home');
+
+          // Check for pitch pages to show on top of home screen
+          await checkAndShowPitchPage({
             isVerified: summary.user.isVerified,
             verificationLevel: summary.user.verificationLevel,
           });
-          if (!hasPitchPage) {
-            setCurrentScreen('home');
-          }
-          // If hasPitchPage is true, the modal will show and navigate to home when dismissed
 
           // Fetch profile to get profileImageUrl (not returned by wallet summary)
           console.log('[initializeApp] Fetching profile for image URL...');
@@ -1404,6 +1402,7 @@ export default function App() {
       setPassword(''); // Clear password from memory
 
       // Load wallet data (includes verification status)
+      let userForPitchPage = result.user;
       try {
         const walletData = await api.getWalletSummary();
         setCards(walletData.cards || []);
@@ -1411,13 +1410,20 @@ export default function App() {
         if (walletData.user) {
           console.log('[Login] Updating user with wallet summary (verification fields)');
           setUser(walletData.user);
+          userForPitchPage = walletData.user;
         }
       } catch (e) {
         console.log('[Login] Failed to load wallet, continuing anyway');
       }
 
-      // Go to home
+      // Go to home screen first
       setCurrentScreen('home');
+
+      // Check for pitch pages to show on top of home screen
+      await checkAndShowPitchPage({
+        isVerified: userForPitchPage.isVerified,
+        verificationLevel: userForPitchPage.verificationLevel,
+      });
 
       // Fetch profile to get profileImageUrl (not returned by login response)
       api.getProfile().then((profileData) => {

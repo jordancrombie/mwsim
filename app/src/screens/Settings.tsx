@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { clearImageCache, getCacheStats } from '../services/imageCache';
+import { clearDismissedPitchPages } from '../services/pitchPages';
 import { api } from '../services/api';
 
 interface SettingsScreenProps {
@@ -106,6 +107,23 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             await clearImageCache();
             setCacheStats({ count: 0, totalSizeMB: 0 });
             Alert.alert('Cache Cleared', 'Image cache has been cleared.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleResetPitchPages = () => {
+    Alert.alert(
+      'Reset Pitch Pages',
+      'This will reset all "Don\'t show again" dismissals. Pitch pages will show again on next login.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          onPress: async () => {
+            await clearDismissedPitchPages();
+            Alert.alert('Pitch Pages Reset', 'Pitch pages will show again on next login.');
           },
         },
       ]
@@ -291,6 +309,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               ? `${cacheStats.count} images (${cacheStats.totalSizeMB} MB)`
               : 'Loading...'}
             onPress={handleClearCache}
+            showChevron={false}
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="📢"
+            title="Reset Pitch Pages"
+            subtitle="Show pitch pages again on login"
+            onPress={handleResetPitchPages}
             showChevron={false}
           />
         </View>
