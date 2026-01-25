@@ -678,3 +678,6 @@ export type RootStackParamList = {
   Settings: undefined;
   PaymentApproval: { requestId: string };
 };
+
+// Agent Commerce types (SACP)
+export * from './agent';

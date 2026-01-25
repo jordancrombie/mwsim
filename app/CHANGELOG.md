@@ -2,6 +2,38 @@
 
 All notable changes to mwsim are documented in this file.
 
+## [2.2.0] - 2026-01-25
+
+### Added
+- **OAuth Authorization Code Flow**: Support for browser-based AI platforms (ChatGPT, Claude MCP, Google Gemini) to connect to user wallets
+  - New OAuthAuthorization screen for reviewing and approving connection requests
+  - Push notification deep linking for `oauth.authorization` type
+  - Biometric authentication required for approval
+  - Countdown timer for 10-minute expiration
+  - Scope display with descriptions
+- **Device Authorization (RFC 8628)**: Manual code entry for connecting AI assistants
+  - New "Link Device" screen accessible from Settings
+  - Enter codes like `WSIM-A3J2K9` to authorize AI platform connections
+  - Shows client name, requested scopes, and spending limits
+  - 15-minute expiration countdown per RFC 8628
+  - Biometric authentication required for approval
+
+### Fixed
+- **Step-Up Approval Navigation**: After approving/rejecting a step-up purchase, now navigates to AI Agents list instead of home screen
+
+## [2.1.0] - 2026-01-23
+
+### Added
+- **SACP Agent Commerce**: Full support for AI agent wallet access
+  - Agent pairing via QR code or generated pairing codes
+  - Access request approval with customizable spending limits
+  - Step-up authorization for purchases exceeding limits
+  - Agent management (view, suspend, resume, revoke)
+  - Push notifications for agent events (access requests, step-up approvals, transactions)
+- **Agent List Screen**: View and manage connected AI agents
+- **Access Request Approval**: Review agent permissions and spending limits before granting access
+- **Step-Up Approval**: Approve individual purchases that exceed agent limits
+
 ## [1.8.3] - 2026-01-18
 
 ### Fixed

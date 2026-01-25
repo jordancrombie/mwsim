@@ -46,6 +46,14 @@ import { MerchantProfileEditScreen } from './src/screens/MerchantProfileEdit';
 import { ContractsListScreen } from './src/screens/ContractsList';
 import { ContractDetailScreen } from './src/screens/ContractDetail';
 import { CreateContractScreen } from './src/screens/CreateContract';
+// Agent Commerce (SACP) screens
+import { AgentListScreen } from './src/screens/AgentList';
+import { GeneratePairingCodeScreen } from './src/screens/GeneratePairingCode';
+import { AccessRequestApprovalScreen } from './src/screens/AccessRequestApproval';
+import { StepUpApprovalScreen } from './src/screens/StepUpApproval';
+import { AgentQrScannerScreen, type AgentQrPayload } from './src/screens/AgentQrScanner';
+import { OAuthAuthorizationScreen } from './src/screens/OAuthAuthorization';
+import { DeviceCodeEntryScreen } from './src/screens/DeviceCodeEntry';
 import { ProfileAvatar } from './src/components/ProfileAvatar';
 import { NearbyUsersPanel } from './src/components/NearbyUsersPanel';
 import {
@@ -97,7 +105,17 @@ type Screen =
   // Contract screens
   | 'contractsList'
   | 'contractDetail'
-  | 'createContract';
+  | 'createContract'
+  // Agent Commerce (SACP) screens
+  | 'agentList'
+  | 'agentPairingCode'
+  | 'agentQrScanner'
+  | 'accessRequestApproval'
+  | 'stepUpApproval'
+  // OAuth screens
+  | 'oauthAuthorization'
+  // Device Authorization (RFC 8628)
+  | 'deviceCodeEntry';
 
 // Home tabs
 type HomeTab = 'cards' | 'p2p';
@@ -315,6 +333,12 @@ export default function App() {
   // Contract state
   const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
   const [contractRefreshTrigger, setContractRefreshTrigger] = useState(0);
+
+  // Agent Commerce (SACP) state
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [selectedAccessRequestId, setSelectedAccessRequestId] = useState<string | null>(null);
+  const [selectedStepUpId, setSelectedStepUpId] = useState<string | null>(null);
+  const [selectedOAuthAuthorizationId, setSelectedOAuthAuthorizationId] = useState<string | null>(null);
 
   // Notification-triggered refresh triggers
   const [transferHistoryRefreshTrigger, setTransferHistoryRefreshTrigger] = useState(0);
@@ -1106,6 +1130,64 @@ export default function App() {
         console.log('[Notifications] Deep linking to transfer history');
         setTransferHistoryRefreshTrigger(prev => prev + 1); // Force refresh on notification tap
         setCurrentScreen('transferHistory');
+        break;
+
+      // Agent Commerce (SACP) deep links
+      case 'StepUpApproval':
+        if (params.stepUpId) {
+          console.log('[Notifications] Deep linking to step-up approval:', params.stepUpId);
+          setSelectedStepUpId(params.stepUpId);
+          setCurrentScreen('stepUpApproval');
+        }
+        break;
+
+      case 'AgentStepUp':
+        // WSIM sends this screen name with stepUpId param
+        if (params.stepUpId) {
+          console.log('[Notifications] Deep linking to step-up approval (WSIM format):', params.stepUpId);
+          setSelectedStepUpId(params.stepUpId);
+          setCurrentScreen('stepUpApproval');
+        }
+        break;
+
+      case 'AccessRequestApproval':
+        if (params.requestId) {
+          console.log('[Notifications] Deep linking to access request:', params.requestId);
+          setSelectedAccessRequestId(params.requestId);
+          setCurrentScreen('accessRequestApproval');
+        }
+        break;
+
+      case 'AgentAccessRequest':
+        // WSIM sends this screen name with accessRequestId param
+        if (params.accessRequestId) {
+          console.log('[Notifications] Deep linking to access request (WSIM format):', params.accessRequestId);
+          setSelectedAccessRequestId(params.accessRequestId);
+          setCurrentScreen('accessRequestApproval');
+        }
+        break;
+
+      case 'AgentList':
+        console.log('[Notifications] Deep linking to agent list');
+        setCurrentScreen('agentList');
+        break;
+
+      case 'AgentDetail':
+        if (params.agentId) {
+          console.log('[Notifications] Deep linking to agent detail:', params.agentId);
+          setSelectedAgentId(params.agentId);
+          // For now, go to agent list - agent detail screen not yet implemented
+          setCurrentScreen('agentList');
+        }
+        break;
+
+      // OAuth Authorization deep link
+      case 'OAuthAuthorization':
+        if (params.oauthAuthorizationId) {
+          console.log('[Notifications] Deep linking to OAuth authorization:', params.oauthAuthorizationId);
+          setSelectedOAuthAuthorizationId(params.oauthAuthorizationId);
+          setCurrentScreen('oauthAuthorization');
+        }
         break;
 
       default:
@@ -5339,6 +5421,204 @@ export default function App() {
     );
   }
 
+  // ===========================================
+  // Agent Commerce (SACP) Screens
+  // ===========================================
+
+  // Agent List Screen
+  if (currentScreen === 'agentList') {
+    return (
+      <AgentListScreen
+        onBack={() => setCurrentScreen('settings')}
+        onAgentSelect={(agentId) => {
+          setSelectedAgentId(agentId);
+          // TODO: Navigate to agent detail screen when implemented
+          Alert.alert('Agent Details', `Agent ID: ${agentId}\n\nAgent detail screen coming soon.`);
+        }}
+        onAddAgent={() => setCurrentScreen('agentPairingCode')}
+        onPendingRequests={() => {
+          // Show first pending request or go to list
+          // For now, just alert - will be enhanced with actual pending request handling
+          Alert.alert('Pending Requests', 'Checking for pending access requests...');
+        }}
+      />
+    );
+  }
+
+  // Generate Pairing Code Screen
+  if (currentScreen === 'agentPairingCode') {
+    return (
+      <GeneratePairingCodeScreen
+        onBack={() => setCurrentScreen('agentList')}
+        onCodeUsed={() => {
+          // After code is used, go back to agent list to see the new pending request
+          setCurrentScreen('agentList');
+        }}
+      />
+    );
+  }
+
+  // Agent QR Scanner Screen
+  if (currentScreen === 'agentQrScanner') {
+    const handleAgentQrScanned = (payload: AgentQrPayload) => {
+      console.log('[App] Agent QR scanned:', payload);
+      if (payload.type === 'pairing_code' && payload.code) {
+        // Show the code that was scanned
+        Alert.alert(
+          'Pairing Code Scanned',
+          `Code: ${payload.code}\n\nThe agent will now send an access request.`,
+          [{ text: 'OK', onPress: () => setCurrentScreen('agentList') }]
+        );
+      } else if (payload.type === 'access_request' && payload.requestId) {
+        // Navigate directly to access request approval
+        setSelectedAccessRequestId(payload.requestId);
+        setCurrentScreen('accessRequestApproval');
+      } else {
+        Alert.alert('Unknown QR', 'Could not parse the QR code.');
+        setCurrentScreen('agentList');
+      }
+    };
+
+    return (
+      <AgentQrScannerScreen
+        onBack={() => setCurrentScreen('agentList')}
+        onQrScanned={handleAgentQrScanned}
+      />
+    );
+  }
+
+  // Access Request Approval Screen
+  if (currentScreen === 'accessRequestApproval' && selectedAccessRequestId) {
+    return (
+      <AccessRequestApprovalScreen
+        requestId={selectedAccessRequestId}
+        onBack={() => {
+          setSelectedAccessRequestId(null);
+          setCurrentScreen('agentList');
+        }}
+        onApproved={(agentId) => {
+          Alert.alert(
+            'Agent Approved',
+            'The AI agent has been connected to your wallet and can now make purchases within the limits you set.',
+            [{ text: 'OK', onPress: () => {
+              setSelectedAccessRequestId(null);
+              setCurrentScreen('agentList');
+            }}]
+          );
+        }}
+        onRejected={() => {
+          setSelectedAccessRequestId(null);
+          setCurrentScreen('agentList');
+        }}
+        onBiometricAuth={async () => {
+          // Use biometricService for authentication
+          const result = await biometricService.authenticate('Approve agent access');
+          if (!result.success) {
+            console.log('[App] Biometric auth failed:', result.error);
+          }
+          return result.success;
+        }}
+      />
+    );
+  }
+
+  // Step-Up Approval Screen
+  if (currentScreen === 'stepUpApproval' && selectedStepUpId) {
+    return (
+      <StepUpApprovalScreen
+        stepUpId={selectedStepUpId}
+        onBack={() => {
+          setSelectedStepUpId(null);
+          setCurrentScreen('agentList');
+        }}
+        onApproved={() => {
+          Alert.alert(
+            'Purchase Approved',
+            'The purchase has been approved. The AI agent will complete the transaction.',
+            [{ text: 'OK', onPress: () => {
+              setSelectedStepUpId(null);
+              setCurrentScreen('agentList');
+            }}]
+          );
+        }}
+        onRejected={() => {
+          Alert.alert(
+            'Purchase Rejected',
+            'The purchase has been rejected.',
+            [{ text: 'OK', onPress: () => {
+              setSelectedStepUpId(null);
+              setCurrentScreen('agentList');
+            }}]
+          );
+        }}
+        onBiometricAuth={async () => {
+          // Use biometricService for authentication
+          const result = await biometricService.authenticate('Approve purchase');
+          if (!result.success) {
+            console.log('[App] Biometric auth failed:', result.error);
+          }
+          return result.success;
+        }}
+      />
+    );
+  }
+
+  // OAuth Authorization Screen
+  if (currentScreen === 'oauthAuthorization' && selectedOAuthAuthorizationId) {
+    return (
+      <OAuthAuthorizationScreen
+        oauthAuthorizationId={selectedOAuthAuthorizationId}
+        onBack={() => {
+          setSelectedOAuthAuthorizationId(null);
+          setCurrentScreen('home');
+        }}
+        onApproved={() => {
+          Alert.alert(
+            'Connected',
+            'The application has been connected to your wallet.',
+            [{ text: 'OK', onPress: () => {
+              setSelectedOAuthAuthorizationId(null);
+              setCurrentScreen('home');
+            }}]
+          );
+        }}
+        onRejected={() => {
+          setSelectedOAuthAuthorizationId(null);
+          setCurrentScreen('home');
+        }}
+        onBiometricAuth={async () => {
+          const result = await biometricService.authenticate('Approve connection');
+          if (!result.success) {
+            console.log('[App] Biometric auth failed:', result.error);
+          }
+          return result.success;
+        }}
+      />
+    );
+  }
+
+  // Device Code Entry Screen (RFC 8628)
+  if (currentScreen === 'deviceCodeEntry') {
+    return (
+      <DeviceCodeEntryScreen
+        onBack={() => setCurrentScreen('settings')}
+        onApproved={() => {
+          setCurrentScreen('agentList');
+        }}
+        onRejected={() => {
+          setCurrentScreen('settings');
+        }}
+        onBiometricAuth={async () => {
+          const result = await biometricService.authenticate('Approve connection');
+          if (!result.success) {
+            console.log('[App] Biometric auth failed:', result.error);
+          }
+          return result.success;
+        }}
+      />
+    );
+  }
+
   // Settings Screen
   if (currentScreen === 'settings') {
     return (
@@ -5363,6 +5643,8 @@ export default function App() {
           }
           setCurrentScreen('profileEdit');
         }}
+        onAIAgents={() => setCurrentScreen('agentList')}
+        onLinkDevice={() => setCurrentScreen('deviceCodeEntry')}
         environmentName={getEnvironmentName()}
         isDevelopment={isDevelopment()}
         appVersion="1.5.12"

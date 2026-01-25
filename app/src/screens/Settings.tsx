@@ -15,6 +15,8 @@ interface SettingsScreenProps {
   onSignOut: () => void;
   onDeepSignOut: () => void;
   onProfileEdit: () => void;
+  onAIAgents: () => void;
+  onLinkDevice: () => void;
   environmentName: string;
   isDevelopment: boolean;
   appVersion: string;
@@ -68,6 +70,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onSignOut,
   onDeepSignOut,
   onProfileEdit,
+  onAIAgents,
+  onLinkDevice,
   environmentName,
   isDevelopment,
   appVersion,
@@ -164,6 +168,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               // TODO: Navigate to notifications screen
               Alert.alert('Coming Soon', 'Notification settings will be available in a future update.');
             }}
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="🤖"
+            title="AI Agents"
+            subtitle="Manage AI shopping assistants"
+            onPress={onAIAgents}
+          />
+          <View style={styles.separator} />
+          <SettingsRow
+            icon="🔗"
+            title="Link Device"
+            subtitle="Enter a code to connect an AI assistant"
+            onPress={onLinkDevice}
           />
         </View>
 

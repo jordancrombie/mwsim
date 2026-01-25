@@ -75,6 +75,9 @@ const createApiClient = (): AxiosInstance => {
 
 const apiClient = createApiClient();
 
+// Export for use by other API modules (e.g., agent-api.ts)
+export { apiClient };
+
 // Extend AxiosRequestConfig to include _retry
 declare module 'axios' {
   export interface InternalAxiosRequestConfig {

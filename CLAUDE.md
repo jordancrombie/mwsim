@@ -8,6 +8,37 @@ This file contains important instructions and procedures for Claude Code when wo
 - **Bundle ID**: `com.banksim.wsim`
 - **Team ID**: `ZJHD6JAC94`
 
+## Version & Build Number Tracking
+
+**CRITICAL: Always verify the correct version and build number before any TestFlight upload.**
+
+### Current Version
+- **Version**: `2.2.0` (OAuth + Device Authorization for AI platforms)
+- **Build**: `2`
+
+### Version vs Build Number Rules
+- **Version** (`expo.version`): Marketing version visible to users. Bump when adding features or making significant changes.
+  - Major: Breaking changes or major rewrites
+  - Minor: New features (e.g., 2.0.5 → 2.1.0 for Agent Commerce)
+  - Patch: Bug fixes only
+- **Build Number** (`expo.ios.buildNumber`): Internal build identifier for App Store Connect.
+  - **RESETS to "1"** when version changes
+  - Increments for each TestFlight upload within the same version
+  - Example: Version 2.1.0 builds: 1, 2, 3... then version 2.1.1 resets to build 1
+
+### Before Each TestFlight Upload
+1. Check `app/app.json` for current version and buildNumber
+2. Determine if version needs bumping (new features = bump version, reset build to 1)
+3. If same version, increment buildNumber
+4. Update this CLAUDE.md file with the new version/build after successful upload
+
+### Version History
+| Version | Build | Date | Notes |
+|---------|-------|------|-------|
+| 2.2.0   | 1     | 2026-01-25 | OAuth Authorization Code Flow |
+| 2.1.0   | 1     | 2026-01-23 | SACP Agent Commerce support |
+| 2.0.5   | -     | Previous | Trusted User verification foundation |
+
 ## iOS Build & TestFlight Upload
 
 ### TestFlight Upload Procedure
@@ -20,8 +51,11 @@ Claude CAN automatically upload builds to TestFlight. **IMPORTANT: Only upload w
 
 See "Environment Switching" section below for details on these settings.
 
-#### Step 1: Bump Build Number
-Edit `app/app.json` and increment `ios.buildNumber`.
+#### Step 1: Verify Version & Build Number
+1. Read `app/app.json` and check current `version` and `ios.buildNumber`
+2. Compare against "Version & Build Number Tracking" section above
+3. If adding features: bump version, reset buildNumber to "1"
+4. If same version: increment buildNumber
 
 #### Step 2: Prebuild
 ```bash

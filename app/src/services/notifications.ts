@@ -20,7 +20,11 @@ export interface PushTokenRegistration {
 }
 
 export interface NotificationData {
-  type: 'transfer.received' | 'transfer.completed' | 'transfer.failed' | 'auth.challenge' | 'TRANSFER_RECEIVED';
+  type: 'transfer.received' | 'transfer.completed' | 'transfer.failed' | 'auth.challenge' | 'TRANSFER_RECEIVED'
+    // Agent notification types (SACP)
+    | 'agent.step_up' | 'agent.access_request' | 'agent.transaction' | 'agent.limit_warning' | 'agent.suspended'
+    // OAuth authorization
+    | 'oauth.authorization';
   transferId?: string;
   deepLink?: string;
   // Extended payment fields (from WSIM push notifications)
@@ -29,6 +33,11 @@ export interface NotificationData {
   senderName?: string;              // senderDisplayName from webhook
   recipientType?: 'individual' | 'merchant';  // lowercase per spec
   merchantName?: string;            // Only populated when recipientType is "merchant"
+  // Agent notification fields (SACP)
+  step_up_id?: string;              // For agent.step_up
+  request_id?: string;              // For agent.access_request
+  agent_id?: string;                // For agent notifications
+  agent_name?: string;              // Agent display name
 }
 
 /**
@@ -43,6 +52,16 @@ export type DeepLinkScreenName =
   // Contract Screens
   | 'ContractDetail'      // View/accept/fund contract
   | 'ContractsList'       // All contracts
+  // Agent Screens (SACP) - mwsim names
+  | 'StepUpApproval'      // Approve agent purchase
+  | 'AccessRequestApproval' // Approve agent access request
+  | 'AgentList'           // Manage registered agents
+  | 'AgentDetail'         // View/edit specific agent
+  // Agent Screens (SACP) - WSIM names (mapped to mwsim screens in App.tsx)
+  | 'AgentStepUp'         // WSIM name for StepUpApproval
+  | 'AgentAccessRequest'  // WSIM name for AccessRequestApproval
+  // OAuth Screens
+  | 'OAuthAuthorization'  // Approve OAuth app connection
   // Future
   | 'MerchantPayment'     // Merchant transaction detail
   | 'Notification';       // Notification inbox
@@ -73,7 +92,15 @@ export type WsimNotificationType =
   | 'contract.expired'
   | 'contract.outcome'
   | 'contract.settled'
-  | 'contract.disputed';
+  | 'contract.disputed'
+  // Agent Commerce (SACP)
+  | 'agent.step_up'           // Purchase needs approval
+  | 'agent.access_request'    // Agent wants to connect
+  | 'agent.transaction'       // Transaction completed
+  | 'agent.limit_warning'     // Approaching spending limit
+  | 'agent.suspended'         // Agent auto-suspended
+  // OAuth
+  | 'oauth.authorization';    // OAuth app wants to connect
 
 // Configure notification handler for foreground notifications
 Notifications.setNotificationHandler({
@@ -278,6 +305,72 @@ export function handleNotificationResponse(
     }
   }
 
+  // AGENT NOTIFICATION: type starts with "agent."
+  // Handles step-up approvals, access requests, etc.
+  if (typeof data.type === 'string' && data.type.startsWith('agent.')) {
+    console.log('[Notifications] Agent notification type:', data.type);
+
+    // Step-up authorization needed
+    if (data.type === 'agent.step_up') {
+      // Support both snake_case (step_up_id) and camelCase (stepUpId)
+      const stepUpId = (data.step_up_id || data.stepUpId) as string;
+      if (stepUpId) {
+        console.log('[Notifications] Step-up notification, stepUpId:', stepUpId);
+        return {
+          screen: 'StepUpApproval',
+          params: { stepUpId }
+        };
+      }
+      console.warn('[Notifications] agent.step_up notification missing step_up_id/stepUpId');
+    }
+
+    // Agent access request
+    if (data.type === 'agent.access_request') {
+      // Support both snake_case (request_id) and camelCase (requestId)
+      const requestId = (data.request_id || data.requestId) as string;
+      if (requestId) {
+        console.log('[Notifications] Access request notification, requestId:', requestId);
+        return {
+          screen: 'AccessRequestApproval',
+          params: { requestId }
+        };
+      }
+      console.warn('[Notifications] agent.access_request notification missing request_id/requestId');
+    }
+
+    // Transaction completed, limit warning, or suspended - go to agent detail
+    if (data.type === 'agent.transaction' || data.type === 'agent.limit_warning' || data.type === 'agent.suspended') {
+      // Support both snake_case (agent_id) and camelCase (agentId)
+      const agentId = (data.agent_id || data.agentId) as string;
+      if (agentId) {
+        console.log('[Notifications] Agent event notification, agentId:', agentId);
+        return {
+          screen: 'AgentDetail',
+          params: { agentId }
+        };
+      }
+      // If no agent ID, go to agent list
+      return {
+        screen: 'AgentList',
+        params: {}
+      };
+    }
+  }
+
+  // OAUTH NOTIFICATION: type is "oauth.authorization"
+  if (typeof data.type === 'string' && data.type === 'oauth.authorization') {
+    // Support both oauthAuthorizationId and oauth_authorization_id
+    const oauthAuthorizationId = (data.oauthAuthorizationId || data.oauth_authorization_id) as string;
+    if (oauthAuthorizationId) {
+      console.log('[Notifications] OAuth authorization notification, id:', oauthAuthorizationId);
+      return {
+        screen: 'OAuthAuthorization',
+        params: { oauthAuthorizationId }
+      };
+    }
+    console.warn('[Notifications] oauth.authorization notification missing oauthAuthorizationId');
+  }
+
   return null;
 }
 
@@ -310,6 +403,41 @@ function parseDeepLinkUrl(url: string): DeepLinkDestination | null {
     return {
       screen: 'RequestApproval',
       params: { requestId: requestMatch[1] }
+    };
+  }
+
+  // Parse mwsim://step-up/{stepUpId} (agent step-up approval)
+  const stepUpMatch = url.match(/mwsim:\/\/step-up\/(.+)/);
+  if (stepUpMatch) {
+    return {
+      screen: 'StepUpApproval',
+      params: { stepUpId: stepUpMatch[1] }
+    };
+  }
+
+  // Parse mwsim://access-request/{requestId} (agent access request)
+  const accessRequestMatch = url.match(/mwsim:\/\/access-request\/(.+)/);
+  if (accessRequestMatch) {
+    return {
+      screen: 'AccessRequestApproval',
+      params: { requestId: accessRequestMatch[1] }
+    };
+  }
+
+  // Parse mwsim://agents (agent list)
+  if (url === 'mwsim://agents' || url === 'mwsim://agents/') {
+    return {
+      screen: 'AgentList',
+      params: {}
+    };
+  }
+
+  // Parse mwsim://agent/{agentId} (agent detail)
+  const agentMatch = url.match(/mwsim:\/\/agent\/(.+)/);
+  if (agentMatch) {
+    return {
+      screen: 'AgentDetail',
+      params: { agentId: agentMatch[1] }
     };
   }
 
@@ -347,7 +475,13 @@ export function parseNotificationData(notification: Notifications.Notification):
   }
 
   // Check for valid notification type
-  const validTypes = ['transfer.received', 'transfer.completed', 'transfer.failed', 'auth.challenge', 'TRANSFER_RECEIVED'];
+  const validTypes = [
+    'transfer.received', 'transfer.completed', 'transfer.failed', 'auth.challenge', 'TRANSFER_RECEIVED',
+    // Agent notification types (SACP)
+    'agent.step_up', 'agent.access_request', 'agent.transaction', 'agent.limit_warning', 'agent.suspended',
+    // OAuth
+    'oauth.authorization'
+  ];
   if (!data.type || !validTypes.includes(data.type as string)) {
     return null;
   }
@@ -378,6 +512,11 @@ export function parseNotificationData(notification: Notifications.Notification):
       ? data.recipientType
       : undefined,
     merchantName: typeof data.merchantName === 'string' ? data.merchantName : undefined,
+    // Agent notification fields
+    step_up_id: typeof data.step_up_id === 'string' ? data.step_up_id : undefined,
+    request_id: typeof data.request_id === 'string' ? data.request_id : undefined,
+    agent_id: typeof data.agent_id === 'string' ? data.agent_id : undefined,
+    agent_name: typeof data.agent_name === 'string' ? data.agent_name : undefined,
   };
 }
 
@@ -396,6 +535,28 @@ export function isTransferNotification(data: NotificationData): boolean {
  */
 export function isMerchantPaymentNotification(data: NotificationData): boolean {
   return isTransferNotification(data) && data.recipientType === 'merchant';
+}
+
+/**
+ * Check if notification is an agent notification (SACP)
+ */
+export function isAgentNotification(data: NotificationData): boolean {
+  const agentTypes = ['agent.step_up', 'agent.access_request', 'agent.transaction', 'agent.limit_warning', 'agent.suspended'];
+  return agentTypes.includes(data.type);
+}
+
+/**
+ * Check if notification is a step-up approval request
+ */
+export function isStepUpNotification(data: NotificationData): boolean {
+  return data.type === 'agent.step_up';
+}
+
+/**
+ * Check if notification is an agent access request
+ */
+export function isAccessRequestNotification(data: NotificationData): boolean {
+  return data.type === 'agent.access_request';
 }
 
 /**
